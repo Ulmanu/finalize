@@ -1,0 +1,34 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Build output
+/dist
+/pkg
+/static/pkg
+*.wasm
+*.wasm.map
+
+# Local environment
+.env
+.env.local
+*.local.toml
+
+# Editor/IDE
+.idea/
+.vscode/
+*.iml
+
+# RTK local state
+.rtk/
+
+# OS
+.DS_Store
+
+# Local databases / test artifacts
+/tmp
+/coverage
+/playwright-report
+/test-results
+/target-visual

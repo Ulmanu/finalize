@@ -1,0 +1,66 @@
+schema: spec-driven
+
+context: |
+  Project: Momentum — an original-branding, Things-style personal task manager
+  implemented as a full-stack Rust web application.
+
+  Source policy (Rust-only application logic):
+  - Application and business logic MUST be Rust.
+  - Allowed: Rust source, Cargo manifests, configuration/data files, Rust-generated
+    HTML views, CSS/styling resources, browser/PWA manifests, WASM output, and
+    JavaScript glue emitted automatically by Rust/WASM tooling.
+  - Forbidden: hand-written JavaScript/TypeScript application logic, React/Vue/
+    Svelte/Next.js application layers, Node business/backend logic.
+
+  Architecture:
+  - `crates/domain` — pure Rust domain model and invariants (no UI, DB, or browser coupling).
+  - `crates/app` — application command/query layer, projections, ordering, undo, sync protocol types.
+  - `crates/infra` — persistence (PostgreSQL/sqlx) and provider adapters behind domain/application traits.
+  - `crates/web` — Leptos/Axum server + WASM client, routes, components, design system.
+  - `crates/testkit` — shared test fixtures/support.
+  - All authoritative mutations flow through typed application commands; UI never writes storage directly.
+  - Built-in lists (Inbox/Today/Upcoming/Anytime/Someday/Logbook) are projections over one canonical
+    Todo identity, not storage folders.
+  - Start/schedule date, deadline, and reminder are separate concepts; date-only values are local
+    dates, never fake UTC-midnight instants.
+  - Every persisted schema change gets a Rust-managed migration.
+  - Offline mutations are optimistic and durable in an outbox; sync and recurrence are idempotent.
+  - Every user-owned operation is account-authorized.
+  - Accessibility is part of feature completion.
+
+  Parity and branding:
+  - Observable Things-style workflow/information architecture is the reference target.
+  - Use original branding ("Momentum") and original assets/icons. Never ship Cultured Code
+    trademarks, logos, marketing artwork, or proprietary icon assets.
+  - Apple-native-only features receive documented web equivalents (Web Push, PWA, BroadcastChannel, etc.).
+
+rules:
+  proposal:
+    - State Why, Scope, Dependencies, Non-goals, What Changes, and Success Criteria.
+    - Keep scope limited to the current numbered roadmap change; no future-roadmap work.
+    - Explicitly forbid handwritten JS/TS application logic and Cultured Code asset copying in Non-goals.
+  specs:
+    - Use SHALL/MUST for normative requirements; every requirement needs at least one scenario.
+    - Use `### Requirement: <name>` and `#### Scenario: <name>` headings exactly.
+    - Scenarios use GIVEN/WHEN/THEN bullets.
+    - Choose ADDED/MODIFIED/REMOVED/RENAMED against the current canonical specs, never blindly ADDED.
+    - Requirement text must describe observable behavior, not implementation tasks.
+  design:
+    - Record crate placement, command/query boundaries, persistence/migration impact, offline/sync impact,
+      UI/accessibility behavior, error handling, and testing strategy.
+    - Record non-obvious decisions resolved from the repository instead of inventing parallel patterns.
+  tasks:
+    - Include plan/validate, implementation, infrastructure/UI, tests/verification, and archive/commit sections.
+    - Every task must have a checkable acceptance condition; do not add speculative tasks.
+    - Mark a task complete only when its acceptance condition is actually satisfied.
+
+operations:
+  apply:
+    guidance:
+      - Implement every task; do not stub or mock production behavior.
+      - Run the relevant Rust quality gates (fmt, clippy, tests) before verification.
+      - Record any live integration that could not be verified without credentials.
+  archive:
+    guidance:
+      - Never archive while required tasks remain unchecked.
+      - Re-run strict validation and canonical spec validation before committing.
