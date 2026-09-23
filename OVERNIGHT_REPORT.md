@@ -254,6 +254,28 @@ Agent: opencode (deepseek-v4.1-flash)
   LexoRank); the engine plans changes and the command layer persists them atomically.
 - Live integrations not verified: none.
 
+### 09 — `add-command-transaction-layer` — COMPLETE
+
+- Start: 2026-09-24 02:30 · End: 2026-09-24 03:05
+- Proposal validation: strict validation passed before apply.
+- Implementation: `momentum-app::commands` (typed `Command` variants, `CommandEnvelope` with
+  operation id, `DomainEvent`, `Projection` invalidations, `CommandError`, `ChangeRecord`,
+  `UnitOfWork`/`UnitOfWorkFactory`, `CommandDispatcher` with replay/optimistic concurrency);
+  `momentum-infra::commands::PgUnitOfWorkFactory` (entity + placement + change_log +
+  sync sequence in one SQL transaction); `momentum-testkit::commands::MemoryDatabase`.
+- Migrations: none (reuses change-05 tables).
+- Tests: 11 command-layer tests (lifecycle, temporal independence, move, replay, sequences,
+  isolation, conflict, injected failure, validation) + 2 infra mapping tests + conditional
+  live PostgreSQL round-trip; 23 infra tests pass; fmt, clippy, workspace tests, quality gates.
+- Verification: manual. All requirement scenarios covered by tests; live PostgreSQL path not
+  executed (no database) and recorded. No critical findings.
+- Archive: `2026-09-24-add-command-transaction-layer`; canonical `app/commands` spec created;
+  strict validation pass.
+- Commit: `feat(09): add command transaction layer`
+- Decisions: `UnitOfWork` owns SQL transaction scope; events stored as JSONB change-log
+  payload (doubles as the sync feed); operation id replay returns the recorded outcome.
+- Live integrations not verified: PostgreSQL unit of work (recorded).
+
 ## Run summary
 
 (Filled at run end.)

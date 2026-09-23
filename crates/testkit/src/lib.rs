@@ -6,4 +6,5 @@
 #![forbid(unsafe_code)]
 
 pub mod auth;
+pub mod commands;
 pub mod fixtures;

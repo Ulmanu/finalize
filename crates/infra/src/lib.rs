@@ -7,9 +7,11 @@
 #![forbid(unsafe_code)]
 
 pub mod auth;
+pub mod commands;
 pub mod config;
 pub mod db;
 
 pub use auth::{Argon2Hasher, PgAuthStore, RandomTokenGenerator, SystemClock};
+pub use commands::PgUnitOfWorkFactory;
 pub use config::{ConfigError, ServerConfig};
 pub use db::{Database, DbError, Migration, MigrationError, MIGRATIONS};

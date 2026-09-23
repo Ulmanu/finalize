@@ -1621,6 +1621,7 @@ dependencies = [
  "momentum-domain",
  "momentum-xtask",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

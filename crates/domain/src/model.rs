@@ -20,7 +20,10 @@ pub const MAX_TITLE_LEN: usize = 1024;
 pub const MAX_NOTES_LEN: usize = 100_000;
 
 /// Kind of entity stored in the canonical entity table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum EntityKind {
     /// A to-do item.
     Todo,
@@ -49,7 +52,10 @@ impl EntityKind {
 }
 
 /// Lifecycle status shared by to-dos and projects.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Status {
     /// Active and eligible for projections.
     Open,
@@ -181,7 +187,8 @@ impl std::str::FromStr for Title {
 }
 
 /// Schedule state of an entity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ScheduleState {
     /// Actionable now with no start date.
     Anytime,
@@ -203,7 +210,7 @@ pub enum ScheduleError {
 ///
 /// This Evening is a Today presentation state, not a separate schedule: the date remains
 /// canonical and the flag only decides which Today section renders the item.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Schedule {
     state: ScheduleState,
     evening: bool,
@@ -323,7 +330,8 @@ impl Default for Schedule {
 }
 
 /// Deadline state relative to a local date.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DeadlineState {
     /// Due after today.
     Future,
@@ -334,7 +342,7 @@ pub enum DeadlineState {
 }
 
 /// A deadline: an explicit local date, independent from schedule and reminder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Deadline {
     /// Due date.
     pub date: LocalDate,
@@ -361,7 +369,8 @@ impl Deadline {
 }
 
 /// Delivery state of a reminder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ReminderState {
     /// Waiting to fire.
     Scheduled,
@@ -374,7 +383,7 @@ pub enum ReminderState {
 }
 
 /// A reminder instant with its timezone context, independent from schedule and deadline.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Reminder {
     /// Instant the reminder fires.
     pub at: DateTime<Utc>,
@@ -382,6 +391,19 @@ pub struct Reminder {
     pub timezone: String,
     /// Delivery state.
     pub state: ReminderState,
+}
+
+impl ReminderState {
+    /// Stable string representation.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Scheduled => "scheduled",
+            Self::Delivered => "delivered",
+            Self::Snoozed => "snoozed",
+            Self::Canceled => "canceled",
+        }
+    }
 }
 
 impl Reminder {
@@ -397,7 +419,8 @@ impl Reminder {
 }
 
 /// The single contextual parent of a to-do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ContextRef {
     /// Not yet filed: the Inbox projection owns it.
     Inbox,
