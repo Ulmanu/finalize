@@ -7,5 +7,7 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+pub mod db;
 
 pub use config::{ConfigError, ServerConfig};
+pub use db::{Database, DbError, Migration, MigrationError, MIGRATIONS};

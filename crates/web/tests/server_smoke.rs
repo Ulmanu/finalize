@@ -40,6 +40,26 @@ async fn healthz_reports_ok() {
 }
 
 #[tokio::test]
+async fn readyz_reports_persistence_disabled_without_database() {
+    let response = test_router()
+        .oneshot(
+            Request::builder()
+                .uri("/readyz")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_text(response).await;
+    assert!(
+        body.contains("\"persistence\":\"disabled\""),
+        "unexpected body: {body}"
+    );
+}
+
+#[tokio::test]
 async fn readyz_reports_ok() {
     let response = test_router()
         .oneshot(

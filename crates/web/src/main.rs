@@ -1,9 +1,11 @@
 //! Momentum HTTP server binary.
 
 use std::error::Error;
+use std::sync::Arc;
 
-use momentum_infra::ServerConfig;
-use momentum_web::server;
+use momentum_infra::{Database, ServerConfig};
+use momentum_web::server::{self, AppState};
+use momentum_web::session::AnonymousSessionResolver;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -16,8 +18,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let config = ServerConfig::from_env()?;
-    let options = server::leptos_options();
-    let router = server::router(options);
+    let database = connect_database(&config).await?;
+
+    let state = AppState::new(server::leptos_options(), database);
+    let router = server::router_with_state(state, Arc::new(AnonymousSessionResolver));
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
 
     tracing::info!(addr = %config.bind_addr, "momentum server listening");
@@ -27,6 +31,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     Ok(())
+}
+
+async fn connect_database(config: &ServerConfig) -> Result<Option<Database>, Box<dyn Error>> {
+    let Some(url) = config.database_url.as_deref() else {
+        tracing::info!("DATABASE_URL is not set; starting without persistence");
+        return Ok(None);
+    };
+
+    let database = Database::connect(url).await?;
+    let applied = database.migrate().await?;
+    if applied.is_empty() {
+        tracing::info!("database schema is up to date");
+    } else {
+        tracing::info!(versions = ?applied, "applied database migrations");
+    }
+    Ok(Some(database))
 }
 
 async fn shutdown_signal() {

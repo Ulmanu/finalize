@@ -152,6 +152,30 @@ Agent: opencode (deepseek-v4.1-flash)
   rendered and CSS controls visibility so hidden regions leave the accessibility tree.
 - Live integrations not verified: none.
 
+### 05 — `add-persistence-foundation` — COMPLETE
+
+- Start: 2026-09-23 23:12 · End: 2026-09-23 23:40
+- Proposal validation: strict validation passed before apply.
+- Implementation: `momentum-infra::db` (`Database`, migration engine with FNV-1a checksums,
+  transactional apply, rollback, pending/applied queries) and migration 0001 creating
+  accounts, sessions, entities, placements, tag assignments, checklist items, recurrence
+  templates/instances, reminders, preferences, sync metadata, change log, and tombstones;
+  `DATABASE_URL` config; `/readyz` persistence reporting via `AppState`.
+- Migrations: `0001-canonical-schema` (forward + documented destructive rollback).
+- Tests: 16 infra tests (11 migration/schema invariants incl. date-only columns, account
+  scoping, versions, sync spine; conditional live PostgreSQL apply/rollback test) + readyz
+  persistence test; fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual. Live PostgreSQL path was **not executed** in this environment (no
+  server/Docker); the conditional test records the skip. Pure schema/migration invariants are
+  fully tested. No critical findings.
+- Archive: `2026-09-24-add-persistence-foundation`; canonical `persistence/schema` spec created;
+  strict `--specs`/`--archived` validation pass.
+- Commit: `feat(05): add persistence foundation`
+- Decisions: Rust-defined SQL migrations (ship in binary, testable without a database);
+  `momentum-infra` is an optional web dependency enabled only under `ssr` so sqlx never
+  compiles for WASM; readiness degrades gracefully without persistence.
+- Live integrations not verified: PostgreSQL server connectivity (recorded above).
+
 ## Run summary
 
 (Filled at run end.)

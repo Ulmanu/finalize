@@ -8,6 +8,9 @@ use thiserror::Error;
 /// Environment variable that overrides the default bind address.
 pub const BIND_ADDR_ENV: &str = "MOMENTUM_BIND_ADDR";
 
+/// Environment variable holding the PostgreSQL connection string.
+pub const DATABASE_URL_ENV: &str = "DATABASE_URL";
+
 /// Default bind address used for local development.
 pub const DEFAULT_BIND_ADDR: &str = "127.0.0.1:3000";
 
@@ -24,6 +27,8 @@ pub enum ConfigError {
 pub struct ServerConfig {
     /// Address the HTTP server binds to.
     pub bind_addr: SocketAddr,
+    /// PostgreSQL connection string, when persistence is configured.
+    pub database_url: Option<String>,
 }
 
 impl ServerConfig {
@@ -49,7 +54,11 @@ impl ServerConfig {
         let bind_addr = raw
             .parse::<SocketAddr>()
             .map_err(|_| ConfigError::InvalidBindAddr(raw))?;
-        Ok(Self { bind_addr })
+        let database_url = lookup(DATABASE_URL_ENV).filter(|url| !url.trim().is_empty());
+        Ok(Self {
+            bind_addr,
+            database_url,
+        })
     }
 }
 
@@ -61,6 +70,25 @@ mod tests {
     fn defaults_to_localhost_when_unset() {
         let config = ServerConfig::from_lookup(|_| None).expect("default config");
         assert_eq!(config.bind_addr.to_string(), DEFAULT_BIND_ADDR);
+    }
+
+    #[test]
+    fn reads_database_url_when_present() {
+        let config = ServerConfig::from_lookup(|key| {
+            (key == DATABASE_URL_ENV).then(|| "postgres://localhost/momentum".to_string())
+        })
+        .expect("config with database");
+        assert_eq!(
+            config.database_url.as_deref(),
+            Some("postgres://localhost/momentum")
+        );
+    }
+
+    #[test]
+    fn blank_database_url_is_treated_as_absent() {
+        let config = ServerConfig::from_lookup(|key| (key == DATABASE_URL_ENV).then(String::new))
+            .expect("config without database");
+        assert_eq!(config.database_url, None);
     }
 
     #[test]

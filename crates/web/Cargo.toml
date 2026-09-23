@@ -20,6 +20,7 @@ ssr = [
     "dep:tracing",
     "dep:tracing-subscriber",
     "dep:any_spawner",
+    "dep:momentum-infra",
     "dep:leptos_axum",
     "leptos/ssr",
     "leptos_meta/ssr",
@@ -34,7 +35,7 @@ hydrate = [
 [dependencies]
 momentum-domain.workspace = true
 momentum-app.workspace = true
-momentum-infra.workspace = true
+momentum-infra = { workspace = true, optional = true }
 leptos.workspace = true
 leptos_meta.workspace = true
 leptos_router.workspace = true
