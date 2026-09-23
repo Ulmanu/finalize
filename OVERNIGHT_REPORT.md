@@ -276,6 +276,25 @@ Agent: opencode (deepseek-v4.1-flash)
   payload (doubles as the sync feed); operation id replay returns the recorded outcome.
 - Live integrations not verified: PostgreSQL unit of work (recorded).
 
+### 10 — `add-undo-redo-engine` — COMPLETE
+
+- Start: 2026-09-24 02:42 · End: 2026-09-24 03:00
+- Proposal validation: strict validation passed before apply.
+- Implementation: `momentum-app::undo` (inverse derivation for every command variant, create
+  inverse derived from the created identity, `UndoEntry`/`UndoGroup`, `UndoEngine` applying
+  inverse commands through the dispatcher, bounded `UndoStack` with grouped semantics).
+- Migrations: none.
+- Tests: 5 app unit tests (inverse derivation) + 5 testkit integration tests (create/edit/
+  completion round-trips preserving identity, grouped reverse-order undo, multi-create group);
+  fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual; all requirement scenarios covered. No critical findings.
+- Archive: `2026-09-24-add-undo-redo-engine`; canonical `app/undo` spec created; strict
+  validation pass.
+- Commit: `feat(10): add undo-redo engine`
+- Decisions: undo executes inverse commands (never snapshots); redo is the inverse of the
+  inverse so identities are stable; history window is 100 groups and in-session only.
+- Live integrations not verified: none.
+
 ## Run summary
 
 (Filled at run end.)

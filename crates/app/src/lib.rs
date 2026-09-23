@@ -10,6 +10,7 @@ pub mod auth;
 pub mod commands;
 pub mod ordering;
 pub mod session;
+pub mod undo;
 
 use momentum_domain::BuildInfo;
 use serde::Serialize;
