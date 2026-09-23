@@ -11,10 +11,12 @@
 
 pub mod email;
 pub mod ids;
+pub mod model;
 pub mod password;
+pub mod time;
 
 pub use email::{Email, EmailError};
-pub use ids::{AccountId, SessionId};
+pub use ids::{AccountId, ChecklistItemId, EntityId, SessionId};
 pub use password::{Password, PasswordError};
 
 /// Original product name used for all user-visible branding.

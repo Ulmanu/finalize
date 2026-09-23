@@ -209,6 +209,31 @@ Agent: opencode (deepseek-v4.1-flash)
   rather than server functions; reset marks the email verified.
 - Live integrations not verified: PostgreSQL auth store, email delivery (recorded above).
 
+### 07 — `add-task-domain-core` — COMPLETE
+
+- Start: 2026-09-24 01:50 · End: 2026-09-24 02:25
+- Proposal validation: strict validation passed before apply.
+- Implementation: `momentum-domain::time::LocalDate` (UTC+offset and IANA-timezone derivation,
+  day arithmetic, ISO parse/display, serde), `momentum-domain::model` (`EntityKind`, `Status`,
+  `EntityMeta`, `Title`, `ScheduleState`/`Schedule` with This Evening semantics, `Deadline` +
+  `DeadlineState`, `Reminder` + `ReminderState`, `ContextRef`, `Todo`, `Project`, `Area`,
+  `Heading`, `Tag`, `ChecklistItem`, `ProjectCompletionPolicy`), plus `EntityId`/
+  `ChecklistItemId`.
+- Migrations: none (schema already matched the model).
+- Tests: 28 domain tests including temporal independence, evening rules, single contextual
+  parent with identity preservation, completion/reopen timestamps, project completion policy,
+  checklist independence, and title validation. fmt, clippy, workspace tests, WASM build, and
+  quality gates all pass.
+- Verification: manual; every requirement scenario is covered by unit tests. No critical
+  findings.
+- Archive: `2026-09-24-add-task-domain-core`; canonical `domain/tasks` spec created; strict
+  `--specs`/`--archived` validation pass.
+- Commit: `feat(07): add task domain core`
+- Decisions: one `EntityId` + `EntityKind` (matches canonical entity table and permits future
+  type conversion); This Evening is a flag on a dated schedule, not a separate state; deadlines
+  are date-only; reminders are instants with timezone context.
+- Live integrations not verified: none.
+
 ## Run summary
 
 (Filled at run end.)

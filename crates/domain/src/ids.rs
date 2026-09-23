@@ -78,6 +78,16 @@ id_newtype!(
     SessionId
 );
 
+id_newtype!(
+    /// Canonical identity of a task/context entity (todo, project, area, heading, tag).
+    EntityId
+);
+
+id_newtype!(
+    /// Canonical identity of a checklist item embedded in a to-do.
+    ChecklistItemId
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
