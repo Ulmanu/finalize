@@ -187,6 +187,10 @@ pub const ROW: &[Token] = &[
         name: "--row-indent",
         value: "20px",
     },
+    Token {
+        name: "--touch-target",
+        value: "44px",
+    },
 ];
 
 /// Sidebar metrics.

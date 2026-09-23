@@ -132,6 +132,26 @@ Agent: opencode (deepseek-v4.1-flash)
   checkbox; `recursion_limit = 512` on the web crate for large view trees.
 - Live integrations not verified: none.
 
+### 04 — `add-responsive-layout-foundation` — COMPLETE
+
+- Start: 2026-09-23 22:55 · End: 2026-09-23 23:12
+- Proposal validation: strict validation passed before apply.
+- Implementation: `responsive.rs` (`LayoutMode`, documented breakpoints, `LayoutState` with
+  hydrate resize sync), responsive `AppLayout` (top bar + toggle with `aria-expanded`/
+  `aria-controls`, overlay drawer + scrim, mobile bottom destination bar, single `main`),
+  CSS breakpoints (`48rem`/`64rem`) with touch-target token and reduced-motion-safe drawer.
+- Migrations: none.
+- Tests: 4 new responsive-layout tests + updated shell tests; `cargo test --workspace
+  --all-features`, fmt, clippy, WASM build, quality gates all pass.
+- Verification: manual; browser resize behavior deferred to the behavior-parity suite and
+  recorded. No critical findings.
+- Archive: `2026-09-23-add-responsive-layout-foundation`; canonical `ui/responsive-layout`
+  spec created; strict `--specs`/`--archived` validation pass.
+- Commit: `feat(04): add responsive layout foundation`
+- Decisions: server defaults to desktop mode and hydration corrects it; all layout regions are
+  rendered and CSS controls visibility so hidden regions leave the accessibility tree.
+- Live integrations not verified: none.
+
 ## Run summary
 
 (Filled at run end.)

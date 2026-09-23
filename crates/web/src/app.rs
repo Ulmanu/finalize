@@ -2,6 +2,7 @@
 
 use leptos::prelude::*;
 
+use crate::responsive::LayoutState;
 use crate::routes::AppRoutes;
 use crate::session::{provide_session, SessionBootstrap};
 
@@ -12,6 +13,7 @@ use crate::session::{provide_session, SessionBootstrap};
 #[component]
 pub fn App() -> impl IntoView {
     let session = provide_session();
+    LayoutState::provide();
     view! {
         <SessionBootstrap session=session.get_untracked()/>
         <AppRoutes/>

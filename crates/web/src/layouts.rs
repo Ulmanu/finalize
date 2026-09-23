@@ -3,6 +3,7 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
 
+use crate::responsive::LayoutState;
 use crate::session::{use_account, use_session};
 use momentum_app::session::SessionState;
 
@@ -57,19 +58,80 @@ pub const PRIMARY_DESTINATIONS: &[NavDestination] = &[
     },
 ];
 
-/// Authenticated application layout with primary navigation and content area.
+/// Secondary destinations shown in the sidebar and the mobile drawer.
+pub const SECONDARY_DESTINATIONS: &[NavDestination] = &[
+    NavDestination {
+        href: "/projects",
+        label: "Projects",
+    },
+    NavDestination {
+        href: "/areas",
+        label: "Areas",
+    },
+    NavDestination {
+        href: "/settings",
+        label: "Settings",
+    },
+];
+
+/// Destinations shown in the mobile bottom bar.
+pub const MOBILE_BAR_DESTINATIONS: &[NavDestination] = &[
+    NavDestination {
+        href: "/inbox",
+        label: "Inbox",
+    },
+    NavDestination {
+        href: "/today",
+        label: "Today",
+    },
+    NavDestination {
+        href: "/upcoming",
+        label: "Upcoming",
+    },
+    NavDestination {
+        href: "/anytime",
+        label: "Anytime",
+    },
+];
+
+/// Authenticated application layout with responsive navigation.
 #[component]
 pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     let product = momentum_domain::PRODUCT_NAME;
     let account = use_account();
-    let signed_in_label = account
-        .as_ref()
-        .map_or_else(String::new, |account| account.email.clone());
+    let signed_in_label = account.map_or_else(String::new, |account| account.email.clone());
+    let account_label = signed_in_label.clone();
+    let layout = LayoutState::use_state();
+    let drawer_open = layout.drawer_open;
 
     view! {
-        <div class="app-layout" data-testid="app-layout">
-            <nav class="app-sidebar" aria-label="Primary">
+        <div
+            class="app-layout"
+            data-testid="app-layout"
+            data-layout=move || layout.mode.get().as_str()
+            data-drawer=move || if drawer_open.get() { "open" } else { "closed" }
+            on:keydown=move |event| {
+                if event.key() == "Escape" {
+                    layout.close_drawer();
+                }
+            }
+        >
+            <header class="app-topbar">
+                <button
+                    type="button"
+                    class="nav-toggle"
+                    aria-label="Toggle navigation"
+                    aria-controls="app-sidebar"
+                    aria-expanded=move || if drawer_open.get() { "true" } else { "false" }
+                    on:click=move |_| layout.toggle_drawer()
+                >
+                    <span class="nav-toggle-icon" aria-hidden="true"></span>
+                </button>
                 <A href="/today" attr:class="brand">{product}</A>
+                <span class="topbar-account">{signed_in_label}</span>
+            </header>
+
+            <nav id="app-sidebar" class="app-sidebar" aria-label="Primary">
                 <ul class="nav-list">
                     {PRIMARY_DESTINATIONS
                         .iter()
@@ -86,23 +148,49 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                 </ul>
                 <div class="nav-secondary">
                     <ul class="nav-list">
-                        <li class="nav-item">
-                            <A href="/projects" attr:class="nav-link">"Projects"</A>
-                        </li>
-                        <li class="nav-item">
-                            <A href="/areas" attr:class="nav-link">"Areas"</A>
-                        </li>
-                        <li class="nav-item">
-                            <A href="/settings" attr:class="nav-link">"Settings"</A>
-                        </li>
+                        {SECONDARY_DESTINATIONS
+                            .iter()
+                            .map(|destination| {
+                                view! {
+                                    <li class="nav-item">
+                                        <A href=destination.href attr:class="nav-link">
+                                            {destination.label}
+                                        </A>
+                                    </li>
+                                }
+                            })
+                            .collect_view()}
                     </ul>
                 </div>
             </nav>
+
+            <button
+                type="button"
+                class="drawer-scrim"
+                aria-label="Close navigation"
+                tabindex="-1"
+                on:click=move |_| layout.close_drawer()
+            ></button>
+
             <main class="app-main" data-testid="app-main">
                 {children()}
             </main>
+
+            <nav class="bottom-nav" aria-label="Destinations">
+                {MOBILE_BAR_DESTINATIONS
+                    .iter()
+                    .map(|destination| {
+                        view! {
+                            <A href=destination.href attr:class="bottom-nav-link">
+                                {destination.label}
+                            </A>
+                        }
+                    })
+                    .collect_view()}
+            </nav>
+
             <footer class="app-footer" aria-label="Account">
-                <span class="account-label">{signed_in_label}</span>
+                <span class="account-label">{account_label}</span>
             </footer>
         </div>
     }

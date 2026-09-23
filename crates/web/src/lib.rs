@@ -15,6 +15,7 @@ pub mod app;
 pub mod boundaries;
 pub mod design;
 pub mod layouts;
+pub mod responsive;
 pub mod routes;
 pub mod session;
 
