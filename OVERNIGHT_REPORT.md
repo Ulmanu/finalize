@@ -234,6 +234,26 @@ Agent: opencode (deepseek-v4.1-flash)
   are date-only; reminders are instants with timezone context.
 - Live integrations not verified: none.
 
+### 08 — `add-fractional-ordering-engine` — COMPLETE
+
+- Start: 2026-09-24 02:08 · End: 2026-09-24 02:30
+- Proposal validation: strict validation passed before apply.
+- Implementation: `momentum-app::ordering` with gap-based `Rank` (zero-padded storage encoding),
+  `OrderingScope` (context parent vs Today), `OrderedItem`, `ScopeOrder` (insert/append/move/
+  rebalance returning persistable `OrderingChange` plans), exhaustion detection, and
+  deterministic rebalancing; `ContextRef` now derives `Hash`.
+- Migrations: none (`rank text` columns reused with the documented encoding).
+- Tests: 17 app tests including encoding/order, midpoint insertion, move, scope independence,
+  exhaustion + rebalance, 200-insert stability, and bounds; fmt, clippy, workspace tests,
+  quality gates pass.
+- Verification: manual; all requirement scenarios covered. No critical findings.
+- Archive: `2026-09-24-add-fractional-ordering-engine`; canonical `domain/ordering` spec
+  created; strict `--specs`/`--archived` validation pass.
+- Commit: `feat(08): add fractional ordering engine`
+- Decisions: integer gap ranks with zero-padded text encoding (simpler and deterministic vs
+  LexoRank); the engine plans changes and the command layer persists them atomically.
+- Live integrations not verified: none.
+
 ## Run summary
 
 (Filled at run end.)

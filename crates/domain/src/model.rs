@@ -397,7 +397,7 @@ impl Reminder {
 }
 
 /// The single contextual parent of a to-do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContextRef {
     /// Not yet filed: the Inbox projection owns it.
     Inbox,
