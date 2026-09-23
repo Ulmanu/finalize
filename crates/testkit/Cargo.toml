@@ -1,0 +1,19 @@
+[package]
+name = "momentum-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared test support for Momentum"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+momentum-domain.workspace = true
+momentum-app.workspace = true
+
+[dev-dependencies]
+momentum-xtask.workspace = true

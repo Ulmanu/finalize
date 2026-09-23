@@ -41,7 +41,7 @@ rules:
     - Explicitly forbid handwritten JS/TS application logic and Cultured Code asset copying in Non-goals.
   specs:
     - Use SHALL/MUST for normative requirements; every requirement needs at least one scenario.
-    - Use `### Requirement: <name>` and `#### Scenario: <name>` headings exactly.
+    - "Use `### Requirement: <name>` and `#### Scenario: <name>` headings exactly."
     - Scenarios use GIVEN/WHEN/THEN bullets.
     - Choose ADDED/MODIFIED/REMOVED/RENAMED against the current canonical specs, never blindly ADDED.
     - Requirement text must describe observable behavior, not implementation tasks.

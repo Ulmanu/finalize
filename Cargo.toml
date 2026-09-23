@@ -1,0 +1,74 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/domain",
+    "crates/app",
+    "crates/infra",
+    "crates/web",
+    "crates/testkit",
+    "crates/xtask",
+]
+default-members = [
+    "crates/domain",
+    "crates/app",
+    "crates/infra",
+    "crates/web",
+    "crates/testkit",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["Momentum contributors"]
+description = "Momentum — an original-branding Things-style personal task manager in Rust"
+
+[workspace.dependencies]
+momentum-domain = { path = "crates/domain", version = "0.1.0" }
+momentum-app = { path = "crates/app", version = "0.1.0" }
+momentum-infra = { path = "crates/infra", version = "0.1.0" }
+momentum-web = { path = "crates/web", version = "0.1.0" }
+momentum-testkit = { path = "crates/testkit", version = "0.1.0" }
+momentum-xtask = { path = "crates/xtask", version = "0.1.0" }
+
+# Serialization
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+
+# Errors and diagnostics
+thiserror = "2.0.20"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+# Identifiers and time
+uuid = { version = "1.26", features = ["v7", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+
+# Server
+axum = "0.8.9"
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "signal", "net"] }
+tower = "0.5.3"
+tower-http = { version = "0.6.11", features = ["fs", "trace"] }
+http = "1.5"
+http-body-util = "0.1.4"
+
+# Web UI
+leptos = "0.8.20"
+leptos_axum = "0.8.10"
+leptos_meta = "0.8.6"
+leptos_router = "0.8.15"
+wasm-bindgen = "0.2.105"
+console_error_panic_hook = "0.1.7"
+any_spawner = "0.3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+undocumented_unsafe_blocks = "deny"

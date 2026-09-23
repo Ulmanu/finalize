@@ -33,9 +33,46 @@ Agent: opencode (deepseek-v4.1-flash)
   there are no pre-existing failures to attribute.
 - Bootstrap commit: see git log (`chore(00): bootstrap OpenSpec project and overnight report`).
 
+### Bootstrap follow-up (during change 01)
+
+- Installed rustup (stable 1.98.1) with `rustfmt`, `clippy`, and the
+  `wasm32-unknown-unknown` target; added `rust-toolchain.toml` and made `scripts/*.sh` prefer
+  `$HOME/.cargo/bin`. Homebrew Rust 1.95 remains on PATH for manual shells but the project
+  toolchain is now rustup-managed so WASM builds are reproducible.
+
 ## Change log
 
-(Each change is appended here after archive + commit.)
+### 01 — `bootstrap-fullstack-rust-workspace` — COMPLETE
+
+- Start: 2026-09-23 21:30 · End: 2026-09-23 21:52
+- Proposal validation: `openspec validate ... --strict --no-interactive` passed before apply.
+- Implementation:
+  - Cargo workspace `momentum` with `domain`, `app`, `infra`, `web`, `testkit`, `xtask`.
+  - Dependency direction enforced by `momentum-xtask arch::check_workspace` + integration test.
+  - Axum server binary `momentum-server` (SSR Leptos shell, `/healthz`, `/readyz`,
+    `MOMENTUM_BIND_ADDR` config in `momentum-infra`).
+  - WASM client built successfully: `target/wasm32-unknown-unknown/debug/momentum_web.wasm`.
+  - `scripts/quality-gates.sh`, `scripts/build-web.sh`, `.cargo/config.toml` xtask alias,
+    `rustfmt.toml`, `rust-toolchain.toml`, README.
+  - Test asserts no handwritten JS/TS sources exist in `crates/` or `scripts/`.
+- Migrations: none (no persistence yet).
+- Tests executed:
+  - `cargo test --workspace --all-features` — all pass (domain 1, app 2, infra 3, xtask 3,
+    testkit topology 1, web server smoke 4).
+  - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+  - `scripts/quality-gates.sh` — all gates passed.
+  - `scripts/build-web.sh` — WASM artifact produced.
+- Verification: `/opsx:verify` not installed; manual artifact↔implementation verification
+  performed against proposal/specs/design/tasks — all requirement scenarios covered by tests;
+  no critical findings.
+- Archive: `2026-09-23-bootstrap-fullstack-rust-workspace`; canonical spec
+  `platform/rust-workspace` created and Purpose completed after archive; `--specs` and
+  `--archived` strict validation pass.
+- Commit: `feat(01): bootstrap full-stack Rust workspace`
+- Decisions: rustup-managed toolchain (WASM reproducibility); `any_spawner` executor
+  initialized in `server::router` so SSR works in-process for tests; no leptos_router yet
+  (arrives with change 02).
+- Live integrations not verified: none.
 
 ## Run summary
 

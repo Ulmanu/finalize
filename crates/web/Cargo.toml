@@ -1,0 +1,60 @@
+[package]
+name = "momentum-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Leptos/Axum web application for Momentum"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["ssr"]
+ssr = [
+    "dep:axum",
+    "dep:tokio",
+    "dep:tower-http",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "dep:any_spawner",
+    "dep:leptos_axum",
+    "dep:leptos_meta",
+    "leptos/ssr",
+    "leptos_meta/ssr",
+]
+hydrate = [
+    "dep:wasm-bindgen",
+    "dep:console_error_panic_hook",
+    "dep:leptos_meta",
+    "leptos/hydrate",
+]
+
+[dependencies]
+momentum-domain.workspace = true
+momentum-app.workspace = true
+momentum-infra.workspace = true
+leptos.workspace = true
+leptos_meta = { workspace = true, optional = true }
+leptos_axum = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+console_error_panic_hook = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+any_spawner = { workspace = true, optional = true }
+serde.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tower = { workspace = true, features = ["util"] }
+http-body-util.workspace = true
+
+[[bin]]
+name = "momentum-server"
+path = "src/main.rs"
+required-features = ["ssr"]
