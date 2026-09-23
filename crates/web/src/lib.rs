@@ -11,6 +11,10 @@
 #![forbid(unsafe_code)]
 
 pub mod app;
+pub mod boundaries;
+pub mod layouts;
+pub mod routes;
+pub mod session;
 
 #[cfg(feature = "ssr")]
 pub mod server;

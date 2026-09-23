@@ -74,6 +74,38 @@ Agent: opencode (deepseek-v4.1-flash)
   (arrives with change 02).
 - Live integrations not verified: none.
 
+### 02 — `add-web-application-shell` — COMPLETE
+
+- Start: 2026-09-23 21:52 · End: 2026-09-23 22:20
+- Proposal validation: strict validation passed before apply.
+- Implementation:
+  - `momentum-domain::ids::AccountId` UUIDv7 newtype; `momentum-app::session`
+    (`SessionState`, `AccountSession`).
+  - Web: `routes.rs` (built-in lists, `/projects`, `/areas`, `/areas/:id`, `/projects/:id`,
+    `/todos/:id`, `/settings`, `/login`, landing), `layouts.rs` (`PublicLayout`, `AppLayout`,
+    `Protected`), `boundaries.rs` (`Loading`, `NotFound`, `Unauthorized`, `ErrorView`,
+    `AppBoundary`), `session.rs` (`SessionResolver` injection + JSON bootstrap for hydration).
+  - Axum: `generate_route_list` + `leptos_routes_with_context` + `file_and_error_handler`;
+    embedded `/static/app.css` served from Rust.
+  - `router_with_session` enables deterministic authenticated/anonymous integration tests;
+    production default is the anonymous resolver until change 06.
+- Migrations: none.
+- Tests executed: `cargo test --workspace --all-features` (domain 5, app 5, infra 3, xtask 3,
+  testkit 1, web unit 3 + server smoke 4 + shell routes 11); fmt; clippy `-D warnings`;
+  WASM client build (`momentum_web.wasm`); `scripts/quality-gates.sh` all pass.
+- Verification: manual (no `/opsx:verify`). All requirement scenarios have automated coverage
+  except real-browser hydration continuity, which is deferred to the browser/parity suites and
+  recorded as a known limitation (SSR bootstrap element and client DOM read are tested
+  separately).
+- Archive: `2026-09-23-add-web-application-shell`; canonical `app/shell` spec created with a
+  real Purpose; `--specs`/`--archived` strict validation pass.
+- Commit: `feat(02): add web application shell`
+- Decisions: session resolution is dependency-injected rather than mocked; session bootstrap
+  uses a Rust-rendered JSON element (escaped `<`) instead of inline script; `http` is a
+  non-optional web dependency so the resolver trait compiles for WASM; `uuid` gains the `js`
+  feature on wasm32 for client-side ID generation.
+- Live integrations not verified: none (no external providers involved).
+
 ## Run summary
 
 (Filled at run end.)

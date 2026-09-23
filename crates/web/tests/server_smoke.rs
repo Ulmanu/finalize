@@ -78,8 +78,8 @@ async fn root_renders_server_side_product_identity() {
         "SSR body must contain product name: {body}"
     );
     assert!(
-        body.contains("data-testid=\"app-root\""),
-        "SSR body must contain the application root: {body}"
+        body.contains("data-testid=\"landing-page\""),
+        "SSR body must contain the landing page: {body}"
     );
     assert!(
         body.trim_start().starts_with("<!DOCTYPE html>"),

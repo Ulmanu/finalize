@@ -6,6 +6,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod session;
+
 use momentum_domain::BuildInfo;
 use serde::Serialize;
 

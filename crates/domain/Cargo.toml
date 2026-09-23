@@ -12,5 +12,11 @@ publish = false
 workspace = true
 
 [dependencies]
+uuid.workspace = true
+serde.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
+serde_json.workspace = true

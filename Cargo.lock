@@ -1220,11 +1220,17 @@ version = "0.1.0"
 dependencies = [
  "momentum-domain",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "momentum-domain"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
+]
 
 [[package]]
 name = "momentum-infra"
@@ -1251,14 +1257,17 @@ dependencies = [
  "any_spawner",
  "axum",
  "console_error_panic_hook",
+ "http",
  "http-body-util",
  "leptos",
  "leptos_axum",
  "leptos_meta",
+ "leptos_router",
  "momentum-app",
  "momentum-domain",
  "momentum-infra",
  "serde",
+ "serde_json",
  "tokio",
  "tower",
  "tower-http",
@@ -2428,6 +2437,7 @@ checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

@@ -2,21 +2,19 @@
 
 use leptos::prelude::*;
 
+use crate::routes::AppRoutes;
+use crate::session::{provide_session, SessionBootstrap};
+
 /// Root application component.
 ///
-/// Change 01 renders the application foundation; routing and the authenticated shell are
-/// added by the web-application-shell change.
+/// Provides the session signal, renders the session bootstrap element used during hydration,
+/// and mounts the route tree.
 #[component]
 pub fn App() -> impl IntoView {
-    let info = momentum_app::build_info();
+    let session = provide_session();
     view! {
-        <main class="app-shell" data-testid="app-root">
-            <h1 class="app-title">{info.product}</h1>
-            <p class="app-tagline">"A Things-style task manager, built in Rust."</p>
-            <p class="app-version" data-testid="app-version">
-                {format!("v{}", info.version)}
-            </p>
-        </main>
+        <SessionBootstrap session=session.get_untracked()/>
+        <AppRoutes/>
     }
 }
 
@@ -34,7 +32,7 @@ pub fn shell(options: leptos::config::LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <title>{product}</title>
                 <HydrationScripts options=options.clone()/>
-                <link rel="stylesheet" href="/pkg/momentum-web.css"/>
+                <link rel="stylesheet" href="/static/app.css"/>
             </head>
             <body>
                 <App/>

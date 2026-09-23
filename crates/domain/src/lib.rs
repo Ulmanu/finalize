@@ -9,6 +9,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod ids;
+
+pub use ids::AccountId;
+
 /// Original product name used for all user-visible branding.
 ///
 /// Momentum is an original product; it does not use Cultured Code trademarks, logos, or
