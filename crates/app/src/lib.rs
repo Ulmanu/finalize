@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod auth;
 pub mod session;
 
 use momentum_domain::BuildInfo;

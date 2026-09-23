@@ -25,13 +25,22 @@ pub struct Migration {
 }
 
 /// All migrations in application order.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "canonical-schema",
-    up: schema::CANONICAL_SCHEMA_UP,
-    down: Some(schema::CANONICAL_SCHEMA_DOWN),
-    irreversible_reason: None,
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "canonical-schema",
+        up: schema::CANONICAL_SCHEMA_UP,
+        down: Some(schema::CANONICAL_SCHEMA_DOWN),
+        irreversible_reason: None,
+    },
+    Migration {
+        version: 2,
+        name: "auth-tokens",
+        up: schema::AUTH_TOKENS_UP,
+        down: Some(schema::AUTH_TOKENS_DOWN),
+        irreversible_reason: None,
+    },
+];
 
 /// Migration failures.
 #[derive(Debug, Error)]

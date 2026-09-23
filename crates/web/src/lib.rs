@@ -12,6 +12,8 @@
 #![recursion_limit = "512"]
 
 pub mod app;
+#[cfg(feature = "ssr")]
+pub mod auth_routes;
 pub mod boundaries;
 pub mod design;
 pub mod layouts;

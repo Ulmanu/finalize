@@ -199,3 +199,21 @@ drop table if exists entities;
 drop table if exists sessions;
 drop table if exists accounts;
 ";
+
+/// Forward SQL for migration 0002: single-use authentication tokens.
+pub const AUTH_TOKENS_UP: &str = r"
+create table if not exists auth_tokens (
+    id uuid primary key,
+    account_id uuid not null references accounts(id) on delete cascade,
+    kind text not null check (kind in ('email_verification', 'password_reset')),
+    token_hash text not null unique,
+    expires_at timestamptz not null,
+    consumed_at timestamptz,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists auth_tokens_account_idx on auth_tokens (account_id, kind);
+";
+
+/// Rollback SQL for migration 0002.
+pub const AUTH_TOKENS_DOWN: &str = "drop table if exists auth_tokens;";

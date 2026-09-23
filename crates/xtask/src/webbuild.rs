@@ -47,9 +47,15 @@ pub fn build_web_client(root: &Path) -> Result<WebBuildOutcome, String> {
         .map_err(|error| format!("failed to spawn cargo: {error}"))?;
 
     if output.status.success() {
-        Ok(WebBuildOutcome::Built {
-            artifact: root.join("target/wasm32-unknown-unknown/debug/momentum_web.wasm"),
-        })
+        let artifact = root.join("target/wasm32-unknown-unknown/debug/momentum_web.wasm");
+        if artifact.is_file() {
+            Ok(WebBuildOutcome::Built { artifact })
+        } else {
+            Err(format!(
+                "cargo reported success but the wasm artifact is missing at {}",
+                artifact.display()
+            ))
+        }
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if looks_like_missing_target(&stderr) {

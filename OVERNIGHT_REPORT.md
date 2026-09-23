@@ -176,6 +176,39 @@ Agent: opencode (deepseek-v4.1-flash)
   compiles for WASM; readiness degrades gracefully without persistence.
 - Live integrations not verified: PostgreSQL server connectivity (recorded above).
 
+### 06 — `add-account-authentication` — COMPLETE
+
+- Start: 2026-09-23 23:40 · End: 2026-09-24 01:50
+- Proposal validation: strict validation passed before apply.
+- Implementation:
+  - Domain: `Email` (normalization/validation) and `Password` (policy, redacted Debug),
+    `SessionId`.
+  - App: `auth` records/ports/`AuthError`/`AuthService` covering register, verify, login,
+    logout, password reset/change, session revocation/listing, account deletion; uniform
+    credential and reset failures; single-use tokens with expiry; reset verifies the email
+    (mailbox control).
+  - Infra: `Argon2Hasher` (Argon2id), `RandomTokenGenerator` (OS entropy + SHA-256 storage
+    hashes), `SystemClock`, `PgAuthStore` (accounts/sessions/auth_tokens), migration 0002.
+  - Web: async `SessionResolver` + middleware inserting `SessionState` into request
+    extensions, `CookieSessionResolver`, hardened session cookies (`HttpOnly`, `SameSite=Lax`,
+    `Secure` when `MOMENTUM_SECURE_COOKIES` is set), auth routes with native forms, real
+    sign-in/sign-up pages with accessible labels/autocomplete, `/readyz` authentication field.
+- Migrations: `0002-auth-tokens` (forward + rollback).
+- Tests: domain 10 (+4 auth value-object tests), app 5, testkit 15 auth-flow tests, infra 16
+  (+3 crypto tests), web 12 auth-route tests + 3 session unit tests; fmt, clippy, workspace
+  tests, WASM client build, quality gates all pass.
+- Verification: manual. Account lifecycle, uniform failures, cookie hardening, revocation, and
+  session isolation between accounts are covered by tests. **Not verified live**: PostgreSQL
+  auth store (no database in this environment) and email delivery (no provider configured —
+  verification/reset tokens are logged for operators). No critical findings.
+- Archive: `2026-09-24-add-account-authentication`; canonical `auth/accounts` spec created;
+  strict `--specs`/`--archived` validation pass.
+- Commit: `feat(06): add account authentication`
+- Decisions: async session resolution moved to Axum middleware (I/O); SHA-256 for
+  high-entropy tokens and Argon2id for passwords; native form POSTs (progressive enhancement)
+  rather than server functions; reset marks the email verified.
+- Live integrations not verified: PostgreSQL auth store, email delivery (recorded above).
+
 ## Run summary
 
 (Filled at run end.)

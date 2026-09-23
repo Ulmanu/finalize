@@ -2,19 +2,20 @@
 
 use std::sync::Arc;
 
-use axum::extract::{FromRef, State};
+use axum::extract::{FromRef, Request, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::HeaderValue;
-use axum::response::IntoResponse;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use leptos::config::LeptosOptions;
-use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use momentum_infra::Database;
 use serde::Serialize;
 
 use crate::app::{shell, App};
+use crate::auth_routes::{self, AuthContext};
 use crate::session::{AnonymousSessionResolver, SessionResolver};
 
 /// Base stylesheet embedded in the server binary.
@@ -26,23 +27,46 @@ pub const APP_CSS: &str = include_str!("../assets/app.css");
 /// Design-token and primitive stylesheet embedded in the server binary.
 pub const DESIGN_CSS: &str = include_str!("../assets/design.css");
 
-/// Shared application state: Leptos options plus optional persistence.
+/// Shared application state: Leptos options, optional persistence, session resolution, and
+/// optional authentication.
 #[derive(Clone)]
 pub struct AppState {
     /// Leptos SSR configuration.
     pub leptos_options: LeptosOptions,
     /// Database pool, when persistence is configured.
     pub database: Option<Database>,
+    /// Session resolver used by the session middleware.
+    pub session_resolver: Arc<dyn SessionResolver>,
+    /// Authentication context, when the server has an account store.
+    pub auth: Option<Arc<AuthContext>>,
 }
 
 impl AppState {
-    /// Creates state with the given options and no database.
+    /// Creates state with explicit parts.
     #[must_use]
-    pub fn new(leptos_options: LeptosOptions, database: Option<Database>) -> Self {
+    pub fn new(
+        leptos_options: LeptosOptions,
+        database: Option<Database>,
+        session_resolver: Arc<dyn SessionResolver>,
+        auth: Option<Arc<AuthContext>>,
+    ) -> Self {
         Self {
             leptos_options,
             database,
+            session_resolver,
+            auth,
         }
+    }
+
+    /// Creates anonymous state without persistence or authentication.
+    #[must_use]
+    pub fn anonymous(leptos_options: LeptosOptions) -> Self {
+        Self::new(
+            leptos_options,
+            None,
+            Arc::new(AnonymousSessionResolver),
+            None,
+        )
     }
 }
 
@@ -63,6 +87,7 @@ pub struct HealthResponse {
 pub struct ReadyResponse {
     status: &'static str,
     persistence: &'static str,
+    authentication: &'static str,
 }
 
 /// Builds the Leptos options used by the server.
@@ -85,21 +110,20 @@ pub fn init_runtime() {
     let _ = any_spawner::Executor::init_tokio();
 }
 
-/// Builds the application router with the anonymous session resolver.
+/// Builds the application router with anonymous sessions.
 pub fn router(options: LeptosOptions) -> Router {
-    router_with_session(options, Arc::new(AnonymousSessionResolver))
+    router_with_state(AppState::anonymous(options))
 }
 
 /// Builds the application router with an explicit session resolver.
 ///
-/// Exposed so tests and the account-authentication change can inject the real resolver
-/// without changing route or layout code.
+/// Exposed so tests can inject deterministic resolvers without changing route code.
 pub fn router_with_session(options: LeptosOptions, resolver: Arc<dyn SessionResolver>) -> Router {
-    router_with_state(AppState::new(options, None), resolver)
+    router_with_state(AppState::new(options, None, resolver, None))
 }
 
-/// Builds the application router with explicit state and session resolver.
-pub fn router_with_state(state: AppState, resolver: Arc<dyn SessionResolver>) -> Router {
+/// Builds the application router with explicit state.
+pub fn router_with_state(state: AppState) -> Router {
     init_runtime();
     let paths = generate_route_list(App);
     let shell_options = state.leptos_options.clone();
@@ -109,16 +133,29 @@ pub fn router_with_state(state: AppState, resolver: Arc<dyn SessionResolver>) ->
         .route("/readyz", get(readyz))
         .route("/static/app.css", get(app_css))
         .route("/static/design.css", get(design_css))
-        .leptos_routes_with_context(
-            &state,
-            paths,
-            move || {
-                provide_context(resolver.clone());
-            },
-            move || shell(shell_options.clone()),
-        )
+        .merge(auth_routes::routes())
+        .leptos_routes_with_context(&state, paths, provide_context_placeholder, move || {
+            shell(shell_options.clone())
+        })
         .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            session_middleware,
+        ))
         .with_state(state)
+}
+
+fn provide_context_placeholder() {}
+
+/// Resolves the session for every request and stores it in request extensions.
+async fn session_middleware(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let session = state.session_resolver.resolve(request.headers()).await;
+    request.extensions_mut().insert(session);
+    next.run(request).await
 }
 
 async fn healthz() -> Json<HealthResponse> {
@@ -128,10 +165,17 @@ async fn healthz() -> Json<HealthResponse> {
 }
 
 async fn readyz(State(state): State<AppState>) -> Json<ReadyResponse> {
+    let authentication = if state.auth.is_some() {
+        "ok"
+    } else {
+        "disabled"
+    };
+
     let Some(database) = state.database else {
         return Json(ReadyResponse {
             status: "ok",
             persistence: "disabled",
+            authentication,
         });
     };
 
@@ -139,12 +183,14 @@ async fn readyz(State(state): State<AppState>) -> Json<ReadyResponse> {
         Ok(()) => Json(ReadyResponse {
             status: "ok",
             persistence: "ok",
+            authentication,
         }),
         Err(error) => {
             tracing::warn!(%error, "readiness database check failed");
             Json(ReadyResponse {
                 status: "degraded",
                 persistence: "unavailable",
+                authentication,
             })
         }
     }

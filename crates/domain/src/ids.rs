@@ -73,6 +73,11 @@ id_newtype!(
     AccountId
 );
 
+id_newtype!(
+    /// Canonical identity of an authenticated session.
+    SessionId
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;

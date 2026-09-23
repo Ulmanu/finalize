@@ -14,6 +14,9 @@ workspace = true
 [dependencies]
 momentum-domain.workspace = true
 momentum-app.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 momentum-xtask.workspace = true

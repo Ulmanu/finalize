@@ -11,6 +11,9 @@ pub const BIND_ADDR_ENV: &str = "MOMENTUM_BIND_ADDR";
 /// Environment variable holding the PostgreSQL connection string.
 pub const DATABASE_URL_ENV: &str = "DATABASE_URL";
 
+/// Environment variable that marks session cookies as `Secure` (HTTPS deployments).
+pub const SECURE_COOKIES_ENV: &str = "MOMENTUM_SECURE_COOKIES";
+
 /// Default bind address used for local development.
 pub const DEFAULT_BIND_ADDR: &str = "127.0.0.1:3000";
 
@@ -29,6 +32,8 @@ pub struct ServerConfig {
     pub bind_addr: SocketAddr,
     /// PostgreSQL connection string, when persistence is configured.
     pub database_url: Option<String>,
+    /// Whether session cookies must carry the `Secure` attribute.
+    pub secure_cookies: bool,
 }
 
 impl ServerConfig {
@@ -55,9 +60,18 @@ impl ServerConfig {
             .parse::<SocketAddr>()
             .map_err(|_| ConfigError::InvalidBindAddr(raw))?;
         let database_url = lookup(DATABASE_URL_ENV).filter(|url| !url.trim().is_empty());
+        let secure_cookies = lookup(SECURE_COOKIES_ENV)
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes"
+                )
+            })
+            .unwrap_or(false);
         Ok(Self {
             bind_addr,
             database_url,
+            secure_cookies,
         })
     }
 }
@@ -70,6 +84,18 @@ mod tests {
     fn defaults_to_localhost_when_unset() {
         let config = ServerConfig::from_lookup(|_| None).expect("default config");
         assert_eq!(config.bind_addr.to_string(), DEFAULT_BIND_ADDR);
+    }
+
+    #[test]
+    fn secure_cookies_flag_parses_documented_values() {
+        let enabled = ServerConfig::from_lookup(|key| {
+            (key == SECURE_COOKIES_ENV).then(|| "true".to_string())
+        })
+        .expect("config");
+        assert!(enabled.secure_cookies);
+
+        let disabled = ServerConfig::from_lookup(|_| None).expect("config");
+        assert!(!disabled.secure_cookies);
     }
 
     #[test]

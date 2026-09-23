@@ -9,9 +9,13 @@
 
 #![forbid(unsafe_code)]
 
+pub mod email;
 pub mod ids;
+pub mod password;
 
-pub use ids::AccountId;
+pub use email::{Email, EmailError};
+pub use ids::{AccountId, SessionId};
+pub use password::{Password, PasswordError};
 
 /// Original product name used for all user-visible branding.
 ///

@@ -1,33 +1,37 @@
 //! Session context for the application shell.
 //!
-//! The shell needs to know whether a request is authenticated before choosing the public or
-//! authenticated layout. Authentication itself (cookies, sessions, credentials) arrives in
-//! the account-authentication change; this module defines the injection point
-//! ([`SessionResolver`]) and the reactive context consumed by routes.
+//! Session resolution requires I/O (cookie validation against the session store), so it runs
+//! in Axum middleware that inserts [`SessionState`] into the request extensions. The reactive
+//! context reads the resolved state from `http::request::Parts`; hydration reads the JSON
+//! bootstrap element rendered by the server.
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use leptos::prelude::*;
+use momentum_app::auth::AuthService;
 use momentum_app::session::{AccountSession, SessionState};
+
+/// Name of the session cookie.
+pub const SESSION_COOKIE_NAME: &str = "momentum_session";
 
 /// DOM id of the JSON element that carries the server-resolved session into hydration.
 pub const SESSION_BOOTSTRAP_ID: &str = "momentum-session-bootstrap";
 
 /// Resolves the session state for an incoming request.
-///
-/// The account-authentication change provides the cookie-backed implementation; tests provide
-/// deterministic resolvers. The default resolver treats every request as anonymous.
+#[async_trait]
 pub trait SessionResolver: Send + Sync + 'static {
     /// Resolves the session from request headers.
-    fn resolve(&self, headers: &http::HeaderMap) -> SessionState;
+    async fn resolve(&self, headers: &http::HeaderMap) -> SessionState;
 }
 
-/// Resolver used until authentication exists: every request is anonymous.
+/// Resolver used when no authentication store is configured: every request is anonymous.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AnonymousSessionResolver;
 
+#[async_trait]
 impl SessionResolver for AnonymousSessionResolver {
-    fn resolve(&self, _headers: &http::HeaderMap) -> SessionState {
+    async fn resolve(&self, _headers: &http::HeaderMap) -> SessionState {
         SessionState::Anonymous
     }
 }
@@ -36,25 +40,95 @@ impl SessionResolver for AnonymousSessionResolver {
 #[derive(Debug, Clone)]
 pub struct FixedSessionResolver(pub SessionState);
 
+#[async_trait]
 impl SessionResolver for FixedSessionResolver {
-    fn resolve(&self, _headers: &http::HeaderMap) -> SessionState {
+    async fn resolve(&self, _headers: &http::HeaderMap) -> SessionState {
         self.0.clone()
     }
 }
 
+/// Resolves sessions from the session cookie using the authentication service.
+#[derive(Clone)]
+pub struct CookieSessionResolver {
+    auth: Arc<AuthService>,
+}
+
+impl std::fmt::Debug for CookieSessionResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CookieSessionResolver")
+    }
+}
+
+impl CookieSessionResolver {
+    /// Creates the resolver over an auth service.
+    #[must_use]
+    pub fn new(auth: Arc<AuthService>) -> Self {
+        Self { auth }
+    }
+}
+
+#[async_trait]
+impl SessionResolver for CookieSessionResolver {
+    async fn resolve(&self, headers: &http::HeaderMap) -> SessionState {
+        let Some(token) = session_token_from_headers(headers) else {
+            return SessionState::Anonymous;
+        };
+        match self.auth.authenticate_session(&token).await {
+            Ok(account) => SessionState::Authenticated(AccountSession {
+                account_id: account.id,
+                email: account.email,
+                display_name: account.display_name,
+            }),
+            Err(_) => SessionState::Anonymous,
+        }
+    }
+}
+
+/// Extracts the session token from a `Cookie` header.
+#[must_use]
+pub fn session_token_from_headers(headers: &http::HeaderMap) -> Option<String> {
+    let cookies = headers.get(http::header::COOKIE)?.to_str().ok()?;
+    cookies.split(';').find_map(|pair| {
+        let (name, value) = pair.split_once('=')?;
+        (name.trim() == SESSION_COOKIE_NAME).then(|| value.trim().to_string())
+    })
+}
+
+/// Builds the `Set-Cookie` value for a new session.
+#[must_use]
+pub fn session_cookie(token: &str, max_age_seconds: i64, secure: bool) -> String {
+    let mut cookie = format!(
+        "{SESSION_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_seconds}"
+    );
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
+/// Builds the `Set-Cookie` value that clears the session cookie.
+#[must_use]
+pub fn clear_session_cookie(secure: bool) -> String {
+    let mut cookie = format!("{SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
 /// Resolves the session for the current reactive owner.
 ///
-/// Under SSR the request parts and the active resolver are read from context. Under hydration
+/// Under SSR the middleware-resolved state is read from request extensions. Under hydration
 /// the state is read from the JSON bootstrap element rendered by the server. Every other
 /// configuration is anonymous.
 #[must_use]
 pub fn resolve_session() -> SessionState {
     #[cfg(feature = "ssr")]
     {
-        let resolver = use_context::<Arc<dyn SessionResolver>>();
-        let parts = use_context::<http::request::Parts>();
-        if let (Some(resolver), Some(parts)) = (resolver, parts) {
-            return resolver.resolve(&parts.headers);
+        if let Some(parts) = use_context::<http::request::Parts>() {
+            if let Some(session) = parts.extensions.get::<SessionState>() {
+                return session.clone();
+            }
         }
         SessionState::Anonymous
     }
@@ -142,20 +216,56 @@ mod tests {
     #[test]
     fn anonymous_resolver_returns_anonymous() {
         let resolver = AnonymousSessionResolver;
+        let state = futures_lite_block_on(resolver.resolve(&http::HeaderMap::new()));
+        assert_eq!(state, SessionState::Anonymous);
+    }
+
+    fn futures_lite_block_on<F: std::future::Future>(future: F) -> F::Output {
+        use std::task::{Context, Poll, Waker};
+
+        let mut future = Box::pin(future);
+        let mut context = Context::from_waker(Waker::noop());
+        loop {
+            match future.as_mut().poll(&mut context) {
+                Poll::Ready(output) => return output,
+                Poll::Pending => std::thread::yield_now(),
+            }
+        }
+    }
+
+    #[test]
+    fn cookie_parsing_finds_the_session_token() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::COOKIE,
+            http::HeaderValue::from_static("theme=dark; momentum_session=abc123; other=1"),
+        );
         assert_eq!(
-            resolver.resolve(&http::HeaderMap::new()),
-            SessionState::Anonymous
+            session_token_from_headers(&headers).as_deref(),
+            Some("abc123")
         );
     }
 
     #[test]
-    fn fixed_resolver_returns_configured_state() {
-        let account = AccountSession::new(momentum_domain::AccountId::new(), "a@example.com");
-        let resolver = FixedSessionResolver(SessionState::Authenticated(account.clone()));
-        assert_eq!(
-            resolver.resolve(&http::HeaderMap::new()),
-            SessionState::Authenticated(account)
+    fn cookie_parsing_returns_none_without_session() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::COOKIE,
+            http::HeaderValue::from_static("theme=dark"),
         );
+        assert!(session_token_from_headers(&headers).is_none());
+    }
+
+    #[test]
+    fn session_cookie_is_hardened() {
+        let cookie = session_cookie("token-value", 3600, true);
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Lax"));
+        assert!(cookie.contains("Secure"));
+        assert!(cookie.contains("Max-Age=3600"));
+        let cleared = clear_session_cookie(false);
+        assert!(cleared.contains("Max-Age=0"));
+        assert!(!cleared.contains("Secure"));
     }
 
     #[cfg(feature = "ssr")]

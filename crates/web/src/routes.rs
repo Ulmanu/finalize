@@ -6,7 +6,7 @@
 
 use leptos::prelude::*;
 use leptos_router::components::{Route, Router, Routes};
-use leptos_router::hooks::use_params_map;
+use leptos_router::hooks::{use_params_map, use_query_map};
 use leptos_router::path;
 
 use crate::boundaries::NotFound;
@@ -20,6 +20,7 @@ pub fn AppRoutes() -> impl IntoView {
             <Routes fallback=NotFound>
                 <Route path=path!("/") view=LandingPage/>
                 <Route path=path!("/login") view=LoginPage/>
+                <Route path=path!("/signup") view=SignupPage/>
                 <Route path=path!("/styleguide") view=StyleGuidePage/>
                 <Route path=path!("/inbox") view=InboxPage/>
                 <Route path=path!("/today") view=TodayPage/>
@@ -50,7 +51,7 @@ pub fn LandingPage() -> impl IntoView {
                     "A calm, keyboard-first task manager with Today, Upcoming, projects, areas, and tags."
                 </p>
                 <div class="landing-actions">
-                    <a class="button-primary" href="/today">"Open Today"</a>
+                    <a class="button-primary" href="/signup">"Create an account"</a>
                     <a class="button-secondary" href="/login">"Sign in"</a>
                 </div>
             </section>
@@ -58,14 +59,139 @@ pub fn LandingPage() -> impl IntoView {
     }
 }
 
-/// Sign-in route placeholder; the account-authentication change implements the form.
+fn query_message(query: &leptos_router::params::ParamsMap) -> Option<&'static str> {
+    if query.get("registered").is_some() {
+        Some("Account created. Verify your email address, then sign in.")
+    } else if query.get("verified").is_some() {
+        Some("Email verified. Sign in to continue.")
+    } else if query.get("reset").as_deref() == Some("sent") {
+        Some("If that email address exists, a reset link is on its way.")
+    } else if query.get("reset").as_deref() == Some("done") {
+        Some("Password updated. Sign in with your new password.")
+    } else if query.get("password").as_deref() == Some("changed") {
+        Some("Password changed. Sign in again on this device.")
+    } else if query.get("error").as_deref() == Some("unverified") {
+        Some("Verify your email address before signing in.")
+    } else if query.get("error").as_deref() == Some("verify") {
+        Some("That verification link is invalid or has expired.")
+    } else if query.get("error").as_deref() == Some("reset") {
+        Some("That reset link is invalid or has expired.")
+    } else if query.get("error").as_deref() == Some("unavailable") {
+        Some("Authentication is not configured on this server.")
+    } else if query.get("error").is_some() {
+        Some("Email or password is incorrect.")
+    } else {
+        None
+    }
+}
+
+/// Sign-in page with a native form posting to the authentication route.
 #[component]
 pub fn LoginPage() -> impl IntoView {
+    let query = use_query_map();
+    let message = move || query_message(&query.read());
+
     view! {
         <PublicLayout>
             <section class="login-page" data-testid="login-page">
                 <h1>"Sign in"</h1>
-                <p>"Account sign-in is not enabled in this build yet."</p>
+                {move || {
+                    message()
+                        .map(|message| {
+                            view! {
+                                <p class="form-message" role="status" data-testid="login-message">
+                                    {message}
+                                </p>
+                            }
+                        })
+                }}
+                <form method="post" action="/auth/login" class="auth-form">
+                    <label class="form-field">
+                        <span>"Email"</span>
+                        <input
+                            type="email"
+                            name="email"
+                            autocomplete="email"
+                            required=true
+                            aria-label="Email"
+                        />
+                    </label>
+                    <label class="form-field">
+                        <span>"Password"</span>
+                        <input
+                            type="password"
+                            name="password"
+                            autocomplete="current-password"
+                            required=true
+                            aria-label="Password"
+                        />
+                    </label>
+                    <button type="submit" class="button-primary">"Sign in"</button>
+                </form>
+                <p class="auth-secondary">
+                    <a href="/signup">"Create an account"</a>
+                </p>
+            </section>
+        </PublicLayout>
+    }
+}
+
+/// Registration page with a native form posting to the authentication route.
+#[component]
+pub fn SignupPage() -> impl IntoView {
+    let query = use_query_map();
+    let message = move || match query.read().get("error").as_deref() {
+        Some("taken") => Some("That email address is already registered."),
+        Some("invalid") => Some("Check the email address and choose a stronger password."),
+        Some("unavailable") => Some("Registration is not configured on this server."),
+        _ => None,
+    };
+
+    view! {
+        <PublicLayout>
+            <section class="login-page" data-testid="signup-page">
+                <h1>"Create your account"</h1>
+                {move || {
+                    message()
+                        .map(|message| {
+                            view! {
+                                <p class="form-message" role="status" data-testid="signup-message">
+                                    {message}
+                                </p>
+                            }
+                        })
+                }}
+                <form method="post" action="/auth/register" class="auth-form">
+                    <label class="form-field">
+                        <span>"Email"</span>
+                        <input
+                            type="email"
+                            name="email"
+                            autocomplete="email"
+                            required=true
+                            aria-label="Email"
+                        />
+                    </label>
+                    <label class="form-field">
+                        <span>"Password"</span>
+                        <input
+                            type="password"
+                            name="password"
+                            autocomplete="new-password"
+                            minlength="8"
+                            required=true
+                            aria-label="Password"
+                        />
+                    </label>
+                    <label class="form-field">
+                        <span>"Name (optional)"</span>
+                        <input type="text" name="display_name" autocomplete="name" aria-label="Name"/>
+                    </label>
+                    <button type="submit" class="button-primary">"Create account"</button>
+                </form>
+                <p class="auth-secondary">
+                    <a href="/login">"I already have an account"</a>
+                </p>
             </section>
         </PublicLayout>
     }

@@ -14,6 +14,10 @@ workspace = true
 [dependencies]
 momentum-domain.workspace = true
 serde.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
