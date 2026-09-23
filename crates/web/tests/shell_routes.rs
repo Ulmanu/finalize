@@ -162,7 +162,11 @@ async fn ssr_embeds_session_bootstrap_for_hydration() {
 async fn stylesheet_is_served_from_rust_embedded_assets() {
     let (status, body) = get_anonymous("/static/app.css").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("--accent"), "stylesheet content expected");
+    assert!(body.contains(".app-layout"), "stylesheet content expected");
+    assert!(
+        body.contains("var(--color-accent)"),
+        "layout must use design tokens"
+    );
 }
 
 #[test]

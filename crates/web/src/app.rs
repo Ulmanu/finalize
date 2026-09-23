@@ -32,6 +32,7 @@ pub fn shell(options: leptos::config::LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <title>{product}</title>
                 <HydrationScripts options=options.clone()/>
+                <link rel="stylesheet" href="/static/design.css"/>
                 <link rel="stylesheet" href="/static/app.css"/>
             </head>
             <body>

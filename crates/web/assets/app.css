@@ -1,39 +1,8 @@
-/* Momentum foundation stylesheet.
+/* Momentum application layout.
  *
- * The design-system change replaces these foundation rules with centralized tokens and
- * primitives. Everything here is original to Momentum.
+ * Layout rules only; all colors, spacing, radii, typography, and motion values come from the
+ * design tokens in `design.css`.
  */
-
-:root {
-  color-scheme: light dark;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
-  --surface: #ffffff;
-  --surface-muted: #f5f5f7;
-  --border: #d8d8de;
-  --text: #1d1d1f;
-  --text-muted: #6e6e73;
-  --accent: #0a66c2;
-  --danger: #b3261e;
-  --radius: 8px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 16px;
-  --space-4: 24px;
-  --space-5: 32px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #1c1c1e;
-    --surface-muted: #2c2c2e;
-    --border: #3a3a3c;
-    --text: #f5f5f7;
-    --text-muted: #aeaeb2;
-    --accent: #409cff;
-    --danger: #ff6b60;
-  }
-}
 
 * {
   box-sizing: border-box;
@@ -42,13 +11,14 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: var(--surface-muted);
-  color: var(--text);
+  font-size: var(--font-size-body);
+  background: var(--surface-canvas);
+  color: var(--color-text);
   line-height: 1.5;
 }
 
 a {
-  color: var(--accent);
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -58,7 +28,7 @@ a:focus-visible {
 }
 
 a[aria-current="page"] {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 h1,
@@ -77,13 +47,13 @@ h3 {
 }
 
 .public-header {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4);
 }
 
 .brand {
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   font-size: 1.1rem;
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .public-main {
@@ -97,39 +67,39 @@ h3 {
 .landing,
 .boundary-page,
 .login-page {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-5);
-  max-width: 32rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  max-width: 34rem;
   width: 100%;
   text-align: center;
 }
 
 .landing-actions {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-4);
   justify-content: center;
-  margin-top: var(--space-4);
+  margin-top: var(--space-5);
 }
 
 .button-primary,
 .button-secondary {
   display: inline-block;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
 }
 
 .button-primary {
-  background: var(--accent);
+  background: var(--color-accent);
   color: #ffffff;
 }
 
 .button-secondary {
   background: transparent;
-  border-color: var(--border);
-  color: var(--text);
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 /* Application layout */
@@ -137,7 +107,7 @@ h3 {
 .app-layout {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 16rem 1fr;
+  grid-template-columns: var(--sidebar-width) 1fr;
   grid-template-rows: 1fr auto;
   grid-template-areas:
     "sidebar main"
@@ -146,8 +116,8 @@ h3 {
 
 .app-sidebar {
   grid-area: sidebar;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--surface-raised);
+  border-right: 1px solid var(--color-border);
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
@@ -166,13 +136,13 @@ h3 {
 .nav-link {
   display: block;
   padding: var(--space-2);
-  border-radius: var(--radius);
-  color: var(--text);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
 }
 
 .nav-link:hover,
 .nav-link:focus-visible {
-  background: var(--surface-muted);
+  background: var(--surface-sunken);
 }
 
 .nav-secondary {
@@ -181,14 +151,14 @@ h3 {
 
 .app-main {
   grid-area: main;
-  padding: var(--space-4);
+  padding: var(--space-5);
 }
 
 .app-footer {
   grid-area: footer;
-  padding: var(--space-2) var(--space-4);
-  color: var(--text-muted);
-  font-size: 0.875rem;
+  padding: var(--space-2) var(--space-5);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
 }
 
 .list-page,
@@ -202,17 +172,43 @@ h3 {
 }
 
 .list-description {
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin-top: 0;
 }
 
 .list-empty,
 .entity-empty {
-  background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
+  background: var(--surface-raised);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  color: var(--color-text-muted);
+}
+
+/* Style guide */
+
+.styleguide {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: var(--space-5);
+}
+
+.styleguide-section {
+  margin-bottom: var(--space-6);
+}
+
+.styleguide-sample {
+  background: var(--surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: var(--space-4);
-  color: var(--text-muted);
+}
+
+.styleguide-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 
 /* Boundaries */
@@ -221,14 +217,14 @@ h3 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .spinner {
   width: 1rem;
   height: 1rem;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: momentum-spin 0.8s linear infinite;
 }
@@ -246,8 +242,8 @@ h3 {
 }
 
 .boundary-detail {
-  color: var(--text-muted);
-  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
   overflow-wrap: anywhere;
 }
 

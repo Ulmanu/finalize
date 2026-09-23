@@ -20,6 +20,7 @@ pub fn AppRoutes() -> impl IntoView {
             <Routes fallback=NotFound>
                 <Route path=path!("/") view=LandingPage/>
                 <Route path=path!("/login") view=LoginPage/>
+                <Route path=path!("/styleguide") view=StyleGuidePage/>
                 <Route path=path!("/inbox") view=InboxPage/>
                 <Route path=path!("/today") view=TodayPage/>
                 <Route path=path!("/upcoming") view=UpcomingPage/>
@@ -167,3 +168,194 @@ macro_rules! entity_route_page {
 entity_route_page!(AreaPage, "Area", "area_id");
 entity_route_page!(ProjectPage, "Project", "project_id");
 entity_route_page!(TodoPage, "To-Do", "todo_id");
+
+/// Public catalog of every design-system primitive.
+///
+/// Used by developers, design-system tests, and (later) visual-parity fixtures.
+#[component]
+pub fn StyleGuidePage() -> impl IntoView {
+    view! {
+        <PublicLayout>
+            <section class="styleguide" data-testid="styleguide">
+                <h1>"Design system"</h1>
+                <StyleGuideRows/>
+                <StyleGuideNavigation/>
+                <StyleGuideControls/>
+                <StyleGuideOverlays/>
+                <StyleGuideIcons/>
+                <StyleGuideMotion/>
+            </section>
+        </PublicLayout>
+    }
+}
+
+#[component]
+fn StyleGuideRows() -> impl IntoView {
+    use crate::design::{ProjectRow, TaskRow};
+
+    view! {
+        <div class="styleguide-section">
+            <h2>"Task rows"</h2>
+            <div class="styleguide-sample">
+                <ul>
+                    <TaskRow title="Water the plants"/>
+                    <TaskRow
+                        title="Draft launch checklist"
+                        note="Include the rollback plan"
+                        tags=vec!["Work".to_string(), "Launch".to_string()]
+                        schedule="Today".to_string()
+                        deadline="Friday".to_string()
+                        has_recurrence=true
+                    />
+                    <TaskRow title="Completed example" completed=true/>
+                    <TaskRow title="Selected example" selected=true/>
+                </ul>
+            </div>
+        </div>
+        <div class="styleguide-section">
+            <h2>"Project rows"</h2>
+            <div class="styleguide-sample">
+                <ul>
+                    <ProjectRow title="Website refresh" open_count=6 progress=0.4/>
+                    <ProjectRow title="Quarterly report" open_count=2 progress=0.75/>
+                    <ProjectRow title="No progress yet" open_count=3/>
+                </ul>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn StyleGuideNavigation() -> impl IntoView {
+    use crate::design::{SidebarIcon, SidebarRow};
+
+    view! {
+        <div class="styleguide-section">
+            <h2>"Sidebar rows"</h2>
+            <div class="styleguide-sample">
+                <ul>
+                    <SidebarRow label="Inbox" icon=SidebarIcon::Inbox count=4/>
+                    <SidebarRow label="Today" icon=SidebarIcon::Today active=true count=3/>
+                    <SidebarRow label="Upcoming" icon=SidebarIcon::Upcoming/>
+                    <SidebarRow label="Anytime" icon=SidebarIcon::Anytime/>
+                    <SidebarRow label="Someday" icon=SidebarIcon::Archive/>
+                    <SidebarRow label="Logbook" icon=SidebarIcon::Archive/>
+                    <SidebarRow label="Work" icon=SidebarIcon::Folder/>
+                    <SidebarRow label="Errands" icon=SidebarIcon::Tag/>
+                </ul>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn StyleGuideControls() -> impl IntoView {
+    use crate::design::{AddControl, CheckControl, DateControl, ProgressRing, SectionHeading};
+
+    view! {
+        <div class="styleguide-section">
+            <h2>"Check controls and progress"</h2>
+            <div class="styleguide-sample styleguide-row">
+                <CheckControl checked=false label="Unchecked"/>
+                <CheckControl checked=true label="Checked"/>
+                <CheckControl checked=false label="Disabled" disabled=true/>
+                <ProgressRing progress=0.0/>
+                <ProgressRing progress=0.25/>
+                <ProgressRing progress=0.5/>
+                <ProgressRing progress=1.0/>
+            </div>
+        </div>
+        <div class="styleguide-section">
+            <h2>"Section headings"</h2>
+            <div class="styleguide-sample">
+                <SectionHeading>"This Evening"</SectionHeading>
+            </div>
+        </div>
+        <div class="styleguide-section">
+            <h2>"Date and add controls"</h2>
+            <div class="styleguide-sample styleguide-row">
+                <DateControl label="Schedule" value="Today"/>
+                <DateControl label="Deadline" value="Friday" deadline=true/>
+                <AddControl label="Add to-do"/>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn StyleGuideOverlays() -> impl IntoView {
+    use crate::design::{ContextMenu, ContextMenuItem, Popover};
+
+    view! {
+        <div class="styleguide-section">
+            <h2>"Popover"</h2>
+            <div class="styleguide-sample">
+                <Popover id="styleguide-popover" trigger_label="When">
+                    <p>"Today"</p>
+                    <p>"This Evening"</p>
+                </Popover>
+            </div>
+        </div>
+        <div class="styleguide-section">
+            <h2>"Context menu"</h2>
+            <div class="styleguide-sample">
+                <ContextMenu
+                    label="Task actions"
+                    items=vec![
+                        ContextMenuItem::new("Complete"),
+                        ContextMenuItem::new("Move to…"),
+                        ContextMenuItem::new("Delete").danger(),
+                        ContextMenuItem::new("Unavailable").disabled(),
+                    ]
+                />
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn StyleGuideIcons() -> impl IntoView {
+    use crate::design::icons::*;
+
+    view! {
+        <div class="styleguide-section">
+            <h2>"Icons"</h2>
+            <div class="styleguide-sample styleguide-row">
+                <CheckIcon/>
+                <PlusIcon/>
+                <CalendarIcon/>
+                <FlagIcon/>
+                <TagIcon/>
+                <NoteIcon/>
+                <RepeatIcon/>
+                <TrashIcon/>
+                <ChevronIcon/>
+                <InboxIcon/>
+                <StarIcon/>
+                <ClockIcon/>
+                <LayersIcon/>
+                <ArchiveIcon/>
+                <FolderIcon/>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn StyleGuideMotion() -> impl IntoView {
+    use crate::design::{Motion, MotionKind};
+
+    view! {
+        <div class="styleguide-section">
+            <h2>"Motion primitives"</h2>
+            <div class="styleguide-sample">
+                <Motion kind=MotionKind::Insert>"Insert"</Motion>
+                <Motion kind=MotionKind::Editor>"Editor"</Motion>
+                <Motion kind=MotionKind::Popover>"Popover"</Motion>
+                <Motion kind=MotionKind::Drag>"Drag"</Motion>
+                <Motion kind=MotionKind::Navigation>"Navigation"</Motion>
+                <Motion kind=MotionKind::Remove>"Remove"</Motion>
+            </div>
+        </div>
+    }
+}

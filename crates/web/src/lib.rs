@@ -9,9 +9,11 @@
 //! the WASM bootstrap emitted by the Rust toolchain.
 
 #![forbid(unsafe_code)]
+#![recursion_limit = "512"]
 
 pub mod app;
 pub mod boundaries;
+pub mod design;
 pub mod layouts;
 pub mod routes;
 pub mod session;

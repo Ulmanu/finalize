@@ -106,6 +106,32 @@ Agent: opencode (deepseek-v4.1-flash)
   feature on wasm32 for client-side ID generation.
 - Live integrations not verified: none (no external providers involved).
 
+### 03 — `add-things-design-system` — COMPLETE
+
+- Start: 2026-09-23 22:20 · End: 2026-09-23 22:55
+- Proposal validation: strict validation passed before apply.
+- Implementation:
+  - `design/tokens.rs` (typography, spacing, radius, color, shadow, icon, row, sidebar,
+    motion tokens; `MotionKind`), mirrored in `assets/design.css`.
+  - `design/icons.rs`: 15 original inline-SVG icons.
+  - `design/primitives.rs`: `CheckControl`, `ProgressRing`, `SectionHeading`, `TaskRow`,
+    `ProjectRow`, `SidebarRow`, `Popover`, `ContextMenu`, `DateControl`, `AddControl`,
+    `Motion`.
+  - `/styleguide` public catalog route; `/static/design.css` served from Rust-embedded assets;
+    shell/layout/boundary styles migrated to tokens.
+- Migrations: none.
+- Tests executed: `cargo test --workspace --all-features` — web now 5 unit + 14 design-system +
+  11 shell-routes + 4 smoke; fmt; clippy `-D warnings`; WASM client build; quality gates pass.
+- Verification: manual. Token/CSS consistency, primitive ARIA/roles, original-asset scan, and
+  styleguide route are all covered by tests; no critical findings.
+- Archive: `2026-09-23-add-things-design-system`; canonical `ui/design-system` spec created
+  with real Purpose; `--specs`/`--archived` strict validation pass.
+- Commit: `feat(03): add Things-style design system`
+- Decisions: tokens have two synchronized representations (Rust consts + CSS custom
+  properties) guarded by a test; icons are Rust inline SVG; `CheckControl` uses a native
+  checkbox; `recursion_limit = 512` on the web crate for large view trees.
+- Live integrations not verified: none.
+
 ## Run summary
 
 (Filled at run end.)

@@ -21,6 +21,9 @@ use crate::session::{AnonymousSessionResolver, SessionResolver};
 /// the design-system change expands this file.
 pub const APP_CSS: &str = include_str!("../assets/app.css");
 
+/// Design-token and primitive stylesheet embedded in the server binary.
+pub const DESIGN_CSS: &str = include_str!("../assets/design.css");
+
 /// JSON payload returned by liveness and readiness probes.
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
@@ -65,6 +68,7 @@ pub fn router_with_session(options: LeptosOptions, resolver: Arc<dyn SessionReso
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/static/app.css", get(app_css))
+        .route("/static/design.css", get(design_css))
         .leptos_routes_with_context(
             &options,
             paths,
@@ -96,5 +100,15 @@ async fn app_css() -> impl IntoResponse {
             HeaderValue::from_static("text/css; charset=utf-8"),
         )],
         APP_CSS,
+    )
+}
+
+async fn design_css() -> impl IntoResponse {
+    (
+        [(
+            CONTENT_TYPE,
+            HeaderValue::from_static("text/css; charset=utf-8"),
+        )],
+        DESIGN_CSS,
     )
 }

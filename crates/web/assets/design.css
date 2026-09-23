@@ -1,0 +1,550 @@
+/* Momentum design tokens and primitives.
+ *
+ * Token values here are mirrored by `crates/web/src/design/tokens.rs`; the design-system test
+ * asserts both sources agree.
+ */
+
+:root {
+  color-scheme: light dark;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --font-size-display: 1.75rem;
+  --font-size-title: 1.25rem;
+  --font-size-body: 1rem;
+  --font-size-caption: 0.8125rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  --color-text: #1d1d1f;
+  --color-text-muted: #6e6e73;
+  --color-accent: #0a66c2;
+  --color-danger: #b3261e;
+  --color-border: #d8d8de;
+  --surface-canvas: #f2f2f7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e8e8ed;
+  --surface-overlay: #ffffff;
+
+  --shadow-row: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.24);
+
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+  --icon-xl: 24px;
+
+  --row-height: 44px;
+  --row-height-compact: 36px;
+  --row-inset: 12px;
+  --row-indent: 20px;
+
+  --sidebar-width: 16rem;
+  --sidebar-row-height: 32px;
+
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #f5f5f7;
+    --color-text-muted: #aeaeb2;
+    --color-accent: #409cff;
+    --color-danger: #ff6b60;
+    --color-border: #3a3a3c;
+    --surface-canvas: #1c1c1e;
+    --surface-raised: #2c2c2e;
+    --surface-sunken: #161618;
+    --surface-overlay: #2c2c2e;
+  }
+}
+
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+}
+
+.icon-md {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.icon-sm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.icon-lg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
+.icon-xl {
+  width: var(--icon-xl);
+  height: var(--icon-xl);
+}
+
+/* Check control */
+
+.check-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--row-height);
+  height: var(--row-height);
+  flex: none;
+  cursor: pointer;
+}
+
+.check-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+
+.check-visual {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: 50%;
+  color: transparent;
+  background: var(--surface-raised);
+  transition: background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.check-input:checked + .check-visual {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+
+.check-input:focus-visible + .check-visual {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.check-control-compact {
+  width: var(--row-height-compact);
+  height: var(--row-height-compact);
+}
+
+/* Rows */
+
+.task-row,
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--row-height);
+  padding: 0 var(--row-inset);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--surface-raised);
+  list-style: none;
+}
+
+.task-row-selected {
+  background: var(--surface-sunken);
+}
+
+.task-row-completed .task-title {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.task-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.task-title {
+  overflow-wrap: anywhere;
+}
+
+.task-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.row-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.date-badge-deadline {
+  color: var(--color-danger);
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.project-row {
+  justify-content: flex-start;
+}
+
+.project-title {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.project-area,
+.project-count {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.row-action {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.row-action:hover,
+.row-action:focus-visible {
+  background: var(--surface-sunken);
+  color: var(--color-text);
+}
+
+/* Progress ring */
+
+.progress-ring {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  flex: none;
+}
+
+.progress-track {
+  stroke: var(--color-border);
+}
+
+.progress-value {
+  stroke: var(--color-accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--motion-base) var(--ease-standard);
+}
+
+/* Section heading */
+
+.section-heading {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+/* Sidebar rows */
+
+.sidebar-row {
+  list-style: none;
+}
+
+.sidebar-row-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--sidebar-row-height);
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-row-link:hover,
+.sidebar-row-link:focus-visible {
+  background: var(--surface-sunken);
+}
+
+.sidebar-row-active .sidebar-row-link {
+  background: var(--surface-sunken);
+  font-weight: var(--font-weight-medium);
+}
+
+.sidebar-row-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-row-count {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+/* Popover */
+
+.popover {
+  position: relative;
+  display: inline-block;
+}
+
+.popover-trigger {
+  border: 1px solid var(--color-border);
+  background: var(--surface-raised);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font: inherit;
+}
+
+.popover-trigger:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.popover-panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  min-width: 12rem;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-popover);
+  z-index: 10;
+}
+
+/* Context menu */
+
+.context-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 12rem;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-popover);
+}
+
+.context-menu-item {
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+}
+
+.context-menu-item:hover:not(:disabled),
+.context-menu-item:focus-visible {
+  background: var(--surface-sunken);
+}
+
+.context-menu-item:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.context-menu-item-danger {
+  color: var(--color-danger);
+}
+
+/* Date and add controls */
+
+.date-control,
+.add-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  background: var(--surface-raised);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-caption);
+}
+
+.date-control-deadline {
+  color: var(--color-danger);
+}
+
+.date-control:focus-visible,
+.add-control:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.add-control {
+  justify-content: center;
+  width: var(--row-height-compact);
+  height: var(--row-height-compact);
+  padding: 0;
+  border-radius: 50%;
+  color: var(--color-accent);
+}
+
+/* Motion primitives */
+
+.motion {
+  animation-duration: var(--motion-base);
+  animation-timing-function: var(--ease-standard);
+  animation-fill-mode: both;
+}
+
+.motion-insert {
+  animation-name: momentum-insert;
+}
+
+.motion-remove {
+  animation-name: momentum-remove;
+}
+
+.motion-editor {
+  animation-name: momentum-editor;
+  animation-duration: var(--motion-slow);
+  animation-timing-function: var(--ease-decelerate);
+}
+
+.motion-popover {
+  animation-name: momentum-popover;
+  animation-duration: var(--motion-fast);
+}
+
+.motion-drag {
+  animation-name: momentum-drag;
+  animation-duration: var(--motion-fast);
+}
+
+.motion-navigation {
+  animation-name: momentum-navigation;
+  animation-duration: var(--motion-fast);
+}
+
+@keyframes momentum-insert {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes momentum-remove {
+  from {
+    opacity: 1;
+    max-height: var(--row-height);
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+  }
+}
+
+@keyframes momentum-editor {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes momentum-popover {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes momentum-drag {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.02);
+  }
+}
+
+@keyframes momentum-navigation {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion,
+  .motion-insert,
+  .motion-remove,
+  .motion-editor,
+  .motion-popover,
+  .motion-drag,
+  .motion-navigation {
+    animation: none;
+  }
+
+  .check-visual,
+  .progress-value {
+    transition: none;
+  }
+}
