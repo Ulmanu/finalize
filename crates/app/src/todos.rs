@@ -17,6 +17,21 @@ use crate::commands::{
     ScheduleInput,
 };
 
+/// Quick schedule destinations offered by list processing controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuickSchedule {
+    /// Schedule for today.
+    Today,
+    /// Schedule for today in the This Evening section.
+    ThisEvening,
+    /// Schedule for the next local date.
+    Tomorrow,
+    /// Defer to Someday.
+    Someday,
+    /// Clear the start date (Anytime).
+    Anytime,
+}
+
 /// Read model for a to-do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodoSummary {
@@ -60,11 +75,12 @@ pub enum TodoScope {
 /// Read-store port for to-dos.
 #[async_trait]
 pub trait TodoReadStore: Send + Sync {
-    /// Lists to-dos for a scope.
+    /// Lists to-dos for a scope, relative to the caller's local date.
     async fn list_todos(
         &self,
         account_id: AccountId,
         scope: TodoScope,
+        today: LocalDate,
     ) -> Result<Vec<TodoSummary>, CommandError>;
 
     /// Loads one to-do.
@@ -113,7 +129,10 @@ impl TodoService {
         account_id: AccountId,
         scope: TodoScope,
     ) -> Result<Vec<TodoSummary>, CommandError> {
-        self.reader.list_todos(account_id, scope).await
+        // The user's timezone preference arrives with the localization capability; until then
+        // the local date is derived at UTC.
+        let today = LocalDate::today_in_timezone(self.clock.now(), "UTC");
+        self.reader.list_todos(account_id, scope, today).await
     }
 
     /// Loads one to-do.
@@ -194,6 +213,68 @@ impl TodoService {
             },
         )
         .await
+    }
+
+    /// Moves a to-do up within its contextual scope.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn reorder_up(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::ReorderTodo {
+                id,
+                direction: crate::commands::ReorderDirection::Up,
+            },
+        )
+        .await
+    }
+
+    /// Moves a to-do down within its contextual scope.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn reorder_down(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::ReorderTodo {
+                id,
+                direction: crate::commands::ReorderDirection::Down,
+            },
+        )
+        .await
+    }
+
+    /// Applies a quick schedule relative to `today`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn schedule_quick(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        quick: QuickSchedule,
+        today: LocalDate,
+    ) -> Result<CommandOutcome, CommandError> {
+        let schedule = match quick {
+            QuickSchedule::Today => ScheduleInput::On(today),
+            QuickSchedule::ThisEvening => ScheduleInput::ThisEvening(today),
+            QuickSchedule::Tomorrow => ScheduleInput::On(today.next_day()),
+            QuickSchedule::Someday => ScheduleInput::Someday,
+            QuickSchedule::Anytime => ScheduleInput::Anytime,
+        };
+        self.schedule(account_id, id, schedule).await
     }
 
     /// Duplicates a to-do.

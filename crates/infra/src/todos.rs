@@ -29,7 +29,10 @@ fn storage(error: sqlx::Error) -> CommandError {
 
 fn scope_filter(scope: TodoScope) -> &'static str {
     match scope {
-        TodoScope::Inbox => "e.status = 'open' and coalesce(p.parent_kind, 'inbox') = 'inbox'",
+        TodoScope::Inbox => {
+            "e.status = 'open' and coalesce(p.parent_kind, 'inbox') = 'inbox' \
+             and (e.schedule_kind = 'anytime' or (e.schedule_kind = 'date' and e.schedule_date <= $2))"
+        }
         TodoScope::AllOpen => "e.status = 'open'",
         TodoScope::Logbook => "e.status in ('completed', 'canceled')",
         TodoScope::Trash => "e.status = 'deleted'",
@@ -92,6 +95,7 @@ impl TodoReadStore for PgTodoReadStore {
         &self,
         account_id: AccountId,
         scope: TodoScope,
+        today: LocalDate,
     ) -> Result<Vec<TodoSummary>, CommandError> {
         let sql = format!(
             "select e.id, e.title, e.notes, e.status, e.schedule_kind, e.schedule_date, \
@@ -100,11 +104,12 @@ impl TodoReadStore for PgTodoReadStore {
              from entities e \
              left join placements p on p.entity_id = e.id and p.scope = 'context' \
              where e.account_id = $1 and e.kind = 'todo' and {} \
-             order by e.created_at asc, e.id asc",
+             order by p.rank asc nulls last, e.created_at asc, e.id asc",
             scope_filter(scope)
         );
         let rows = sqlx::query(&sql)
             .bind(account_id.as_uuid())
+            .bind(today.as_naive())
             .fetch_all(&self.pool)
             .await
             .map_err(storage)?;

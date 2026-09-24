@@ -1,11 +1,14 @@
 //! Public and authenticated application layouts.
 
+use std::sync::Arc;
+
 use leptos::prelude::*;
 use leptos_router::components::A;
 
 use crate::responsive::LayoutState;
 use crate::session::{use_account, use_session};
 use momentum_app::session::SessionState;
+use momentum_app::todos::{TodoScope, TodoService};
 
 /// Centered layout used by landing, sign-in, and boundary pages.
 #[component]
@@ -136,10 +139,12 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                     {PRIMARY_DESTINATIONS
                         .iter()
                         .map(|destination| {
+                            let is_inbox = destination.href == "/inbox";
                             view! {
                                 <li class="nav-item">
                                     <A href=destination.href attr:class="nav-link">
                                         {destination.label}
+                                        {is_inbox.then(|| view! { <InboxBadge/> })}
                                     </A>
                                 </li>
                             }
@@ -193,6 +198,45 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                 <span class="account-label">{account_label}</span>
             </footer>
         </div>
+    }
+}
+
+/// Live count of open Inbox to-dos.
+#[component]
+fn InboxBadge() -> impl IntoView {
+    let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let account = use_account();
+    let count = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, TodoScope::Inbox)
+                    .await
+                    .map_or(0, |todos| todos.len()),
+                _ => 0,
+            }
+        }
+    });
+    view! {
+        <Suspense fallback=|| view! { <span class="nav-badge" aria-hidden="true"></span> }>
+            {move || {
+                count
+                    .get()
+                    .map(|count| {
+                        view! {
+                            <span
+                                class="nav-badge"
+                                data-testid="inbox-badge"
+                                aria-label=format!("{count} open in Inbox")
+                            >
+                                {count.to_string()}
+                            </span>
+                        }
+                    })
+            }}
+        </Suspense>
     }
 }
 

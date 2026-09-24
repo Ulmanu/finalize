@@ -10,8 +10,9 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Extension, Form, Router};
+use momentum_app::commands::ScheduleInput;
 use momentum_app::session::SessionState;
-use momentum_app::todos::TodoService;
+use momentum_app::todos::{QuickSchedule, TodoService};
 use momentum_domain::AccountId;
 use momentum_domain::EntityId;
 use serde::Deserialize;
@@ -29,6 +30,10 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/delete", post(delete_todo))
         .route("/todos/{todo_id}/restore", post(restore_todo))
         .route("/todos/{todo_id}/duplicate", post(duplicate_todo))
+        .route("/todos/{todo_id}/move-up", post(move_up))
+        .route("/todos/{todo_id}/move-down", post(move_down))
+        .route("/todos/{todo_id}/schedule", post(schedule_todo))
+        .route("/todos/{todo_id}/move", post(move_todo))
 }
 
 fn redirect(to: &str) -> Response {
@@ -171,6 +176,177 @@ async fn duplicate_todo(
     Path(id): Path<String>,
 ) -> Response {
     lifecycle(&state, &session, &id, "duplicate").await
+}
+
+async fn move_up(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(id): Path<String>,
+    Form(form): Form<RedirectForm>,
+) -> Response {
+    reorder(&state, &session, &id, true, &back(&form)).await
+}
+
+async fn move_down(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(id): Path<String>,
+    Form(form): Form<RedirectForm>,
+) -> Response {
+    reorder(&state, &session, &id, false, &back(&form)).await
+}
+
+async fn reorder(
+    state: &AppState,
+    session: &SessionState,
+    raw_id: &str,
+    up: bool,
+    target: &str,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = raw_id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let result = if up {
+        service.reorder_up(account_id, id).await
+    } else {
+        service.reorder_down(account_id, id).await
+    };
+    match result {
+        Ok(_) => redirect(target),
+        Err(_) => redirect(&format!("{target}?error=reorder")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ScheduleForm {
+    when: String,
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn schedule_todo(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(id): Path<String>,
+    Form(form): Form<ScheduleForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let target = back(&RedirectForm {
+        return_to: form.return_to,
+    });
+    let Ok(id) = id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let today = momentum_domain::time::LocalDate::today_from_utc(chrono::Utc::now(), 0)
+        .unwrap_or_else(|_| momentum_domain::time::LocalDate::from_ymd(1970, 1, 1).expect("epoch"));
+
+    let result = match form.when.as_str() {
+        "today" => {
+            service
+                .schedule_quick(account_id, id, QuickSchedule::Today, today)
+                .await
+        }
+        "evening" => {
+            service
+                .schedule_quick(account_id, id, QuickSchedule::ThisEvening, today)
+                .await
+        }
+        "tomorrow" => {
+            service
+                .schedule_quick(account_id, id, QuickSchedule::Tomorrow, today)
+                .await
+        }
+        "someday" => {
+            service
+                .schedule_quick(account_id, id, QuickSchedule::Someday, today)
+                .await
+        }
+        "anytime" => {
+            service
+                .schedule_quick(account_id, id, QuickSchedule::Anytime, today)
+                .await
+        }
+        "date" => {
+            let parsed = form
+                .date
+                .as_deref()
+                .and_then(|date| date.parse::<momentum_domain::time::LocalDate>().ok());
+            match parsed {
+                Some(date) => {
+                    service
+                        .schedule(account_id, id, ScheduleInput::On(date))
+                        .await
+                }
+                None => return redirect(&format!("{target}?error=schedule")),
+            }
+        }
+        _ => return redirect(&format!("{target}?error=schedule")),
+    };
+
+    match result {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=schedule")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MoveForm {
+    context_kind: String,
+    #[serde(default)]
+    context_id: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn move_todo(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(id): Path<String>,
+    Form(form): Form<MoveForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let target = back(&RedirectForm {
+        return_to: form.return_to,
+    });
+    let Ok(id) = id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let parsed_id = form
+        .context_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<EntityId>().ok());
+
+    let context = match form.context_kind.as_str() {
+        "inbox" => momentum_domain::model::ContextRef::Inbox,
+        "project" => parsed_id.map_or_else(
+            || momentum_domain::model::ContextRef::Inbox,
+            momentum_domain::model::ContextRef::Project,
+        ),
+        "area" => parsed_id.map_or_else(
+            || momentum_domain::model::ContextRef::Inbox,
+            momentum_domain::model::ContextRef::Area,
+        ),
+        "heading" => parsed_id.map_or_else(
+            || momentum_domain::model::ContextRef::Inbox,
+            momentum_domain::model::ContextRef::Heading,
+        ),
+        _ => return redirect(&format!("{target}?error=move")),
+    };
+
+    match service.move_to(account_id, id, context).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=move")),
+    }
 }
 
 async fn lifecycle(

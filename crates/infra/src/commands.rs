@@ -353,6 +353,57 @@ impl UnitOfWork for PgUnitOfWork {
         Ok(())
     }
 
+    async fn load_context_order(
+        &mut self,
+        account_id: AccountId,
+        context: ContextRef,
+    ) -> Result<Vec<(EntityId, momentum_app::ordering::Rank)>, CommandError> {
+        let tx = self.tx()?;
+        let (parent_kind, parent_id) = context_parts(context);
+        let rows = sqlx::query(
+            "select entity_id, rank from placements \
+             where account_id = $1 and scope = 'context' and parent_kind = $2 \
+             and coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid) = \
+                 coalesce($3, '00000000-0000-0000-0000-000000000000'::uuid) \
+             order by rank asc",
+        )
+        .bind(account_id.as_uuid())
+        .bind(parent_kind)
+        .bind(parent_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
+
+        let mut order = Vec::with_capacity(rows.len());
+        for row in rows {
+            let rank_text: String = row.get("rank");
+            if let Ok(rank) = momentum_app::ordering::Rank::parse(&rank_text) {
+                order.push((EntityId::from_uuid(row.get("entity_id")), rank));
+            }
+        }
+        Ok(order)
+    }
+
+    async fn set_context_rank(
+        &mut self,
+        account_id: AccountId,
+        entity_id: EntityId,
+        rank: momentum_app::ordering::Rank,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        sqlx::query(
+            "update placements set rank = $3, updated_at = now(), version = version + 1 \
+             where account_id = $1 and entity_id = $2 and scope = 'context'",
+        )
+        .bind(account_id.as_uuid())
+        .bind(entity_id.as_uuid())
+        .bind(rank.encode())
+        .execute(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(())
+    }
+
     async fn change_by_operation(
         &mut self,
         account_id: AccountId,
@@ -407,6 +458,7 @@ impl UnitOfWork for PgUnitOfWork {
             .map_or("unknown", |event| match event {
                 DomainEvent::TodoCreated { .. } => "todo_created",
                 DomainEvent::TodoDuplicated { .. } => "todo_duplicated",
+                DomainEvent::TodoReordered { .. } => "todo_reordered",
                 DomainEvent::TodoTitleChanged { .. } => "todo_title_changed",
                 DomainEvent::TodoNotesChanged { .. } => "todo_notes_changed",
                 DomainEvent::TodoCompleted { .. } => "todo_completed",

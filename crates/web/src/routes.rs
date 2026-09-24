@@ -580,6 +580,9 @@ fn TodoRow(todo: TodoSummary) -> impl IntoView {
     let toggle_target = format!("/todos/{id}/complete");
     let open_target = format!("/todos/{id}");
     let delete_target = format!("/todos/{id}/delete");
+    let up_target = format!("/todos/{id}/move-up");
+    let down_target = format!("/todos/{id}/move-down");
+    let schedule_target = format!("/todos/{id}/schedule");
     let schedule = todo.schedule.date().map(|date| format!("When: {date}"));
     let deadline = todo
         .deadline
@@ -612,6 +615,26 @@ fn TodoRow(todo: TodoSummary) -> impl IntoView {
                 </span>
             </div>
             <div class="task-row-actions">
+                <form method="post" action=up_target>
+                    <input type="hidden" name="return_to" value="/inbox"/>
+                    <button type="submit" class="row-action" aria-label="Move up">"↑"</button>
+                </form>
+                <form method="post" action=down_target>
+                    <input type="hidden" name="return_to" value="/inbox"/>
+                    <button type="submit" class="row-action" aria-label="Move down">"↓"</button>
+                </form>
+                <form method="post" action=schedule_target class="row-schedule">
+                    <input type="hidden" name="return_to" value="/inbox"/>
+                    <select name="when" aria-label="Schedule">
+                        <option value="today">"Today"</option>
+                        <option value="tomorrow">"Tomorrow"</option>
+                        <option value="someday">"Someday"</option>
+                        <option value="anytime">"Anytime"</option>
+                    </select>
+                    <button type="submit" class="row-action" aria-label="Apply schedule">
+                        "When"
+                    </button>
+                </form>
                 <form method="post" action=toggle_target>
                     <button type="submit" class="row-action" aria-label="Complete to-do">
                         "Complete"
@@ -734,6 +757,44 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                     <textarea name="notes" rows="6" aria-label="Notes">{notes}</textarea>
                 </label>
                 <button type="submit" class="button-primary">"Save"</button>
+            </form>
+
+            <form method="post" action=format!("/todos/{id}/schedule") class="auth-form">
+                <input type="hidden" name="return_to" value=format!("/todos/{id}")/>
+                <label class="form-field">
+                    <span>"When"</span>
+                    <select name="when" aria-label="When">
+                        <option value="today">"Today"</option>
+                        <option value="evening">"This Evening"</option>
+                        <option value="tomorrow">"Tomorrow"</option>
+                        <option value="someday">"Someday"</option>
+                        <option value="anytime">"Anytime"</option>
+                        <option value="date">"On a date"</option>
+                    </select>
+                </label>
+                <label class="form-field">
+                    <span>"Date (for On a date)"</span>
+                    <input type="date" name="date" aria-label="Schedule date"/>
+                </label>
+                <button type="submit" class="button-secondary">"Apply schedule"</button>
+            </form>
+
+            <form method="post" action=format!("/todos/{id}/move") class="auth-form">
+                <input type="hidden" name="return_to" value=format!("/todos/{id}")/>
+                <label class="form-field">
+                    <span>"Destination"</span>
+                    <select name="context_kind" aria-label="Destination">
+                        <option value="inbox">"Inbox"</option>
+                        <option value="project">"Project"</option>
+                        <option value="area">"Area"</option>
+                        <option value="heading">"Heading"</option>
+                    </select>
+                </label>
+                <label class="form-field">
+                    <span>"Destination id"</span>
+                    <input type="text" name="context_id" aria-label="Destination id"/>
+                </label>
+                <button type="submit" class="button-secondary">"Move"</button>
             </form>
 
             <div class="todo-actions">

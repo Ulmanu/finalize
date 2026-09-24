@@ -78,6 +78,13 @@ pub enum Command {
         /// Optional reminder.
         reminder: Option<ReminderInput>,
     },
+    /// Moves a to-do one position up or down within its contextual scope.
+    ReorderTodo {
+        /// Entity to move.
+        id: EntityId,
+        /// Direction within the scope.
+        direction: ReorderDirection,
+    },
     /// Duplicates a to-do into a new canonical identity.
     DuplicateTodo {
         /// Entity to duplicate.
@@ -159,6 +166,7 @@ impl Command {
         match self {
             Self::CreateTodo { .. } => None,
             Self::DuplicateTodo { id }
+            | Self::ReorderTodo { id, .. }
             | Self::SetTodoTitle { id, .. }
             | Self::SetTodoNotes { id, .. }
             | Self::CompleteTodo { id }
@@ -179,6 +187,7 @@ impl Command {
         match self {
             Self::CreateTodo { .. } => "create_todo",
             Self::DuplicateTodo { .. } => "duplicate_todo",
+            Self::ReorderTodo { .. } => "reorder_todo",
             Self::SetTodoTitle { .. } => "set_todo_title",
             Self::SetTodoNotes { .. } => "set_todo_notes",
             Self::CompleteTodo { .. } => "complete_todo",
@@ -192,6 +201,16 @@ impl Command {
             Self::SetTodoReminder { .. } => "set_todo_reminder",
         }
     }
+}
+
+/// Direction of a manual reorder within a scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReorderDirection {
+    /// Move one position toward the top of the list.
+    Up,
+    /// Move one position toward the bottom of the list.
+    Down,
 }
 
 /// A command with its idempotency and authorization envelope.
@@ -226,6 +245,11 @@ impl CommandEnvelope {
 pub enum DomainEvent {
     /// A to-do was created.
     TodoCreated {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A to-do was reordered within its scope.
+    TodoReordered {
         /// Entity identity.
         id: EntityId,
     },
@@ -299,6 +323,7 @@ impl DomainEvent {
     pub const fn entity_id(&self) -> EntityId {
         match self {
             Self::TodoCreated { id }
+            | Self::TodoReordered { id }
             | Self::TodoDuplicated { id, .. }
             | Self::TodoTitleChanged { id }
             | Self::TodoNotesChanged { id }
@@ -417,6 +442,21 @@ pub trait UnitOfWork: Send {
         account_id: AccountId,
         todo: &Todo,
         expected_version: Option<i64>,
+    ) -> Result<(), CommandError>;
+
+    /// Loads the ordered items of a contextual scope.
+    async fn load_context_order(
+        &mut self,
+        account_id: AccountId,
+        context: ContextRef,
+    ) -> Result<Vec<(EntityId, crate::ordering::Rank)>, CommandError>;
+
+    /// Persists one entity's rank within its contextual scope.
+    async fn set_context_rank(
+        &mut self,
+        account_id: AccountId,
+        entity_id: EntityId,
+        rank: crate::ordering::Rank,
     ) -> Result<(), CommandError>;
 
     /// Looks up a change record by operation id (idempotency check).
@@ -555,6 +595,40 @@ impl CommandDispatcher {
                     vec![DomainEvent::TodoCreated { id: todo.id() }],
                 ))
             }
+            Command::ReorderTodo { id, direction } => {
+                let todo = unit
+                    .load_todo(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let context = todo.context;
+                let items = unit.load_context_order(account_id, context).await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Context(context),
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                let position = order.position_of(*id).ok_or(CommandError::NotFound)?;
+                let target = match direction {
+                    ReorderDirection::Up => position.checked_sub(1),
+                    ReorderDirection::Down => {
+                        (position + 1 < order.items().len()).then_some(position + 1)
+                    }
+                };
+                let event = DomainEvent::TodoReordered { id: *id };
+                if let Some(target) = target {
+                    let change = order
+                        .move_item(*id, target)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    unit.set_context_rank(account_id, *id, change.rank).await?;
+                    for item in change.rebalanced {
+                        unit.set_context_rank(account_id, item.entity_id, item.rank)
+                            .await?;
+                    }
+                }
+                Ok((Some(*id), vec![event]))
+            }
             Command::DuplicateTodo { id } => {
                 let source = unit
                     .load_todo(account_id, *id)
@@ -599,9 +673,11 @@ fn apply_to_todo(
 ) -> Result<DomainEvent, CommandError> {
     let id = todo.id();
     match command {
-        Command::CreateTodo { .. } | Command::DuplicateTodo { .. } => Err(
-            CommandError::Validation("creation commands are handled separately".to_string()),
-        ),
+        Command::CreateTodo { .. }
+        | Command::DuplicateTodo { .. }
+        | Command::ReorderTodo { .. } => Err(CommandError::Validation(
+            "commands handled separately must not reach the generic path".to_string(),
+        )),
         Command::SetTodoTitle { title, .. } => {
             todo.title =
                 Title::parse(title).map_err(|error| CommandError::Validation(error.to_string()))?;
@@ -687,6 +763,7 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
         DomainEvent::TodoCreated { .. } | DomainEvent::TodoDuplicated { .. } => {
             vec![Projection::Inbox]
         }
+        DomainEvent::TodoReordered { .. } => vec![Projection::Inbox, Projection::Anytime],
         DomainEvent::TodoTitleChanged { .. } | DomainEvent::TodoNotesChanged { .. } => {
             vec![Projection::Inbox, Projection::Today, Projection::Anytime]
         }

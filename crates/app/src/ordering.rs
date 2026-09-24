@@ -222,6 +222,16 @@ impl ScopeOrder {
         self.items.iter().map(|item| item.rank).collect()
     }
 
+    /// Mutable access to the ordered items (used by adapters assembling stored order).
+    pub fn items_mut(&mut self) -> &mut Vec<OrderedItem> {
+        &mut self.items
+    }
+
+    /// Sorts items by rank in place.
+    pub fn sort_by_rank(&mut self) {
+        self.items.sort_by_key(|item| item.rank);
+    }
+
     /// Returns the position of an entity, if present.
     #[must_use]
     pub fn position_of(&self, entity_id: EntityId) -> Option<usize> {

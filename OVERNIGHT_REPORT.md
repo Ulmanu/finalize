@@ -316,6 +316,28 @@ Agent: opencode (deepseek-v4.1-flash)
   match the Leptos route pattern.
 - Live integrations not verified: PostgreSQL read store path (no database).
 
+### 12 — `add-inbox` — COMPLETE
+
+- Start: 2026-09-24 04:02 · End: 2026-09-24 10:40 (environment paused between)
+- Proposal validation: strict validation passed before apply.
+- Implementation: `ReorderTodo` command with scope-order unit-of-work operations (memory +
+  PostgreSQL), `TodoService::{reorder_up, reorder_down, schedule_quick}`, Inbox badge in the
+  primary navigation, reorder/schedule/move controls on rows and the editor, processing routes
+  (`move-up`, `move-down`, `schedule`, `move`), Inbox membership rule refined (open + inbox
+  context + not future-scheduled) with the read-store `today` parameter.
+- Migrations: none.
+- Tests: 7 Inbox web tests (badge count/decay, reorder + boundary no-op, scheduling out of
+  Inbox, Tomorrow semantics, move to project) plus existing suites; fmt, clippy, workspace
+  tests, WASM build, quality gates pass.
+- Verification: manual; all requirement scenarios covered. Memory ordering determinism fixed
+  (created-at + id tie-break) after a flaky test surfaced.
+- Archive: `2026-09-24-add-inbox`; canonical `features/inbox` spec created; strict validation
+  pass.
+- Commit: `feat(12): add inbox`
+- Decisions: Inbox excludes future-scheduled and Someday items (documented projection rule);
+  read store takes the caller's local date (UTC until localization lands).
+- Live integrations not verified: PostgreSQL scope-order read/write path (no database).
+
 ## Run summary
 
 (Filled at run end.)

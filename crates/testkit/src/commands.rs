@@ -6,7 +6,8 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use momentum_app::commands::{ChangeRecord, CommandError, UnitOfWork, UnitOfWorkFactory};
-use momentum_domain::model::Todo;
+use momentum_app::ordering::{OrderedItem, OrderingScope, Rank, ScopeOrder};
+use momentum_domain::model::{ContextRef, Todo};
 use momentum_domain::{AccountId, EntityId};
 use uuid::Uuid;
 
@@ -14,6 +15,8 @@ use uuid::Uuid;
 struct MemoryState {
     todos: HashMap<(AccountId, EntityId), Todo>,
     changes: Vec<(AccountId, ChangeRecord)>,
+    context_ranks: HashMap<(AccountId, EntityId), Rank>,
+    next_ranks: HashMap<(AccountId, ContextRef), i64>,
 }
 
 /// Shared in-memory database backing command-layer tests.
@@ -61,15 +64,31 @@ impl MemoryDatabase {
             .cloned()
     }
 
+    /// Returns an entity's context-scope rank, when assigned.
+    #[must_use]
+    pub fn context_rank(&self, account_id: AccountId, id: EntityId) -> Option<Rank> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .context_ranks
+            .get(&(account_id, id))
+            .copied()
+    }
+
     /// Returns every stored to-do for an account as read models.
     #[must_use]
     pub fn todos_for(&self, account_id: AccountId) -> Vec<momentum_app::todos::TodoSummary> {
         let state = self.state.lock().expect("memory state lock");
-        state
+        let mut todos: Vec<&Todo> = state
             .todos
             .iter()
             .filter(|((account, _), _)| *account == account_id)
-            .map(|(_, todo)| momentum_app::todos::TodoSummary {
+            .map(|(_, todo)| todo)
+            .collect();
+        todos.sort_by_key(|todo| (todo.meta.created_at, todo.id()));
+        todos
+            .into_iter()
+            .map(|todo| momentum_app::todos::TodoSummary {
                 id: todo.id(),
                 title: todo.title.as_str().to_string(),
                 notes: todo.notes.clone(),
@@ -165,6 +184,69 @@ impl UnitOfWork for MemoryUnitOfWork {
         }
         self.staged_saves
             .push((todo.id(), todo.clone(), expected_version));
+        Ok(())
+    }
+
+    async fn load_context_order(
+        &mut self,
+        account_id: AccountId,
+        context: ContextRef,
+    ) -> Result<Vec<(EntityId, Rank)>, CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        let mut entities: Vec<(chrono::DateTime<chrono::Utc>, EntityId)> = state
+            .todos
+            .iter()
+            .filter(|((account, _), todo)| {
+                *account == account_id
+                    && todo.context == context
+                    && todo.status != momentum_domain::model::Status::Deleted
+            })
+            .map(|((_, id), todo)| (todo.meta.created_at, *id))
+            .collect();
+        entities.sort_by_key(|(created_at, id)| (*created_at, *id));
+        let entities: Vec<EntityId> = entities.into_iter().map(|(_, id)| id).collect();
+
+        let mut next = *state.next_ranks.get(&(account_id, context)).unwrap_or(&0);
+        for entity in &entities {
+            state
+                .context_ranks
+                .entry((account_id, *entity))
+                .or_insert_with(|| {
+                    next += momentum_app::ordering::STEP;
+                    Rank::new(next).unwrap_or_else(|_| Rank::start())
+                });
+        }
+        state.next_ranks.insert((account_id, context), next);
+
+        let mut order = ScopeOrder::new(OrderingScope::Context(context));
+        for entity in entities {
+            if let Some(rank) = state.context_ranks.get(&(account_id, entity)) {
+                order.items_mut().push(OrderedItem {
+                    entity_id: entity,
+                    rank: *rank,
+                });
+            }
+        }
+        order.sort_by_rank();
+        Ok(order
+            .items()
+            .iter()
+            .map(|item| (item.entity_id, item.rank))
+            .collect())
+    }
+
+    async fn set_context_rank(
+        &mut self,
+        account_id: AccountId,
+        entity_id: EntityId,
+        rank: Rank,
+    ) -> Result<(), CommandError> {
+        self.database
+            .state
+            .lock()
+            .expect("memory state lock")
+            .context_ranks
+            .insert((account_id, entity_id), rank);
         Ok(())
     }
 
