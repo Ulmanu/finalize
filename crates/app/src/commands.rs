@@ -78,6 +78,11 @@ pub enum Command {
         /// Optional reminder.
         reminder: Option<ReminderInput>,
     },
+    /// Duplicates a to-do into a new canonical identity.
+    DuplicateTodo {
+        /// Entity to duplicate.
+        id: EntityId,
+    },
     /// Replaces the title.
     SetTodoTitle {
         /// Entity to update.
@@ -153,7 +158,8 @@ impl Command {
     pub const fn target(&self) -> Option<EntityId> {
         match self {
             Self::CreateTodo { .. } => None,
-            Self::SetTodoTitle { id, .. }
+            Self::DuplicateTodo { id }
+            | Self::SetTodoTitle { id, .. }
             | Self::SetTodoNotes { id, .. }
             | Self::CompleteTodo { id }
             | Self::CancelTodo { id }
@@ -172,6 +178,7 @@ impl Command {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::CreateTodo { .. } => "create_todo",
+            Self::DuplicateTodo { .. } => "duplicate_todo",
             Self::SetTodoTitle { .. } => "set_todo_title",
             Self::SetTodoNotes { .. } => "set_todo_notes",
             Self::CompleteTodo { .. } => "complete_todo",
@@ -221,6 +228,13 @@ pub enum DomainEvent {
     TodoCreated {
         /// Entity identity.
         id: EntityId,
+    },
+    /// A to-do was duplicated.
+    TodoDuplicated {
+        /// Identity of the new to-do.
+        id: EntityId,
+        /// Identity of the source to-do.
+        source_id: EntityId,
     },
     /// The title changed.
     TodoTitleChanged {
@@ -285,6 +299,7 @@ impl DomainEvent {
     pub const fn entity_id(&self) -> EntityId {
         match self {
             Self::TodoCreated { id }
+            | Self::TodoDuplicated { id, .. }
             | Self::TodoTitleChanged { id }
             | Self::TodoNotesChanged { id }
             | Self::TodoCompleted { id }
@@ -540,6 +555,27 @@ impl CommandDispatcher {
                     vec![DomainEvent::TodoCreated { id: todo.id() }],
                 ))
             }
+            Command::DuplicateTodo { id } => {
+                let source = unit
+                    .load_todo(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let mut copy = Todo::new(source.title.clone(), now);
+                copy.notes = source.notes.clone();
+                copy.schedule = source.schedule;
+                copy.deadline = source.deadline;
+                copy.reminder = source.reminder.clone();
+                copy.context = source.context;
+                copy.tags = source.tags.clone();
+                unit.save_todo(account_id, &copy, None).await?;
+                Ok((
+                    Some(copy.id()),
+                    vec![DomainEvent::TodoDuplicated {
+                        id: copy.id(),
+                        source_id: source.id(),
+                    }],
+                ))
+            }
             command => {
                 let id = command.target().ok_or(CommandError::NotFound)?;
                 let mut todo = unit
@@ -563,9 +599,9 @@ fn apply_to_todo(
 ) -> Result<DomainEvent, CommandError> {
     let id = todo.id();
     match command {
-        Command::CreateTodo { .. } => Err(CommandError::Validation(
-            "create commands are handled separately".to_string(),
-        )),
+        Command::CreateTodo { .. } | Command::DuplicateTodo { .. } => Err(
+            CommandError::Validation("creation commands are handled separately".to_string()),
+        ),
         Command::SetTodoTitle { title, .. } => {
             todo.title =
                 Title::parse(title).map_err(|error| CommandError::Validation(error.to_string()))?;
@@ -648,7 +684,9 @@ pub fn invalidations_for_events(events: &[DomainEvent]) -> Vec<Projection> {
 #[must_use]
 pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
     match event {
-        DomainEvent::TodoCreated { .. } => vec![Projection::Inbox],
+        DomainEvent::TodoCreated { .. } | DomainEvent::TodoDuplicated { .. } => {
+            vec![Projection::Inbox]
+        }
         DomainEvent::TodoTitleChanged { .. } | DomainEvent::TodoNotesChanged { .. } => {
             vec![Projection::Inbox, Projection::Today, Projection::Anytime]
         }

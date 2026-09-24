@@ -476,3 +476,84 @@ h3 {
     transition: none;
   }
 }
+
+/* To-do lists and editor */
+
+.add-form {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.add-form input[type="text"] {
+  flex: 1;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.add-form input[type="text"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.task-row-actions {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  margin-left: auto;
+}
+
+.task-row-actions form {
+  margin: 0;
+}
+
+.task-row .task-title {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.todo-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+}
+
+.todo-actions form {
+  margin: 0;
+}
+
+.todo-meta,
+.todo-note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.auth-form textarea {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-canvas);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.auth-form textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

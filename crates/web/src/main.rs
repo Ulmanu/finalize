@@ -4,8 +4,11 @@ use std::error::Error;
 use std::sync::Arc;
 
 use momentum_app::auth::AuthService;
+use momentum_app::commands::CommandDispatcher;
+use momentum_app::todos::TodoService;
 use momentum_infra::{
-    Argon2Hasher, Database, PgAuthStore, RandomTokenGenerator, ServerConfig, SystemClock,
+    Argon2Hasher, Database, PgAuthStore, PgTodoReadStore, PgUnitOfWorkFactory,
+    RandomTokenGenerator, ServerConfig, SystemClock,
 };
 use momentum_web::auth_routes::AuthContext;
 use momentum_web::server::{self, AppState};
@@ -24,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ServerConfig::from_env()?;
     let database = connect_database(&config).await?;
 
-    let (session_resolver, auth): (Arc<dyn SessionResolver>, _) = match &database {
+    let (session_resolver, auth, todos): (Arc<dyn SessionResolver>, _, _) = match &database {
         Some(database) => {
             let store = Arc::new(PgAuthStore::new(database.pool().clone()));
             let (accounts, sessions, tokens) = store.ports();
@@ -37,12 +40,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Arc::new(SystemClock),
             ));
             let context = Arc::new(AuthContext::new(service.clone(), config.secure_cookies));
-            (Arc::new(CookieSessionResolver::new(service)), Some(context))
+
+            let clock = Arc::new(SystemClock);
+            let dispatcher = Arc::new(CommandDispatcher::new(
+                Arc::new(PgUnitOfWorkFactory::new(database.pool().clone())),
+                clock.clone(),
+            ));
+            let reader = Arc::new(PgTodoReadStore::new(database.pool().clone()));
+            let todo_service = Arc::new(TodoService::new(dispatcher, reader, clock));
+
+            (
+                Arc::new(CookieSessionResolver::new(service)),
+                Some(context),
+                Some(todo_service),
+            )
         }
-        None => (Arc::new(AnonymousSessionResolver), None),
+        None => (Arc::new(AnonymousSessionResolver), None, None),
     };
 
-    let state = AppState::new(server::leptos_options(), database, session_resolver, auth);
+    let state = AppState::new(
+        server::leptos_options(),
+        database,
+        session_resolver,
+        auth,
+        todos,
+    );
     let router = server::router_with_state(state);
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
 

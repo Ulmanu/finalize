@@ -182,7 +182,7 @@ impl UndoEngine {
 #[must_use]
 pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Command> {
     match command {
-        Command::CreateTodo { .. } => {
+        Command::DuplicateTodo { .. } | Command::CreateTodo { .. } => {
             // The created identity is only known after execution; the engine re-derives the
             // inverse from the post-state through the created event, so a create is undone by
             // deleting the entity the command produced.

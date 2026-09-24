@@ -295,6 +295,27 @@ Agent: opencode (deepseek-v4.1-flash)
   inverse so identities are stable; history window is 100 groups and in-session only.
 - Live integrations not verified: none.
 
+### 11 — `add-todo-crud` — COMPLETE
+
+- Start: 2026-09-24 03:00 · End: 2026-09-24 03:45
+- Proposal validation: strict validation passed before apply.
+- Implementation: `DuplicateTodo` command; `momentum-app::todos` (`TodoSummary`, `TodoScope`,
+  `TodoReadStore`, `TodoService`); `PgTodoReadStore`; testkit `MemoryTodoReadStore`; web
+  command routes (`POST /todos` + lifecycle/update routes), real `/inbox` list with add form
+  and row actions, real `/todos/:id` editor with lifecycle buttons and metadata display.
+- Migrations: none.
+- Tests: 8 end-to-end web CRUD tests (create, auth requirement, complete→logbook, delete/
+  restore, duplicate, editor update with metadata preservation, reopen, not-found) plus the
+  existing command-layer suite; fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual; all requirement scenarios covered. No critical findings.
+- Archive: `2026-09-24-add-todo-crud`; canonical `features/todo-crud` spec created; strict
+  validation pass.
+- Commit: `feat(11): add todo CRUD`
+- Decisions: native form posts to command-backed routes (progressive enhancement); duplicate
+  keeps the title (identity distinguishes copies); Axum route params renamed to `{todo_id}` to
+  match the Leptos route pattern.
+- Live integrations not verified: PostgreSQL read store path (no database).
+
 ## Run summary
 
 (Filled at run end.)

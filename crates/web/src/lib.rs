@@ -20,6 +20,8 @@ pub mod layouts;
 pub mod responsive;
 pub mod routes;
 pub mod session;
+#[cfg(feature = "ssr")]
+pub mod todo_routes;
 
 #[cfg(feature = "ssr")]
 pub mod server;

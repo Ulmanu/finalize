@@ -10,13 +10,16 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use leptos::config::LeptosOptions;
+use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
+use momentum_app::todos::TodoService;
 use momentum_infra::Database;
 use serde::Serialize;
 
 use crate::app::{shell, App};
 use crate::auth_routes::{self, AuthContext};
 use crate::session::{AnonymousSessionResolver, SessionResolver};
+use crate::todo_routes;
 
 /// Base stylesheet embedded in the server binary.
 ///
@@ -39,6 +42,8 @@ pub struct AppState {
     pub session_resolver: Arc<dyn SessionResolver>,
     /// Authentication context, when the server has an account store.
     pub auth: Option<Arc<AuthContext>>,
+    /// To-do service, when persistence is configured.
+    pub todos: Option<Arc<TodoService>>,
 }
 
 impl AppState {
@@ -49,12 +54,14 @@ impl AppState {
         database: Option<Database>,
         session_resolver: Arc<dyn SessionResolver>,
         auth: Option<Arc<AuthContext>>,
+        todos: Option<Arc<TodoService>>,
     ) -> Self {
         Self {
             leptos_options,
             database,
             session_resolver,
             auth,
+            todos,
         }
     }
 
@@ -65,6 +72,7 @@ impl AppState {
             leptos_options,
             None,
             Arc::new(AnonymousSessionResolver),
+            None,
             None,
         )
     }
@@ -119,7 +127,7 @@ pub fn router(options: LeptosOptions) -> Router {
 ///
 /// Exposed so tests can inject deterministic resolvers without changing route code.
 pub fn router_with_session(options: LeptosOptions, resolver: Arc<dyn SessionResolver>) -> Router {
-    router_with_state(AppState::new(options, None, resolver, None))
+    router_with_state(AppState::new(options, None, resolver, None, None))
 }
 
 /// Builds the application router with explicit state.
@@ -127,6 +135,7 @@ pub fn router_with_state(state: AppState) -> Router {
     init_runtime();
     let paths = generate_route_list(App);
     let shell_options = state.leptos_options.clone();
+    let todo_service = state.todos.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -134,9 +143,15 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/static/app.css", get(app_css))
         .route("/static/design.css", get(design_css))
         .merge(auth_routes::routes())
-        .leptos_routes_with_context(&state, paths, provide_context_placeholder, move || {
-            shell(shell_options.clone())
-        })
+        .merge(todo_routes::routes())
+        .leptos_routes_with_context(
+            &state,
+            paths,
+            move || {
+                provide_context(todo_service.clone());
+            },
+            move || shell(shell_options.clone()),
+        )
         .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -144,8 +159,6 @@ pub fn router_with_state(state: AppState) -> Router {
         ))
         .with_state(state)
 }
-
-fn provide_context_placeholder() {}
 
 /// Resolves the session for every request and stores it in request extensions.
 async fn session_middleware(

@@ -61,6 +61,30 @@ impl MemoryDatabase {
             .cloned()
     }
 
+    /// Returns every stored to-do for an account as read models.
+    #[must_use]
+    pub fn todos_for(&self, account_id: AccountId) -> Vec<momentum_app::todos::TodoSummary> {
+        let state = self.state.lock().expect("memory state lock");
+        state
+            .todos
+            .iter()
+            .filter(|((account, _), _)| *account == account_id)
+            .map(|(_, todo)| momentum_app::todos::TodoSummary {
+                id: todo.id(),
+                title: todo.title.as_str().to_string(),
+                notes: todo.notes.clone(),
+                status: todo.status,
+                schedule: todo.schedule,
+                deadline: todo.deadline,
+                reminder: todo.reminder.clone(),
+                context: todo.context,
+                completed_at: todo.completed_at,
+                created_at: todo.meta.created_at,
+                version: todo.meta.version,
+            })
+            .collect()
+    }
+
     /// Returns the change records for an account in sequence order.
     #[must_use]
     pub fn changes(&self, account_id: AccountId) -> Vec<ChangeRecord> {

@@ -98,7 +98,11 @@ async fn entity_routes_are_addressable() {
     let (status, body) =
         get_with_session(&format!("/todos/{todo_id}"), authenticated_state()).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains(&todo_id));
+    assert!(
+        body.contains("data-testid=\"todo-editor\"")
+            || body.contains("data-testid=\"todo-not-found\""),
+        "to-do route must render the editor or its not-found state"
+    );
 }
 
 #[tokio::test]

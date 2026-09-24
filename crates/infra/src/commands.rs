@@ -406,6 +406,7 @@ impl UnitOfWork for PgUnitOfWork {
             .first()
             .map_or("unknown", |event| match event {
                 DomainEvent::TodoCreated { .. } => "todo_created",
+                DomainEvent::TodoDuplicated { .. } => "todo_duplicated",
                 DomainEvent::TodoTitleChanged { .. } => "todo_title_changed",
                 DomainEvent::TodoNotesChanged { .. } => "todo_notes_changed",
                 DomainEvent::TodoCompleted { .. } => "todo_completed",
