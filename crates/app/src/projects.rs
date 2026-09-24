@@ -130,6 +130,12 @@ impl ProjectService {
         self.reader.list_projects(account_id).await
     }
 
+    /// Returns the service's current local date (UTC until localization).
+    #[must_use]
+    pub fn local_today(&self) -> LocalDate {
+        LocalDate::today_in_timezone(self.clock.now(), "UTC")
+    }
+
     /// Loads one project.
     ///
     /// # Errors

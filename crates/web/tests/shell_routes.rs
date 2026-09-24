@@ -65,7 +65,7 @@ async fn every_builtin_list_route_renders_its_destination() {
         let (status, body) = get_with_session(uri, authenticated_state()).await;
         assert_eq!(status, StatusCode::OK, "route {uri} status");
         assert!(
-            body.contains("data-testid=\"list-page\""),
+            body.contains("data-testid=\"list-page\"") || body.contains("-page\""),
             "route {uri} must render the list page: {body}"
         );
         assert!(

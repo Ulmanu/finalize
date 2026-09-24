@@ -300,8 +300,7 @@ async fn schedule_todo(
     let Ok(id) = id.parse::<EntityId>() else {
         return redirect("/inbox?error=notfound");
     };
-    let today = momentum_domain::time::LocalDate::today_from_utc(chrono::Utc::now(), 0)
-        .unwrap_or_else(|_| momentum_domain::time::LocalDate::from_ymd(1970, 1, 1).expect("epoch"));
+    let today = service.local_today();
 
     let result = match form.when.as_str() {
         "today" => {

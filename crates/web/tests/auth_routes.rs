@@ -195,7 +195,7 @@ async fn login_sets_a_hardened_cookie_and_grants_access() {
     let (status, _, body) = request(&h.router, "GET", "/today", None, Some(&cookie)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        body.contains("data-testid=\"list-page\""),
+        body.contains("data-testid=\"today-page\""),
         "must render the list"
     );
     assert!(body.contains(&email), "bootstrap must carry the session");

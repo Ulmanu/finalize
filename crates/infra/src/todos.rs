@@ -34,6 +34,14 @@ fn scope_filter(scope: TodoScope) -> &'static str {
              and (e.schedule_kind = 'anytime' or (e.schedule_kind = 'date' and e.schedule_date <= $2))"
         }
         TodoScope::AllOpen => "e.status = 'open'",
+        TodoScope::Today => {
+            "e.status = 'open' and e.schedule_kind = 'date' and e.schedule_date <= $2"
+        }
+        TodoScope::Upcoming => {
+            "e.status = 'open' and e.schedule_kind = 'date' and e.schedule_date > $2"
+        }
+        TodoScope::Anytime => "e.status = 'open' and e.schedule_kind = 'anytime'",
+        TodoScope::Someday => "e.status = 'open' and e.schedule_kind = 'someday'",
         TodoScope::Logbook => "e.status in ('completed', 'canceled')",
         TodoScope::Trash => "e.status = 'deleted'",
     }

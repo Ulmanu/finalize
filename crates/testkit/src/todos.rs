@@ -35,6 +35,26 @@ fn matches_scope(todo: &TodoSummary, scope: TodoScope, today: LocalDate) -> bool
                 }
         }
         TodoScope::AllOpen => todo.status == Status::Open,
+        TodoScope::Today => {
+            todo.status == Status::Open
+                && match todo.schedule.state() {
+                    ScheduleState::On(date) => date <= today,
+                    _ => false,
+                }
+        }
+        TodoScope::Upcoming => {
+            todo.status == Status::Open
+                && match todo.schedule.state() {
+                    ScheduleState::On(date) => date > today,
+                    _ => false,
+                }
+        }
+        TodoScope::Anytime => {
+            todo.status == Status::Open && todo.schedule.state() == ScheduleState::Anytime
+        }
+        TodoScope::Someday => {
+            todo.status == Status::Open && todo.schedule.state() == ScheduleState::Someday
+        }
         TodoScope::Logbook => todo.status.is_terminal(),
         TodoScope::Trash => todo.status == Status::Deleted,
     }
@@ -50,17 +70,23 @@ impl TodoReadStore for MemoryTodoReadStore {
     ) -> Result<Vec<TodoSummary>, CommandError> {
         let mut todos = self.database.todos_for(account_id);
         todos.retain(|todo| matches_scope(todo, scope, today));
-        if scope == TodoScope::Inbox {
-            todos.sort_by_key(|todo| {
+        match scope {
+            TodoScope::Inbox => todos.sort_by_key(|todo| {
                 (
                     self.database
                         .context_rank(account_id, todo.id)
                         .map_or(i64::MAX, |rank| rank.value()),
                     todo.created_at,
                 )
-            });
-        } else {
-            todos.sort_by_key(|todo| todo.created_at);
+            }),
+            TodoScope::Today | TodoScope::Upcoming => todos.sort_by_key(|todo| {
+                (
+                    todo.schedule.date(),
+                    todo.schedule.is_evening(),
+                    todo.created_at,
+                )
+            }),
+            _ => todos.sort_by_key(|todo| todo.created_at),
         }
         Ok(todos)
     }

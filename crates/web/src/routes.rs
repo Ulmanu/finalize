@@ -245,22 +245,77 @@ macro_rules! list_route_page {
     };
 }
 
-list_route_page!(TodayPage, "Today", "Everything scheduled for today.");
-list_route_page!(
-    UpcomingPage,
-    "Upcoming",
-    "What is scheduled for the days ahead."
-);
-list_route_page!(
-    AnytimePage,
-    "Anytime",
-    "Actionable items without a future start date."
-);
-list_route_page!(
-    SomedayPage,
-    "Someday",
-    "Deferred items kept out of the way."
-);
+#[component]
+pub fn TodayPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || {
+                view! {
+                    <ProjectionList
+                        title="Today"
+                        description="Everything scheduled for today."
+                        scope=TodoScope::Today
+                        slug="today"
+                    />
+                }
+            }}
+        </Protected>
+    }
+}
+
+#[component]
+pub fn UpcomingPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || {
+                view! {
+                    <ProjectionList
+                        title="Upcoming"
+                        description="What is scheduled for the days ahead."
+                        scope=TodoScope::Upcoming
+                        slug="upcoming"
+                    />
+                }
+            }}
+        </Protected>
+    }
+}
+
+#[component]
+pub fn AnytimePage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || {
+                view! {
+                    <ProjectionList
+                        title="Anytime"
+                        description="Actionable items without a future start date."
+                        scope=TodoScope::Anytime
+                        slug="anytime"
+                    />
+                }
+            }}
+        </Protected>
+    }
+}
+
+#[component]
+pub fn SomedayPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || {
+                view! {
+                    <ProjectionList
+                        title="Someday"
+                        description="Deferred items kept out of the way."
+                        scope=TodoScope::Someday
+                        slug="someday"
+                    />
+                }
+            }}
+        </Protected>
+    }
+}
 list_route_page!(LogbookPage, "Logbook", "Completed and canceled items.");
 list_route_page!(
     SettingsPage,
@@ -2243,6 +2298,69 @@ fn MarkdownPreview(#[prop(into)] notes: String) -> impl IntoView {
             aria-label="Formatted note preview"
         >
             {nodes}
+        </section>
+    }
+}
+
+/// A schedule-driven projection list.
+#[component]
+fn ProjectionList(
+    #[prop(into)] title: String,
+    #[prop(into)] description: String,
+    scope: TodoScope,
+    #[prop(into)] slug: String,
+) -> impl IntoView {
+    let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let account = use_account();
+    let todos = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, scope)
+                    .await
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        }
+    });
+    let page_testid = format!("{slug}-page");
+    let list_testid = format!("{slug}-list");
+    let empty_testid = format!("{slug}-empty");
+
+    view! {
+        <section class="list-page" data-testid=page_testid>
+            <header class="list-header">
+                <h1 class="list-title">{title}</h1>
+                <p class="list-description">{description}</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    todos
+                        .get()
+                        .map(|todos| {
+                            if todos.is_empty() {
+                                view! {
+                                    <div class="list-empty" data-testid=empty_testid.clone()>
+                                        <p>"Nothing here yet."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <ul class="task-list" data-testid=list_testid.clone()>
+                                        {todos
+                                            .into_iter()
+                                            .map(|todo| view! { <TodoRow todo=todo/> })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
         </section>
     }
 }

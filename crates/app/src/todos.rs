@@ -83,6 +83,14 @@ pub enum TodoScope {
     Inbox,
     /// Every open to-do, ordered by creation.
     AllOpen,
+    /// Open to-dos scheduled on or before the local today (This Evening included).
+    Today,
+    /// Open to-dos scheduled on a future date.
+    Upcoming,
+    /// Open to-dos with an Anytime schedule.
+    Anytime,
+    /// Open to-dos deferred to Someday.
+    Someday,
     /// Completed and canceled to-dos.
     Logbook,
     /// Soft-deleted to-dos.
@@ -150,6 +158,28 @@ impl TodoService {
         // the local date is derived at UTC.
         let today = LocalDate::today_in_timezone(self.clock.now(), "UTC");
         self.reader.list_todos(account_id, scope, today).await
+    }
+
+    /// Lists to-dos for a scope using an explicit local-UTC offset in minutes.
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn list_at(
+        &self,
+        account_id: AccountId,
+        scope: TodoScope,
+        offset_minutes: i32,
+    ) -> Result<Vec<TodoSummary>, CommandError> {
+        let today = LocalDate::today_from_utc(self.clock.now(), offset_minutes)
+            .unwrap_or_else(|_| LocalDate::today_in_timezone(self.clock.now(), "UTC"));
+        self.reader.list_todos(account_id, scope, today).await
+    }
+
+    /// Returns the service's current local date (UTC until localization).
+    #[must_use]
+    pub fn local_today(&self) -> LocalDate {
+        LocalDate::today_in_timezone(self.clock.now(), "UTC")
     }
 
     /// Loads one to-do.
