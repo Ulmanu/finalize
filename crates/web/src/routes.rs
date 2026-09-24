@@ -825,6 +825,12 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                 <button type="submit" class="button-primary">"Save"</button>
             </form>
 
+            <NotesTools
+                notes=todo.notes.clone()
+                replace_action=format!("/todos/{id}/notes/replace")
+                return_to=format!("/todos/{id}")
+            />
+
             <form method="post" action=format!("/todos/{id}/schedule") class="auth-form">
                 <input type="hidden" name="return_to" value=format!("/todos/{id}")/>
                 <label class="form-field">
@@ -1880,11 +1886,17 @@ fn ProjectDetailBody(project: ProjectSummary) -> impl IntoView {
             <label class="form-field">
                 <span>"Notes"</span>
                 <textarea name="notes" rows="5" aria-label="Project notes">
-                    {notes}
+                    {notes.clone()}
                 </textarea>
             </label>
             <button type="submit" class="button-secondary">"Save notes"</button>
         </form>
+
+        <NotesTools
+            notes=notes.clone()
+            replace_action=format!("/projects/{id}/notes/replace")
+            return_to=format!("/projects/{id}")
+        />
 
         <form method="post" action=schedule_target class="auth-form">
             <label class="form-field">
@@ -1927,5 +1939,165 @@ fn ProjectDetailBody(project: ProjectSummary) -> impl IntoView {
                 <button type="submit" class="button-secondary">"Delete"</button>
             </form>
         </div>
+    }
+}
+
+fn encode_query(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+/// Notes tools: detected links, find traversal, and deterministic replacement.
+#[component]
+fn NotesTools(
+    #[prop(into)] notes: String,
+    #[prop(into)] replace_action: String,
+    #[prop(into)] return_to: String,
+) -> impl IntoView {
+    let query = use_query_map();
+    let link_source = notes.clone();
+    let links = momentum_domain::notes::find_links(&link_source);
+    let find_term = query.read().get("find").unwrap_or_default();
+    let from: usize = query
+        .read()
+        .get("from")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let matches = momentum_domain::notes::find_matches(&notes, &find_term);
+    let current = matches
+        .iter()
+        .position(|(start, _)| *start >= from)
+        .unwrap_or(0);
+    let (prev_start, next_start) = match matches.get(current) {
+        Some((start, end)) => {
+            let previous = momentum_domain::notes::previous_match(&notes, &find_term, *start)
+                .map_or(*start, |(start, _)| start);
+            (previous, *end)
+        }
+        None => (0, 0),
+    };
+    let encoded = encode_query(&find_term);
+    let result_label = if find_term.is_empty() {
+        String::new()
+    } else if matches.is_empty() {
+        "No matches".to_string()
+    } else {
+        format!("{}/{}", current + 1, matches.len())
+    };
+    let find_value = find_term.clone();
+
+    view! {
+        <section class="notes-tools" data-testid="notes-tools">
+            {(!links.is_empty())
+                .then(|| {
+                    view! {
+                        <ul class="note-links" data-testid="note-links">
+                            {links
+                                .into_iter()
+                                .map(|link| {
+                                    if link.safe {
+                                        let href = link.url.clone();
+                                        view! {
+                                            <li>
+                                                <a
+                                                    href=href
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    data-testid="note-link"
+                                                >
+                                                    {link.url}
+                                                </a>
+                                            </li>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        view! {
+                                            <li>
+                                                <span
+                                                    class="note-link-blocked"
+                                                    data-testid="blocked-link"
+                                                    aria-label="Blocked unsafe link"
+                                                >
+                                                    {format!("{} (blocked scheme)", link.url)}
+                                                </span>
+                                            </li>
+                                        }
+                                            .into_any()
+                                    }
+                                })
+                                .collect_view()}
+                        </ul>
+                    }
+                })}
+            <form method="get" action="" class="row-schedule" data-testid="find-form">
+                <input
+                    type="text"
+                    name="find"
+                    value=find_value
+                    placeholder="Find in notes"
+                    aria-label="Find in notes"
+                    autocomplete="off"
+                />
+                <button type="submit" class="button-secondary">"Find"</button>
+            </form>
+            {(!result_label.is_empty())
+                .then(|| {
+                    view! {
+                        <div class="find-results" data-testid="find-results">
+                            <span aria-live="polite">{result_label}</span>
+                            {(!matches.is_empty())
+                                .then(|| {
+                                    view! {
+                                        <a
+                                            href=format!("?find={encoded}&from={prev_start}")
+                                            class="row-action"
+                                            aria-label="Previous match"
+                                            data-testid="find-previous"
+                                        >
+                                            "Previous"
+                                        </a>
+                                        <a
+                                            href=format!("?find={encoded}&from={next_start}")
+                                            class="row-action"
+                                            aria-label="Next match"
+                                            data-testid="find-next"
+                                        >
+                                            "Next"
+                                        </a>
+                                    }
+                                })}
+                        </div>
+                    }
+                })}
+            {(!find_term.is_empty())
+                .then(|| {
+                    view! {
+                        <form
+                            method="post"
+                            action=replace_action.clone()
+                            class="row-schedule"
+                            data-testid="replace-form"
+                        >
+                            <input type="hidden" name="find" value=find_term.clone()/>
+                            <input type="hidden" name="return_to" value=return_to.clone()/>
+                            <input
+                                type="text"
+                                name="replace"
+                                placeholder="Replace with"
+                                aria-label="Replace with"
+                                autocomplete="off"
+                            />
+                            <button type="submit" class="button-secondary">"Replace all"</button>
+                        </form>
+                    }
+                })}
+        </section>
     }
 }

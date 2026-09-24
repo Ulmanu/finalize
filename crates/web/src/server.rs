@@ -22,6 +22,7 @@ use serde::Serialize;
 use crate::app::{shell, App};
 use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
+use crate::notes_routes;
 use crate::project_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
 use crate::tag_routes;
@@ -178,6 +179,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(area_routes::routes())
         .merge(project_routes::routes())
         .merge(tag_routes::routes())
+        .merge(notes_routes::routes())
         .leptos_routes_with_context(
             &state,
             paths,

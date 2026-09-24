@@ -449,6 +449,27 @@ Agent: opencode (deepseek-v4.1-flash)
   inheritance is derived at read time.
 - Live integrations not verified: PostgreSQL tag paths (no database).
 
+### 18 — `add-notes-editor` — COMPLETE
+
+- Start: 2026-09-24 20:10 · End: 2026-09-24 20:55
+- Proposal validation: strict validation passed before apply.
+- Implementation: pure `momentum_domain::notes` utilities (link detection with punctuation
+  trimming, safe-URL policy limited to http/https/mailto, find matches, next/previous with
+  wrap-around, deterministic replace-all); shared `NotesTools` panel on to-do and project pages
+  with detected safe links rendered as `noopener noreferrer` anchors, blocked schemes rendered
+  as inert labeled text, GET find traversal with match index, and replace-all forms; server
+  replacement routes delegate to the existing `SetTodoNotes`/`SetProjectNotes` commands.
+- Migrations: none.
+- Tests: 3 domain unit tests and 3 web tests (link safety, find traversal + replacement,
+  project notes replacement); fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual; every requirement scenario covered. No critical findings.
+- Archive: `2026-09-24-add-notes-editor`; canonical `features/notes-editor` spec created;
+  strict validation pass.
+- Commit: `feat(18): add notes editor`
+- Decisions: multiline editing/selection/clipboard/undo stay native textarea behavior (no
+  handwritten JS); find/replace is deterministic Rust computed server-side over note commands.
+- Live integrations not verified: none specific to this change.
+
 ## Run summary
 
 ### Completed changes
@@ -472,9 +493,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 15 | add-project-headings | COMPLETE | `feat(15)` |
 | 16 | add-checklists | COMPLETE | `feat(16)` |
 | 17 | add-tags | COMPLETE | `feat(17)` |
+| 18 | add-notes-editor | COMPLETE | `feat(18)` |
 
-- Completed proposal range: 01–17 (17 of 74).
-- Incomplete: 18–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–18 (18 of 74).
+- Incomplete: 19–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

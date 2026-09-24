@@ -12,6 +12,7 @@
 pub mod email;
 pub mod ids;
 pub mod model;
+pub mod notes;
 pub mod password;
 pub mod time;
 
