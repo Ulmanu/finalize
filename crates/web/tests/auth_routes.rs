@@ -44,6 +44,7 @@ fn harness() -> Harness {
         Some(Arc::new(AuthContext::new(service.clone(), false))),
         None,
         None,
+        None,
     );
     Harness {
         router: server::router_with_state(state),

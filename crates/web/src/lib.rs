@@ -19,6 +19,8 @@ pub mod auth_routes;
 pub mod boundaries;
 pub mod design;
 pub mod layouts;
+#[cfg(feature = "ssr")]
+pub mod project_routes;
 pub mod responsive;
 pub mod routes;
 pub mod session;

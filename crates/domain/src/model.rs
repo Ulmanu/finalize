@@ -609,7 +609,8 @@ impl Todo {
 }
 
 /// Completion policy for a project with open children.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProjectCompletionPolicy {
     /// Refuse to complete while open children remain.
     RejectWhileOpen,

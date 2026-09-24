@@ -148,7 +148,7 @@ impl TodoService {
         self.reader.get_todo(account_id, id).await
     }
 
-    /// Creates a to-do.
+    /// Creates a to-do in the Inbox.
     ///
     /// # Errors
     ///
@@ -159,12 +159,28 @@ impl TodoService {
         title: &str,
         notes: Option<String>,
     ) -> Result<CommandOutcome, CommandError> {
+        self.create_in(account_id, title, notes, ContextRef::Inbox)
+            .await
+    }
+
+    /// Creates a to-do in a specific context.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command validation and storage failures.
+    pub async fn create_in(
+        &self,
+        account_id: AccountId,
+        title: &str,
+        notes: Option<String>,
+        context: ContextRef,
+    ) -> Result<CommandOutcome, CommandError> {
         self.dispatch(
             account_id,
             Command::CreateTodo {
                 title: title.to_string(),
                 notes,
-                context: ContextRef::Inbox,
+                context,
                 schedule: ScheduleInput::Anytime,
                 deadline: None,
                 reminder: None,

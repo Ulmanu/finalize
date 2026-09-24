@@ -74,6 +74,10 @@ struct CreateTodoForm {
     notes: Option<String>,
     #[serde(default)]
     return_to: Option<String>,
+    #[serde(default)]
+    context_kind: Option<String>,
+    #[serde(default)]
+    context_id: Option<String>,
 }
 
 async fn create_todo(
@@ -87,7 +91,37 @@ async fn create_todo(
     let target = back(&RedirectForm {
         return_to: form.return_to,
     });
-    match service.create(account_id, &form.title, form.notes).await {
+    let context = match form.context_kind.as_deref() {
+        Some("project") => form
+            .context_id
+            .as_deref()
+            .and_then(|value| value.parse::<EntityId>().ok())
+            .map_or(
+                momentum_domain::model::ContextRef::Inbox,
+                momentum_domain::model::ContextRef::Project,
+            ),
+        Some("area") => form
+            .context_id
+            .as_deref()
+            .and_then(|value| value.parse::<EntityId>().ok())
+            .map_or(
+                momentum_domain::model::ContextRef::Inbox,
+                momentum_domain::model::ContextRef::Area,
+            ),
+        Some("heading") => form
+            .context_id
+            .as_deref()
+            .and_then(|value| value.parse::<EntityId>().ok())
+            .map_or(
+                momentum_domain::model::ContextRef::Inbox,
+                momentum_domain::model::ContextRef::Heading,
+            ),
+        _ => momentum_domain::model::ContextRef::Inbox,
+    };
+    match service
+        .create_in(account_id, &form.title, form.notes, context)
+        .await
+    {
         Ok(_) => redirect(&target),
         Err(_) => redirect(&format!("{target}?error=create")),
     }

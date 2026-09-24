@@ -81,6 +81,7 @@ async fn harness() -> Harness {
         Some(Arc::new(AuthContext::new(auth, false))),
         Some(todos.clone()),
         Some(areas.clone()),
+        None,
     );
 
     Harness {

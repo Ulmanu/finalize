@@ -6,10 +6,10 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use momentum_app::commands::{
-    AreaChildren, ChangeRecord, CommandError, UnitOfWork, UnitOfWorkFactory,
+    AreaChildren, ChangeRecord, CommandError, ProjectChildren, UnitOfWork, UnitOfWorkFactory,
 };
 use momentum_app::ordering::{OrderedItem, OrderingScope, Rank, ScopeOrder};
-use momentum_domain::model::{Area, ContextRef, Todo};
+use momentum_domain::model::{Area, ContextRef, Project, Todo};
 use momentum_domain::{AccountId, EntityId};
 use uuid::Uuid;
 
@@ -17,6 +17,7 @@ use uuid::Uuid;
 struct MemoryState {
     todos: HashMap<(AccountId, EntityId), Todo>,
     areas: HashMap<(AccountId, EntityId), Area>,
+    projects: HashMap<(AccountId, EntityId), Project>,
     project_areas: HashMap<(AccountId, EntityId), EntityId>,
     changes: Vec<(AccountId, ChangeRecord)>,
     context_ranks: HashMap<(AccountId, EntityId), Rank>,
@@ -66,6 +67,31 @@ impl MemoryDatabase {
             .todos
             .get(&(account_id, id))
             .cloned()
+    }
+
+    /// Returns a stored project.
+    #[must_use]
+    pub fn project(&self, account_id: AccountId, id: EntityId) -> Option<Project> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .projects
+            .get(&(account_id, id))
+            .cloned()
+    }
+
+    /// Returns every stored project for an account.
+    #[must_use]
+    pub fn projects_for(&self, account_id: AccountId) -> Vec<Project> {
+        let state = self.state.lock().expect("memory state lock");
+        let mut projects: Vec<Project> = state
+            .projects
+            .iter()
+            .filter(|((account, _), _)| *account == account_id)
+            .map(|(_, project)| project.clone())
+            .collect();
+        projects.sort_by_key(|project| project.meta.created_at);
+        projects
     }
 
     /// Returns a stored area.
@@ -266,6 +292,56 @@ impl UnitOfWork for MemoryUnitOfWork {
         self.staged_saves
             .push((todo.id(), todo.clone(), expected_version));
         Ok(())
+    }
+
+    async fn load_project(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<Project>, CommandError> {
+        Ok(self.database.project(account_id, id))
+    }
+
+    async fn save_project(
+        &mut self,
+        account_id: AccountId,
+        project: &Project,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        if let Some(expected) = expected_version {
+            let actual = state
+                .projects
+                .get(&(account_id, project.id()))
+                .map_or(0, |current| current.meta.version);
+            if actual != expected {
+                return Err(CommandError::Conflict { expected, actual });
+            }
+        }
+        state
+            .projects
+            .insert((account_id, project.id()), project.clone());
+        Ok(())
+    }
+
+    async fn list_project_children(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<ProjectChildren, CommandError> {
+        let state = self.database.state.lock().expect("memory state lock");
+        let todo_ids = state
+            .todos
+            .iter()
+            .filter(|((account, _), todo)| {
+                *account == account_id && todo.context == ContextRef::Project(project_id)
+            })
+            .map(|((_, id), _)| *id)
+            .collect();
+        Ok(ProjectChildren {
+            todo_ids,
+            heading_ids: Vec::new(),
+        })
     }
 
     async fn load_area(

@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use momentum_domain::model::{ContextRef, Deadline, Reminder, Schedule, Status, Title, Todo};
+use momentum_domain::model::{
+    ContextRef, Deadline, ProjectCompletionPolicy, Reminder, Schedule, Status, Title, Todo,
+};
 use momentum_domain::time::LocalDate;
 use momentum_domain::AccountId;
 use momentum_domain::EntityId;
@@ -77,6 +79,72 @@ pub enum Command {
         deadline: Option<LocalDate>,
         /// Optional reminder.
         reminder: Option<ReminderInput>,
+    },
+    /// Creates a project.
+    CreateProject {
+        /// Project title.
+        title: String,
+        /// Owning area, when any.
+        area: Option<EntityId>,
+    },
+    /// Renames a project.
+    RenameProject {
+        /// Project to rename.
+        id: EntityId,
+        /// New title.
+        title: String,
+    },
+    /// Replaces project notes.
+    SetProjectNotes {
+        /// Project to update.
+        id: EntityId,
+        /// New notes.
+        notes: String,
+    },
+    /// Replaces a project's schedule.
+    ScheduleProject {
+        /// Project to schedule.
+        id: EntityId,
+        /// New schedule.
+        schedule: ScheduleInput,
+    },
+    /// Replaces a project's deadline.
+    SetProjectDeadline {
+        /// Project to update.
+        id: EntityId,
+        /// New deadline, or `None` to clear.
+        deadline: Option<LocalDate>,
+    },
+    /// Completes a project under an explicit open-children policy.
+    CompleteProject {
+        /// Project to complete.
+        id: EntityId,
+        /// Policy for open direct children.
+        policy: ProjectCompletionPolicy,
+    },
+    /// Cancels a project.
+    CancelProject {
+        /// Project to cancel.
+        id: EntityId,
+    },
+    /// Reopens a completed or canceled project.
+    ReopenProject {
+        /// Project to reopen.
+        id: EntityId,
+    },
+    /// Assigns a project to an area, or clears the assignment.
+    MoveProject {
+        /// Project to move.
+        id: EntityId,
+        /// Destination area, or `None` for no area.
+        area: Option<EntityId>,
+    },
+    /// Deletes a project under an explicit direct-children policy.
+    DeleteProject {
+        /// Project to delete.
+        id: EntityId,
+        /// Policy for direct children.
+        policy: ProjectDeletionPolicy,
     },
     /// Creates an area.
     CreateArea {
@@ -183,8 +251,18 @@ impl Command {
     #[must_use]
     pub const fn target(&self) -> Option<EntityId> {
         match self {
-            Self::CreateTodo { .. } | Self::CreateArea { .. } => None,
-            Self::RenameArea { id, .. } | Self::DeleteArea { id, .. } => Some(*id),
+            Self::CreateTodo { .. } | Self::CreateArea { .. } | Self::CreateProject { .. } => None,
+            Self::RenameArea { id, .. }
+            | Self::DeleteArea { id, .. }
+            | Self::RenameProject { id, .. }
+            | Self::SetProjectNotes { id, .. }
+            | Self::ScheduleProject { id, .. }
+            | Self::SetProjectDeadline { id, .. }
+            | Self::CompleteProject { id, .. }
+            | Self::CancelProject { id }
+            | Self::ReopenProject { id }
+            | Self::MoveProject { id, .. }
+            | Self::DeleteProject { id, .. } => Some(*id),
             Self::DuplicateTodo { id }
             | Self::ReorderTodo { id, .. }
             | Self::SetTodoTitle { id, .. }
@@ -207,6 +285,16 @@ impl Command {
         match self {
             Self::CreateTodo { .. } => "create_todo",
             Self::CreateArea { .. } => "create_area",
+            Self::CreateProject { .. } => "create_project",
+            Self::RenameProject { .. } => "rename_project",
+            Self::SetProjectNotes { .. } => "set_project_notes",
+            Self::ScheduleProject { .. } => "schedule_project",
+            Self::SetProjectDeadline { .. } => "set_project_deadline",
+            Self::CompleteProject { .. } => "complete_project",
+            Self::CancelProject { .. } => "cancel_project",
+            Self::ReopenProject { .. } => "reopen_project",
+            Self::MoveProject { .. } => "move_project",
+            Self::DeleteProject { .. } => "delete_project",
             Self::RenameArea { .. } => "rename_area",
             Self::DeleteArea { .. } => "delete_area",
             Self::DuplicateTodo { .. } => "duplicate_todo",
@@ -224,6 +312,16 @@ impl Command {
             Self::SetTodoReminder { .. } => "set_todo_reminder",
         }
     }
+}
+
+/// Policy applied to a project's direct children when the project is deleted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectDeletionPolicy {
+    /// Direct to-dos return to the Inbox.
+    DetachChildren,
+    /// Direct to-dos go to Trash.
+    TrashChildren,
 }
 
 /// Policy applied to an area's contents when the area is deleted.
@@ -278,6 +376,21 @@ impl CommandEnvelope {
 pub enum DomainEvent {
     /// A to-do was created.
     TodoCreated {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A project was created.
+    ProjectCreated {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A project changed (title, notes, schedule, deadline, area, or status).
+    ProjectChanged {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A project was deleted.
+    ProjectDeleted {
         /// Entity identity.
         id: EntityId,
     },
@@ -370,7 +483,10 @@ impl DomainEvent {
     #[must_use]
     pub const fn entity_id(&self) -> EntityId {
         match self {
-            Self::AreaCreated { id }
+            Self::ProjectCreated { id }
+            | Self::ProjectChanged { id }
+            | Self::ProjectDeleted { id }
+            | Self::AreaCreated { id }
             | Self::AreaRenamed { id }
             | Self::AreaDeleted { id }
             | Self::TodoCreated { id }
@@ -445,6 +561,15 @@ pub enum CommandError {
     Storage(String),
 }
 
+/// Direct children of a project.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectChildren {
+    /// Direct to-do identities.
+    pub todo_ids: Vec<EntityId>,
+    /// Heading identities.
+    pub heading_ids: Vec<EntityId>,
+}
+
 /// Direct children of an area.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AreaChildren {
@@ -510,6 +635,28 @@ pub trait UnitOfWork: Send {
         account_id: AccountId,
         context: ContextRef,
     ) -> Result<Vec<(EntityId, crate::ordering::Rank)>, CommandError>;
+
+    /// Loads an account-scoped project.
+    async fn load_project(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<momentum_domain::model::Project>, CommandError>;
+
+    /// Persists a project, enforcing the expected version when updating.
+    async fn save_project(
+        &mut self,
+        account_id: AccountId,
+        project: &momentum_domain::model::Project,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError>;
+
+    /// Lists a project's direct to-dos and headings.
+    async fn list_project_children(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<ProjectChildren, CommandError>;
 
     /// Loads an account-scoped area.
     async fn load_area(
@@ -726,6 +873,184 @@ impl CommandDispatcher {
                 }
                 Ok((Some(*id), vec![event]))
             }
+            Command::CreateProject { title, area } => {
+                let title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let mut project = momentum_domain::model::Project::new(title, now);
+                project.area = *area;
+                unit.save_project(account_id, &project, None).await?;
+                if let Some(area_id) = area {
+                    unit.set_project_area(account_id, project.id(), Some(*area_id))
+                        .await?;
+                }
+                Ok((
+                    Some(project.id()),
+                    vec![DomainEvent::ProjectCreated { id: project.id() }],
+                ))
+            }
+            Command::RenameProject { id, title } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                project.title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let expected = project.meta.version;
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::SetProjectNotes { id, notes } => {
+                if notes.len() > momentum_domain::model::MAX_NOTES_LEN {
+                    return Err(CommandError::Validation("notes are too long".to_string()));
+                }
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                project.notes = notes.clone();
+                let expected = project.meta.version;
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::ScheduleProject { id, schedule } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                project.schedule = schedule.to_schedule()?;
+                let expected = project.meta.version;
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::SetProjectDeadline { id, deadline } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                project.deadline = deadline.map(Deadline::new);
+                let expected = project.meta.version;
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::CompleteProject { id, policy } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let children = unit.list_project_children(account_id, *id).await?;
+                let mut open_todos = Vec::new();
+                for todo_id in &children.todo_ids {
+                    if let Some(todo) = unit.load_todo(account_id, *todo_id).await? {
+                        if todo.is_open() {
+                            open_todos.push(todo);
+                        }
+                    }
+                }
+                let expected = project.meta.version;
+                let decision = project
+                    .complete(open_todos.len(), *policy, now)
+                    .map_err(|_| CommandError::Conflict {
+                        expected,
+                        actual: expected,
+                    })?;
+                if matches!(
+                    decision,
+                    momentum_domain::model::CompletionDecision::CascadeToChildren
+                ) {
+                    for mut todo in open_todos {
+                        let todo_expected = todo.meta.version;
+                        todo.complete(now);
+                        unit.save_todo(account_id, &todo, Some(todo_expected))
+                            .await?;
+                    }
+                }
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::CancelProject { id } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if project.status != Status::Deleted {
+                    project.status = Status::Canceled;
+                    project.canceled_at = Some(now);
+                    project.completed_at = None;
+                }
+                let expected = project.meta.version;
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::ReopenProject { id } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let expected = project.meta.version;
+                project.reopen(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::MoveProject { id, area } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let expected = project.meta.version;
+                project.area = *area;
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                unit.set_project_area(account_id, *id, *area).await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectChanged { id: *id }]))
+            }
+            Command::DeleteProject { id, policy } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let children = unit.list_project_children(account_id, *id).await?;
+                for todo_id in children.todo_ids {
+                    let Some(mut todo) = unit.load_todo(account_id, todo_id).await? else {
+                        continue;
+                    };
+                    if !todo.is_open() {
+                        continue;
+                    }
+                    let todo_expected = todo.meta.version;
+                    match policy {
+                        ProjectDeletionPolicy::DetachChildren => {
+                            todo.move_to(ContextRef::Inbox, now)
+                        }
+                        ProjectDeletionPolicy::TrashChildren => {
+                            todo.status = Status::Deleted;
+                            todo.meta.deleted_at = Some(now);
+                            todo.meta.touch(now);
+                        }
+                    }
+                    unit.save_todo(account_id, &todo, Some(todo_expected))
+                        .await?;
+                }
+                let expected = project.meta.version;
+                project.status = Status::Deleted;
+                project.meta.deleted_at = Some(now);
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectDeleted { id: *id }]))
+            }
             Command::CreateArea { title } => {
                 let title = Title::parse(title)
                     .map_err(|error| CommandError::Validation(error.to_string()))?;
@@ -831,7 +1156,17 @@ fn apply_to_todo(
         | Command::ReorderTodo { .. }
         | Command::CreateArea { .. }
         | Command::RenameArea { .. }
-        | Command::DeleteArea { .. } => Err(CommandError::Validation(
+        | Command::DeleteArea { .. }
+        | Command::CreateProject { .. }
+        | Command::RenameProject { .. }
+        | Command::SetProjectNotes { .. }
+        | Command::ScheduleProject { .. }
+        | Command::SetProjectDeadline { .. }
+        | Command::CompleteProject { .. }
+        | Command::CancelProject { .. }
+        | Command::ReopenProject { .. }
+        | Command::MoveProject { .. }
+        | Command::DeleteProject { .. } => Err(CommandError::Validation(
             "commands handled separately must not reach the generic path".to_string(),
         )),
         Command::SetTodoTitle { title, .. } => {
@@ -920,6 +1255,17 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
             vec![Projection::Inbox]
         }
         DomainEvent::TodoReordered { .. } => vec![Projection::Inbox, Projection::Anytime],
+        DomainEvent::ProjectCreated { .. }
+        | DomainEvent::ProjectChanged { .. }
+        | DomainEvent::ProjectDeleted { .. } => vec![
+            Projection::AllProjects,
+            Projection::LoggedProjects,
+            Projection::Today,
+            Projection::Upcoming,
+            Projection::Anytime,
+            Projection::Deadlines,
+            Projection::Logbook,
+        ],
         DomainEvent::AreaCreated { id } | DomainEvent::AreaRenamed { id } => {
             vec![Projection::Area(*id), Projection::AllProjects]
         }

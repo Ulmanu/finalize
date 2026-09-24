@@ -8,7 +8,8 @@ use momentum_app::commands::{
     ChangeRecord, CommandError, DomainEvent, UnitOfWork, UnitOfWorkFactory,
 };
 use momentum_domain::model::{
-    Area, ContextRef, Deadline, EntityMeta, Reminder, ReminderState, Schedule, Status, Title, Todo,
+    Area, ContextRef, Deadline, EntityMeta, Project, Reminder, ReminderState, Schedule, Status,
+    Title, Todo,
 };
 use momentum_domain::time::LocalDate;
 use momentum_domain::{AccountId, EntityId};
@@ -353,6 +354,200 @@ impl UnitOfWork for PgUnitOfWork {
         Ok(())
     }
 
+    async fn load_project(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<Project>, CommandError> {
+        let tx = self.tx()?;
+        let row = sqlx::query(
+            "select id, title, notes, status, schedule_kind, schedule_date, schedule_evening, \
+             deadline, completed_at, canceled_at, logged_at, deleted_at, created_at, updated_at, \
+             version, reminder_rule \
+             from entities where account_id = $1 and id = $2 and kind = 'project'",
+        )
+        .bind(account_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let title = Title::parse(row.get::<String, _>("title").as_str())
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+        let schedule_kind: String = row.get("schedule_kind");
+        let schedule_date: Option<chrono::NaiveDate> = row.get("schedule_date");
+        let evening: bool = row.get("schedule_evening");
+        let schedule = match schedule_kind.as_str() {
+            "someday" => Schedule::someday(),
+            "date" => {
+                let date = schedule_date
+                    .map(LocalDate::from_naive)
+                    .unwrap_or_else(|| LocalDate::from_ymd(1970, 1, 1).expect("epoch"));
+                Schedule::with_state(momentum_domain::model::ScheduleState::On(date), evening)
+                    .unwrap_or_else(|_| Schedule::on(date))
+            }
+            _ => Schedule::anytime(),
+        };
+        let reminder = row
+            .get::<Option<Value>, _>("reminder_rule")
+            .and_then(|value| serde_json::from_value::<Reminder>(value).ok());
+
+        Ok(Some(Project {
+            meta: EntityMeta {
+                id: EntityId::from_uuid(row.get("id")),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                version: row.get("version"),
+                deleted_at: row.get("deleted_at"),
+            },
+            title,
+            notes: row.get("notes"),
+            status: status_from_str(row.get::<String, _>("status").as_str()),
+            schedule,
+            deadline: row
+                .get::<Option<chrono::NaiveDate>, _>("deadline")
+                .map(|date| Deadline::new(LocalDate::from_naive(date))),
+            reminder,
+            area: None,
+            tags: std::collections::BTreeSet::new(),
+            completed_at: row.get("completed_at"),
+            canceled_at: row.get("canceled_at"),
+            logged_at: row.get("logged_at"),
+        }))
+    }
+
+    async fn save_project(
+        &mut self,
+        account_id: AccountId,
+        project: &Project,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        let schedule_kind = match project.schedule.state() {
+            momentum_domain::model::ScheduleState::Anytime => "anytime",
+            momentum_domain::model::ScheduleState::Someday => "someday",
+            momentum_domain::model::ScheduleState::On(_) => "date",
+        };
+        let schedule_date = project.schedule.date().map(|date| date.as_naive());
+        let reminder = project
+            .reminder
+            .as_ref()
+            .and_then(|reminder| serde_json::to_value(reminder).ok());
+
+        match expected_version {
+            None => {
+                sqlx::query(
+                    "insert into entities \
+                     (id, account_id, kind, title, notes, status, schedule_kind, schedule_date, \
+                      schedule_evening, deadline, completed_at, canceled_at, logged_at, deleted_at, \
+                      reminder_rule, created_at, updated_at, version) \
+                     values ($1, $2, 'project', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, \
+                             $14, $15, $16, $17)",
+                )
+                .bind(project.id().as_uuid())
+                .bind(account_id.as_uuid())
+                .bind(project.title.as_str())
+                .bind(&project.notes)
+                .bind(project.status.as_str())
+                .bind(schedule_kind)
+                .bind(schedule_date)
+                .bind(project.schedule.is_evening())
+                .bind(project.deadline.map(|deadline| deadline.date.as_naive()))
+                .bind(project.completed_at)
+                .bind(project.canceled_at)
+                .bind(project.logged_at)
+                .bind(project.meta.deleted_at)
+                .bind(reminder)
+                .bind(project.meta.created_at)
+                .bind(project.meta.updated_at)
+                .bind(project.meta.version)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+            }
+            Some(expected) => {
+                let result = sqlx::query(
+                    "update entities set title = $3, notes = $4, status = $5, schedule_kind = $6, \
+                     schedule_date = $7, schedule_evening = $8, deadline = $9, completed_at = $10, \
+                     canceled_at = $11, logged_at = $12, deleted_at = $13, reminder_rule = $14, \
+                     updated_at = $15, version = version + 1 \
+                     where account_id = $1 and id = $2 and version = $16 and kind = 'project'",
+                )
+                .bind(account_id.as_uuid())
+                .bind(project.id().as_uuid())
+                .bind(project.title.as_str())
+                .bind(&project.notes)
+                .bind(project.status.as_str())
+                .bind(schedule_kind)
+                .bind(schedule_date)
+                .bind(project.schedule.is_evening())
+                .bind(project.deadline.map(|deadline| deadline.date.as_naive()))
+                .bind(project.completed_at)
+                .bind(project.canceled_at)
+                .bind(project.logged_at)
+                .bind(project.meta.deleted_at)
+                .bind(reminder)
+                .bind(project.meta.updated_at)
+                .bind(expected)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+                if result.rows_affected() == 0 {
+                    let actual: Option<i64> = sqlx::query_scalar(
+                        "select version from entities where account_id = $1 and id = $2",
+                    )
+                    .bind(account_id.as_uuid())
+                    .bind(project.id().as_uuid())
+                    .fetch_optional(&mut **tx)
+                    .await
+                    .map_err(storage)?;
+                    return match actual {
+                        Some(actual) => Err(CommandError::Conflict { expected, actual }),
+                        None => Err(CommandError::NotFound),
+                    };
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn list_project_children(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<momentum_app::commands::ProjectChildren, CommandError> {
+        let tx = self.tx()?;
+        let todo_ids: Vec<Uuid> = sqlx::query_scalar(
+            "select e.id from entities e \
+             join placements p on p.entity_id = e.id and p.scope = 'context' \
+             where e.account_id = $1 and e.kind = 'todo' and e.status <> 'deleted' \
+             and p.parent_kind = 'project' and p.parent_id = $2",
+        )
+        .bind(account_id.as_uuid())
+        .bind(project_id.as_uuid())
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
+        let heading_ids: Vec<Uuid> = sqlx::query_scalar(
+            "select e.id from entities e \
+             join placements p on p.entity_id = e.id and p.scope = 'context' \
+             where e.account_id = $1 and e.kind = 'heading' \
+             and p.parent_kind = 'project' and p.parent_id = $2",
+        )
+        .bind(account_id.as_uuid())
+        .bind(project_id.as_uuid())
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(momentum_app::commands::ProjectChildren {
+            todo_ids: todo_ids.into_iter().map(EntityId::from_uuid).collect(),
+            heading_ids: heading_ids.into_iter().map(EntityId::from_uuid).collect(),
+        })
+    }
+
     async fn load_area(
         &mut self,
         account_id: AccountId,
@@ -663,6 +858,9 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::TodoCreated { .. } => "todo_created",
                 DomainEvent::TodoDuplicated { .. } => "todo_duplicated",
                 DomainEvent::TodoReordered { .. } => "todo_reordered",
+                DomainEvent::ProjectCreated { .. } => "project_created",
+                DomainEvent::ProjectChanged { .. } => "project_changed",
+                DomainEvent::ProjectDeleted { .. } => "project_deleted",
                 DomainEvent::AreaCreated { .. } => "area_created",
                 DomainEvent::AreaRenamed { .. } => "area_renamed",
                 DomainEvent::AreaDeleted { .. } => "area_deleted",

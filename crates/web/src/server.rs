@@ -13,6 +13,7 @@ use leptos::config::LeptosOptions;
 use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use momentum_app::areas::AreaService;
+use momentum_app::projects::ProjectService;
 use momentum_app::todos::TodoService;
 use momentum_infra::Database;
 use serde::Serialize;
@@ -20,6 +21,7 @@ use serde::Serialize;
 use crate::app::{shell, App};
 use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
+use crate::project_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
 use crate::todo_routes;
 
@@ -48,6 +50,8 @@ pub struct AppState {
     pub todos: Option<Arc<TodoService>>,
     /// Area service, when persistence is configured.
     pub areas: Option<Arc<AreaService>>,
+    /// Project service, when persistence is configured.
+    pub projects: Option<Arc<ProjectService>>,
 }
 
 impl AppState {
@@ -60,6 +64,7 @@ impl AppState {
         auth: Option<Arc<AuthContext>>,
         todos: Option<Arc<TodoService>>,
         areas: Option<Arc<AreaService>>,
+        projects: Option<Arc<ProjectService>>,
     ) -> Self {
         Self {
             leptos_options,
@@ -68,6 +73,7 @@ impl AppState {
             auth,
             todos,
             areas,
+            projects,
         }
     }
 
@@ -78,6 +84,7 @@ impl AppState {
             leptos_options,
             None,
             Arc::new(AnonymousSessionResolver),
+            None,
             None,
             None,
             None,
@@ -134,7 +141,9 @@ pub fn router(options: LeptosOptions) -> Router {
 ///
 /// Exposed so tests can inject deterministic resolvers without changing route code.
 pub fn router_with_session(options: LeptosOptions, resolver: Arc<dyn SessionResolver>) -> Router {
-    router_with_state(AppState::new(options, None, resolver, None, None, None))
+    router_with_state(AppState::new(
+        options, None, resolver, None, None, None, None,
+    ))
 }
 
 /// Builds the application router with explicit state.
@@ -144,6 +153,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let shell_options = state.leptos_options.clone();
     let todo_service = state.todos.clone();
     let area_service = state.areas.clone();
+    let project_service = state.projects.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -153,12 +163,14 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(auth_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())
+        .merge(project_routes::routes())
         .leptos_routes_with_context(
             &state,
             paths,
             move || {
                 provide_context(todo_service.clone());
                 provide_context(area_service.clone());
+                provide_context(project_service.clone());
             },
             move || shell(shell_options.clone()),
         )

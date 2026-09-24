@@ -359,6 +359,28 @@ Agent: opencode (deepseek-v4.1-flash)
   stay loose; area ordering reuses the context/inbox placement scope (documented).
 - Live integrations not verified: PostgreSQL area paths (no database).
 
+### 14 — `add-projects` — COMPLETE
+
+- Start: 2026-09-24 12:45 · End: 2026-09-24 13:35
+- Proposal validation: strict validation passed before apply.
+- Implementation: project commands (create/rename/notes/schedule/deadline/complete with
+  `ProjectCompletionPolicy`/cancel/reopen/move-to-area/delete with `ProjectDeletionPolicy`);
+  unit-of-work project load/save and direct-child listing (memory + PostgreSQL); `ProjectSummary`
+  (with derived progress), `ProjectReadStore`, `ProjectService`; `/projects` list and
+  `/projects/:project_id` detail with notes editor, schedule form, lifecycle controls, direct
+  to-dos, and create-in-project; `TodoService::create_in` + context-aware create form.
+- Migrations: none.
+- Tests: 6 project tests (create/list/rename, notes+schedule independence from children,
+  membership via create-in-project, reject vs cascade completion, detach vs trash deletion);
+  fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual; all requirement scenarios covered. No critical findings.
+- Archive: `2026-09-24-add-projects`; canonical `features/projects` spec created; strict
+  validation pass.
+- Commit: `feat(14): add projects`
+- Decisions: completion and deletion require explicit policies; children keep canonical
+  identity across projections; project ordering/membership reuse placement ranks.
+- Live integrations not verified: PostgreSQL project paths (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -378,9 +400,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 11 | add-todo-crud | COMPLETE | `feat(11)` |
 | 12 | add-inbox | COMPLETE | `feat(12)` |
 | 13 | add-areas | COMPLETE | `feat(13)` |
+| 14 | add-projects | COMPLETE | `feat(14)` |
 
-- Completed proposal range: 01–13 (13 of 74).
-- Incomplete: 14–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–14 (14 of 74).
+- Incomplete: 15–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

@@ -16,6 +16,7 @@ use crate::design::CheckControl;
 use crate::layouts::{Protected, PublicLayout};
 use crate::session::use_account;
 use momentum_app::areas::{AreaService, AreaSummary};
+use momentum_app::projects::{ProjectService, ProjectSummary};
 use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::Status;
 
@@ -258,45 +259,11 @@ list_route_page!(
     "Deferred items kept out of the way."
 );
 list_route_page!(LogbookPage, "Logbook", "Completed and canceled items.");
-list_route_page!(ProjectsPage, "Projects", "All open projects.");
 list_route_page!(
     SettingsPage,
     "Settings",
     "Preferences and account settings."
 );
-
-/// Generic entity detail page; feature content arrives with its capability.
-#[component]
-fn EntityPage(#[prop(into)] kind: String, #[prop(into)] id: String) -> impl IntoView {
-    let heading = format!("{kind} {id}");
-    view! {
-        <section class="entity-page" data-testid="entity-page">
-            <header class="entity-header">
-                <h1 class="entity-title">{heading}</h1>
-            </header>
-            <div class="entity-empty">
-                <p>"This destination is addressable; its content arrives with its capability."</p>
-            </div>
-        </section>
-    }
-}
-
-macro_rules! entity_route_page {
-    ($component:ident, $kind:literal, $param:literal) => {
-        #[component]
-        pub fn $component() -> impl IntoView {
-            let params = use_params_map();
-            let id = move || params.read().get($param).unwrap_or_default();
-            view! {
-                <Protected>
-                    {move || view! { <EntityPage kind=$kind id=id()/> }}
-                </Protected>
-            }
-        }
-    };
-}
-
-entity_route_page!(ProjectPage, "Project", "project_id");
 
 /// Public catalog of every design-system primitive.
 ///
@@ -1070,5 +1037,336 @@ fn AreaDetail(#[prop(into)] id: String) -> impl IntoView {
                 }}
             </Suspense>
         </section>
+    }
+}
+
+/// Projects overview with create controls and derived progress.
+#[component]
+pub fn ProjectsPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <ProjectsList/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn ProjectsList() -> impl IntoView {
+    let service = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let account = use_account();
+    let projects = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="projects-page">
+            <header class="list-header">
+                <h1 class="list-title">"Projects"</h1>
+                <p class="list-description">"All open projects."</p>
+            </header>
+            <form method="post" action="/projects" class="add-form" data-testid="add-project-form">
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="New project"
+                    aria-label="New project"
+                    autocomplete="off"
+                    required=true
+                />
+                <button type="submit" class="button-primary">"Add"</button>
+            </form>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    projects
+                        .get()
+                        .map(|projects| {
+                            if projects.is_empty() {
+                                view! {
+                                    <div class="list-empty" data-testid="projects-empty">
+                                        <p>"No projects yet."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <ul class="task-list" data-testid="project-list">
+                                        {projects
+                                            .into_iter()
+                                            .map(|project| view! { <ProjectListRow project=project/> })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn ProjectListRow(project: ProjectSummary) -> impl IntoView {
+    let id = project.id;
+    let title = project.title.clone();
+    let counts = format!(
+        "{} open · {} done",
+        project.open_count, project.completed_count
+    );
+    let open_target = format!("/projects/{id}");
+
+    view! {
+        <li class="task-row" data-testid="project-row">
+            <div class="task-row-body">
+                <a class="task-title" href=open_target>{title}</a>
+                <span class="task-row-meta">
+                    <span class="row-badge">{counts}</span>
+                    {project
+                        .schedule
+                        .date()
+                        .map(|date| {
+                            view! {
+                                <span class="row-badge date-badge">{format!("When: {date}")}</span>
+                            }
+                        })}
+                </span>
+            </div>
+        </li>
+    }
+}
+
+/// Project detail with notes, lifecycle controls, and direct to-dos.
+#[component]
+pub fn ProjectPage() -> impl IntoView {
+    let params = use_params_map();
+    let id = move || params.read().get("project_id").unwrap_or_default();
+    view! {
+        <Protected>
+            {move || view! { <ProjectDetail id=id()/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
+    let project_service = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let todo_service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let account = use_account();
+    let account_for_project = account.clone();
+    let parsed = id.parse::<momentum_domain::EntityId>().ok();
+
+    let project = AsyncDerived::new(move || {
+        let service = project_service.clone();
+        let account = account_for_project.clone();
+        async move {
+            match (service, account, parsed) {
+                (Some(service), Some(account), Some(id)) => {
+                    service.get(account.account_id, id).await.ok().flatten()
+                }
+                _ => None,
+            }
+        }
+    });
+
+    let children = AsyncDerived::new(move || {
+        let service = todo_service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, TodoScope::AllOpen)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|todo| {
+                        parsed.is_some_and(|id| {
+                            todo.context == momentum_domain::model::ContextRef::Project(id)
+                        })
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="entity-page" data-testid="project-detail">
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    project
+                        .get()
+                        .map(|project| {
+                            project.map_or_else(
+                                || {
+                                    view! {
+                                        <header class="entity-header">
+                                            <h1 class="entity-title">"Project not found"</h1>
+                                            <p>
+                                                <a href="/projects">"Back to Projects"</a>
+                                            </p>
+                                        </header>
+                                    }
+                                        .into_any()
+                                },
+                                |project| view! { <ProjectDetailBody project=project/> }.into_any(),
+                            )
+                        })
+                }}
+            </Suspense>
+            <h2 class="section-heading">"To-Dos"</h2>
+            <form method="post" action="/todos" class="add-form">
+                <input type="hidden" name="return_to" value=format!("/projects/{id}")/>
+                <input type="hidden" name="context_kind" value="project"/>
+                <input type="hidden" name="context_id" value=id.clone()/>
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="New to-do in this project"
+                    aria-label="New to-do in this project"
+                    autocomplete="off"
+                    required=true
+                />
+                <button type="submit" class="button-primary">"Add"</button>
+            </form>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    children
+                        .get()
+                        .map(|todos| {
+                            if todos.is_empty() {
+                                view! {
+                                    <div class="list-empty" data-testid="project-children-empty">
+                                        <p>"No to-dos in this project."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <ul class="task-list" data-testid="project-children">
+                                        {todos
+                                            .into_iter()
+                                            .map(|todo| view! { <TodoRow todo=todo/> })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn ProjectDetailBody(project: ProjectSummary) -> impl IntoView {
+    let id = project.id;
+    let title = project.title.clone();
+    let notes = project.notes.clone();
+    let rename_target = format!("/projects/{id}/rename");
+    let notes_target = format!("/projects/{id}/notes");
+    let complete_target = format!("/projects/{id}/complete");
+    let cancel_target = format!("/projects/{id}/cancel");
+    let reopen_target = format!("/projects/{id}/reopen");
+    let schedule_target = format!("/projects/{id}/schedule");
+    let delete_target = format!("/projects/{id}/delete");
+    let schedule = project
+        .schedule
+        .date()
+        .map_or_else(|| "Anytime".to_string(), |date| date.to_string());
+    let deadline = project
+        .deadline
+        .map_or_else(|| "None".to_string(), |deadline| deadline.date.to_string());
+    let counts = format!(
+        "{} open · {} done",
+        project.open_count, project.completed_count
+    );
+
+    view! {
+        <header class="entity-header">
+            <h1 class="entity-title" data-testid="project-title">
+                {title.clone()}
+            </h1>
+            <p class="todo-meta">
+                <span data-testid="project-status">
+                    {format!("Status: {}", project.status.as_str())}
+                </span>
+                " · "
+                <span>{format!("When: {schedule}")}</span>
+                " · "
+                <span>{format!("Deadline: {deadline}")}</span>
+                " · "
+                <span data-testid="project-counts">{counts}</span>
+            </p>
+        </header>
+
+        <form method="post" action=rename_target class="auth-form">
+            <label class="form-field">
+                <span>"Title"</span>
+                <input type="text" name="title" value=title aria-label="Project title"/>
+            </label>
+            <button type="submit" class="button-secondary">"Rename"</button>
+        </form>
+
+        <form method="post" action=notes_target class="auth-form">
+            <label class="form-field">
+                <span>"Notes"</span>
+                <textarea name="notes" rows="5" aria-label="Project notes">
+                    {notes}
+                </textarea>
+            </label>
+            <button type="submit" class="button-secondary">"Save notes"</button>
+        </form>
+
+        <form method="post" action=schedule_target class="auth-form">
+            <label class="form-field">
+                <span>"When"</span>
+                <select name="when" aria-label="Project when">
+                    <option value="today">"Today"</option>
+                    <option value="evening">"This Evening"</option>
+                    <option value="tomorrow">"Tomorrow"</option>
+                    <option value="someday">"Someday"</option>
+                    <option value="anytime">"Anytime"</option>
+                    <option value="date">"On a date"</option>
+                </select>
+            </label>
+            <label class="form-field">
+                <span>"Date (for On a date)"</span>
+                <input type="date" name="date" aria-label="Project schedule date"/>
+            </label>
+            <button type="submit" class="button-secondary">"Apply schedule"</button>
+        </form>
+
+        <div class="todo-actions">
+            <form method="post" action=complete_target class="row-schedule">
+                <select name="policy" aria-label="Completion policy">
+                    <option value="reject">"Only when empty"</option>
+                    <option value="cascade">"Complete children"</option>
+                </select>
+                <button type="submit" class="button-secondary">"Complete"</button>
+            </form>
+            <form method="post" action=cancel_target>
+                <button type="submit" class="button-secondary">"Cancel"</button>
+            </form>
+            <form method="post" action=reopen_target>
+                <button type="submit" class="button-secondary">"Reopen"</button>
+            </form>
+            <form method="post" action=delete_target class="row-schedule">
+                <select name="policy" aria-label="Deletion policy">
+                    <option value="detach">"Keep children"</option>
+                    <option value="trash">"Trash children"</option>
+                </select>
+                <button type="submit" class="button-secondary">"Delete"</button>
+            </form>
+        </div>
     }
 }

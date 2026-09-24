@@ -6,10 +6,11 @@ use std::sync::Arc;
 use momentum_app::areas::AreaService;
 use momentum_app::auth::AuthService;
 use momentum_app::commands::CommandDispatcher;
+use momentum_app::projects::ProjectService;
 use momentum_app::todos::TodoService;
 use momentum_infra::{
-    Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgTodoReadStore, PgUnitOfWorkFactory,
-    RandomTokenGenerator, ServerConfig, SystemClock,
+    Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgProjectReadStore, PgTodoReadStore,
+    PgUnitOfWorkFactory, RandomTokenGenerator, ServerConfig, SystemClock,
 };
 use momentum_web::auth_routes::AuthContext;
 use momentum_web::server::{self, AppState};
@@ -28,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ServerConfig::from_env()?;
     let database = connect_database(&config).await?;
 
-    let (session_resolver, auth, todos, areas): (Arc<dyn SessionResolver>, _, _, _) =
+    let (session_resolver, auth, todos, areas, projects): (Arc<dyn SessionResolver>, _, _, _, _) =
         match &database {
             Some(database) => {
                 let store = Arc::new(PgAuthStore::new(database.pool().clone()));
@@ -53,16 +54,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Arc::new(TodoService::new(dispatcher.clone(), reader, clock.clone()));
 
                 let area_reader = Arc::new(PgAreaReadStore::new(database.pool().clone()));
-                let area_service = Arc::new(AreaService::new(dispatcher, area_reader, clock));
+                let area_service = Arc::new(AreaService::new(
+                    dispatcher.clone(),
+                    area_reader,
+                    clock.clone(),
+                ));
+
+                let project_reader = Arc::new(PgProjectReadStore::new(database.pool().clone()));
+                let project_service =
+                    Arc::new(ProjectService::new(dispatcher, project_reader, clock));
 
                 (
                     Arc::new(CookieSessionResolver::new(service)),
                     Some(context),
                     Some(todo_service),
                     Some(area_service),
+                    Some(project_service),
                 )
             }
-            None => (Arc::new(AnonymousSessionResolver), None, None, None),
+            None => (Arc::new(AnonymousSessionResolver), None, None, None, None),
         };
 
     let state = AppState::new(
@@ -72,6 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         auth,
         todos,
         areas,
+        projects,
     );
     let router = server::router_with_state(state);
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
