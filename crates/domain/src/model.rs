@@ -837,6 +837,12 @@ pub struct Tag {
 }
 
 impl Tag {
+    /// Returns the canonical identity.
+    #[must_use]
+    pub const fn id(&self) -> EntityId {
+        self.meta.id
+    }
+
     /// Creates a tag.
     #[must_use]
     pub fn new(title: Title, parent: Option<EntityId>, now: DateTime<Utc>) -> Self {

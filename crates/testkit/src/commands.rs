@@ -9,7 +9,7 @@ use momentum_app::commands::{
     AreaChildren, ChangeRecord, CommandError, ProjectChildren, UnitOfWork, UnitOfWorkFactory,
 };
 use momentum_app::ordering::{OrderedItem, OrderingScope, Rank, ScopeOrder};
-use momentum_domain::model::{Area, ContextRef, Heading, Project, Todo};
+use momentum_domain::model::{Area, ContextRef, Heading, Project, Tag, Todo};
 use momentum_domain::{AccountId, EntityId};
 use uuid::Uuid;
 
@@ -19,6 +19,7 @@ struct MemoryState {
     areas: HashMap<(AccountId, EntityId), Area>,
     projects: HashMap<(AccountId, EntityId), Project>,
     headings: HashMap<(AccountId, EntityId), Heading>,
+    tags: HashMap<(AccountId, EntityId), (Tag, i64)>,
     project_areas: HashMap<(AccountId, EntityId), EntityId>,
     changes: Vec<(AccountId, ChangeRecord)>,
     context_ranks: HashMap<(AccountId, EntityId), Rank>,
@@ -92,6 +93,71 @@ impl MemoryDatabase {
             .filter(|((account, _), _)| *account == account_id)
             .map(|(_, heading)| heading.clone())
             .collect()
+    }
+
+    /// Returns a stored tag with its sibling position.
+    #[must_use]
+    pub fn tag(&self, account_id: AccountId, id: EntityId) -> Option<(Tag, i64)> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .tags
+            .get(&(account_id, id))
+            .cloned()
+    }
+
+    /// Returns every tag stored for an account with its sibling position.
+    #[must_use]
+    pub fn tags_for(&self, account_id: AccountId) -> Vec<(Tag, i64)> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .tags
+            .iter()
+            .filter(|((account, _), _)| *account == account_id)
+            .map(|(_, entry)| entry.clone())
+            .collect()
+    }
+
+    /// Returns tags inherited from a to-do's contextual parent chain.
+    #[must_use]
+    pub fn inherited_tags(&self, account_id: AccountId, context: ContextRef) -> Vec<EntityId> {
+        let state = self.state.lock().expect("memory state lock");
+        Self::inherited_tags_locked(&state, account_id, context)
+    }
+
+    fn inherited_tags_locked(
+        state: &MemoryState,
+        account_id: AccountId,
+        context: ContextRef,
+    ) -> Vec<EntityId> {
+        let mut result = std::collections::BTreeSet::new();
+        let mut project_id = match context {
+            ContextRef::Project(id) => Some(id),
+            ContextRef::Heading(id) => state
+                .headings
+                .get(&(account_id, id))
+                .map(|heading| heading.project),
+            _ => None,
+        };
+        if let ContextRef::Area(id) = context {
+            if let Some(area) = state.areas.get(&(account_id, id)) {
+                result.extend(area.tags.iter().copied());
+            }
+        }
+        if let Some(project) = project_id {
+            if let Some(project) = state.projects.get(&(account_id, project)) {
+                result.extend(project.tags.iter().copied());
+            }
+            if let Some(area) = state.project_areas.get(&(account_id, project)) {
+                if let Some(area) = state.areas.get(&(account_id, *area)) {
+                    result.extend(area.tags.iter().copied());
+                }
+            }
+        }
+        project_id = None;
+        let _ = project_id;
+        result.into_iter().collect()
     }
 
     /// Returns a stored project.
@@ -241,6 +307,8 @@ impl MemoryDatabase {
                         completed: item.completed,
                     })
                     .collect(),
+                tags: todo.tags.iter().copied().collect(),
+                inherited_tags: Self::inherited_tags_locked(&state, account_id, todo.context),
             })
             .collect()
     }
@@ -414,6 +482,56 @@ impl UnitOfWork for MemoryUnitOfWork {
             todo_ids,
             heading_ids,
         })
+    }
+
+    async fn load_tag(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<Tag>, CommandError> {
+        Ok(self.database.tag(account_id, id).map(|(tag, _)| tag))
+    }
+
+    async fn save_tag(
+        &mut self,
+        account_id: AccountId,
+        tag: &Tag,
+        position: i64,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        if let Some(expected) = expected_version {
+            let actual = state
+                .tags
+                .get(&(account_id, tag.id()))
+                .map_or(0, |(current, _)| current.meta.version);
+            if actual != expected {
+                return Err(CommandError::Conflict { expected, actual });
+            }
+        }
+        state
+            .tags
+            .insert((account_id, tag.id()), (tag.clone(), position));
+        Ok(())
+    }
+
+    async fn list_tags(&mut self, account_id: AccountId) -> Result<Vec<(Tag, i64)>, CommandError> {
+        Ok(self.database.tags_for(account_id))
+    }
+
+    async fn delete_tag(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        state.tags.remove(&(account_id, id));
+        for ((account, _), todo) in state.todos.iter_mut() {
+            if *account == account_id {
+                todo.tags.remove(&id);
+            }
+        }
+        Ok(())
     }
 
     async fn load_area(

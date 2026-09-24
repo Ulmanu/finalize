@@ -12,6 +12,7 @@ pub mod commands;
 pub mod ordering;
 pub mod projects;
 pub mod session;
+pub mod tags;
 pub mod todos;
 pub mod undo;
 

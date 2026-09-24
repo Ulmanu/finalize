@@ -230,3 +230,17 @@ alter table entities add column if not exists archived boolean not null default 
 
 /// Rollback SQL for migration 0003.
 pub const ENTITY_ARCHIVED_DOWN: &str = "alter table entities drop column if exists archived;";
+
+/// Forward SQL for migration 0004: persist tag hierarchy and sibling order.
+pub const TAG_HIERARCHY_UP: &str = r"
+-- Tags nest through tag_parent and order among siblings through tag_position; both live on the
+-- shared entity row so tag reads stay single-table.
+alter table entities add column if not exists tag_parent uuid;
+alter table entities add column if not exists tag_position integer not null default 0;
+";
+
+/// Rollback SQL for migration 0004.
+pub const TAG_HIERARCHY_DOWN: &str = "
+alter table entities drop column if exists tag_parent;
+alter table entities drop column if exists tag_position;
+";

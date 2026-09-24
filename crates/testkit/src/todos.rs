@@ -91,6 +91,8 @@ impl TodoReadStore for MemoryTodoReadStore {
                     completed: item.completed,
                 })
                 .collect(),
+            tags: todo.tags.iter().copied().collect(),
+            inherited_tags: self.database.inherited_tags(account_id, todo.context),
         }))
     }
 }

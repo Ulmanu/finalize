@@ -70,6 +70,10 @@ pub struct TodoSummary {
     pub version: i64,
     /// Ordered checklist items.
     pub checklist: Vec<ChecklistItemSummary>,
+    /// Directly assigned tags.
+    pub tags: Vec<EntityId>,
+    /// Tags inherited from the contextual parent (project/area), without direct assignment.
+    pub inherited_tags: Vec<EntityId>,
 }
 
 /// Scope of a to-do listing.

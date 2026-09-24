@@ -738,6 +738,164 @@ impl UnitOfWork for PgUnitOfWork {
         })
     }
 
+    async fn load_tag(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<momentum_domain::model::Tag>, CommandError> {
+        let tx = self.tx()?;
+        let row = sqlx::query(
+            "select id, title, tag_parent, created_at, updated_at, version, deleted_at \
+             from entities where account_id = $1 and id = $2 and kind = 'tag'",
+        )
+        .bind(account_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let title = Title::parse(row.get::<String, _>("title").as_str())
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+        Ok(Some(momentum_domain::model::Tag {
+            meta: EntityMeta {
+                id: EntityId::from_uuid(row.get("id")),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                version: row.get("version"),
+                deleted_at: row.get("deleted_at"),
+            },
+            title,
+            parent: row
+                .get::<Option<Uuid>, _>("tag_parent")
+                .map(EntityId::from_uuid),
+        }))
+    }
+
+    async fn save_tag(
+        &mut self,
+        account_id: AccountId,
+        tag: &momentum_domain::model::Tag,
+        position: i64,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        match expected_version {
+            None => {
+                sqlx::query(
+                    "insert into entities \
+                     (id, account_id, kind, title, notes, status, tag_parent, tag_position, \
+                      created_at, updated_at, version) \
+                     values ($1, $2, 'tag', $3, '', 'open', $4, $5, $6, $7, $8)",
+                )
+                .bind(tag.id().as_uuid())
+                .bind(account_id.as_uuid())
+                .bind(tag.title.as_str())
+                .bind(tag.parent.map(|parent| parent.as_uuid()))
+                .bind(position)
+                .bind(tag.meta.created_at)
+                .bind(tag.meta.updated_at)
+                .bind(tag.meta.version)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+            }
+            Some(expected) => {
+                let updated = sqlx::query(
+                    "update entities set title = $3, tag_parent = $4, tag_position = $5, \
+                     updated_at = $6, version = $7 \
+                     where account_id = $1 and id = $2 and version = $8",
+                )
+                .bind(account_id.as_uuid())
+                .bind(tag.id().as_uuid())
+                .bind(tag.title.as_str())
+                .bind(tag.parent.map(|parent| parent.as_uuid()))
+                .bind(position)
+                .bind(tag.meta.updated_at)
+                .bind(tag.meta.version)
+                .bind(expected)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+                if updated.rows_affected() == 0 {
+                    let actual: Option<i64> = sqlx::query_scalar(
+                        "select version from entities where account_id = $1 and id = $2",
+                    )
+                    .bind(account_id.as_uuid())
+                    .bind(tag.id().as_uuid())
+                    .fetch_optional(&mut **tx)
+                    .await
+                    .map_err(storage)?;
+                    return match actual {
+                        Some(actual) => Err(CommandError::Conflict { expected, actual }),
+                        None => Err(CommandError::NotFound),
+                    };
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn list_tags(
+        &mut self,
+        account_id: AccountId,
+    ) -> Result<Vec<(momentum_domain::model::Tag, i64)>, CommandError> {
+        let tx = self.tx()?;
+        let rows = sqlx::query(
+            "select id, title, tag_parent, tag_position, created_at, updated_at, version, \
+             deleted_at from entities where account_id = $1 and kind = 'tag' \
+             order by tag_position asc, created_at asc, id asc",
+        )
+        .bind(account_id.as_uuid())
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
+        let mut tags = Vec::with_capacity(rows.len());
+        for row in rows {
+            let title = Title::parse(row.get::<String, _>("title").as_str())
+                .map_err(|error| CommandError::Storage(error.to_string()))?;
+            tags.push((
+                momentum_domain::model::Tag {
+                    meta: EntityMeta {
+                        id: EntityId::from_uuid(row.get("id")),
+                        created_at: row.get("created_at"),
+                        updated_at: row.get("updated_at"),
+                        version: row.get("version"),
+                        deleted_at: row.get("deleted_at"),
+                    },
+                    title,
+                    parent: row
+                        .get::<Option<Uuid>, _>("tag_parent")
+                        .map(EntityId::from_uuid),
+                },
+                row.get("tag_position"),
+            ));
+        }
+        Ok(tags)
+    }
+
+    async fn delete_tag(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        sqlx::query("delete from tag_assignments where account_id = $1 and tag_id = $2")
+            .bind(account_id.as_uuid())
+            .bind(id.as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        sqlx::query("delete from entities where account_id = $1 and id = $2 and kind = 'tag'")
+            .bind(account_id.as_uuid())
+            .bind(id.as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        Ok(())
+    }
+
     async fn load_area(
         &mut self,
         account_id: AccountId,
@@ -1071,6 +1229,11 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::TodoDeadlineChanged { .. } => "todo_deadline_changed",
                 DomainEvent::TodoReminderChanged { .. } => "todo_reminder_changed",
                 DomainEvent::ChecklistChanged { .. } => "checklist_changed",
+                DomainEvent::TagCreated { .. } => "tag_created",
+                DomainEvent::TagChanged { .. } => "tag_changed",
+                DomainEvent::TagDeleted { .. } => "tag_deleted",
+                DomainEvent::TagAssigned { .. } => "tag_assigned",
+                DomainEvent::TagUnassigned { .. } => "tag_unassigned",
             });
 
         let payload = serde_json::to_value(&record.events)

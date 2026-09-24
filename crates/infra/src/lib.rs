@@ -12,6 +12,7 @@ pub mod commands;
 pub mod config;
 pub mod db;
 pub mod projects;
+pub mod tags;
 pub mod todos;
 
 pub use areas::PgAreaReadStore;
@@ -20,4 +21,5 @@ pub use commands::PgUnitOfWorkFactory;
 pub use config::{ConfigError, ServerConfig};
 pub use db::{Database, DbError, Migration, MigrationError, MIGRATIONS};
 pub use projects::PgProjectReadStore;
+pub use tags::PgTagReadStore;
 pub use todos::PgTodoReadStore;

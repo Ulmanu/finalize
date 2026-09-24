@@ -47,6 +47,13 @@ pub const MIGRATIONS: &[Migration] = &[
         down: Some(schema::ENTITY_ARCHIVED_DOWN),
         irreversible_reason: None,
     },
+    Migration {
+        version: 4,
+        name: "tag-hierarchy",
+        up: schema::TAG_HIERARCHY_UP,
+        down: Some(schema::TAG_HIERARCHY_DOWN),
+        irreversible_reason: None,
+    },
 ];
 
 /// Migration failures.

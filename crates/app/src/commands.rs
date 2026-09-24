@@ -247,6 +247,53 @@ pub enum Command {
         /// Entity to restore.
         id: EntityId,
     },
+    /// Creates a tag.
+    CreateTag {
+        /// Tag title.
+        title: String,
+        /// Parent tag, when nested.
+        parent: Option<EntityId>,
+    },
+    /// Renames a tag.
+    RenameTag {
+        /// Tag to rename.
+        id: EntityId,
+        /// New title.
+        title: String,
+    },
+    /// Moves a tag to a new parent (or to the top level).
+    MoveTag {
+        /// Tag to move.
+        id: EntityId,
+        /// Destination parent, or `None` for top level.
+        parent: Option<EntityId>,
+    },
+    /// Moves a tag one position up or down among its siblings.
+    ReorderTag {
+        /// Tag to move.
+        id: EntityId,
+        /// Direction among siblings.
+        direction: ReorderDirection,
+    },
+    /// Deletes a tag, reparenting its children to its own parent.
+    DeleteTag {
+        /// Tag to delete.
+        id: EntityId,
+    },
+    /// Assigns a tag to an open entity (to-do, project, or area).
+    AssignTag {
+        /// Entity to tag.
+        entity: EntityId,
+        /// Tag to assign.
+        tag: EntityId,
+    },
+    /// Removes a tag from an open entity (to-do, project, or area).
+    UnassignTag {
+        /// Entity to update.
+        entity: EntityId,
+        /// Tag to remove.
+        tag: EntityId,
+    },
     /// Adds a checklist item to a to-do.
     AddChecklistItem {
         /// Parent to-do.
@@ -333,7 +380,8 @@ impl Command {
             Self::CreateTodo { .. }
             | Self::CreateArea { .. }
             | Self::CreateProject { .. }
-            | Self::CreateHeading { .. } => None,
+            | Self::CreateHeading { .. }
+            | Self::CreateTag { .. } => None,
             Self::RenameArea { id, .. }
             | Self::DeleteArea { id, .. }
             | Self::RenameProject { id, .. }
@@ -348,7 +396,12 @@ impl Command {
             | Self::RenameHeading { id, .. }
             | Self::ReorderHeading { id, .. }
             | Self::ArchiveHeading { id }
-            | Self::RestoreHeading { id } => Some(*id),
+            | Self::RestoreHeading { id }
+            | Self::RenameTag { id, .. }
+            | Self::MoveTag { id, .. }
+            | Self::ReorderTag { id, .. }
+            | Self::DeleteTag { id } => Some(*id),
+            Self::AssignTag { entity, .. } | Self::UnassignTag { entity, .. } => Some(*entity),
             Self::DuplicateTodo { id }
             | Self::ReorderTodo { id, .. }
             | Self::SetTodoTitle { id, .. }
@@ -379,6 +432,13 @@ impl Command {
             Self::CreateArea { .. } => "create_area",
             Self::CreateProject { .. } => "create_project",
             Self::CreateHeading { .. } => "create_heading",
+            Self::CreateTag { .. } => "create_tag",
+            Self::RenameTag { .. } => "rename_tag",
+            Self::MoveTag { .. } => "move_tag",
+            Self::ReorderTag { .. } => "reorder_tag",
+            Self::DeleteTag { .. } => "delete_tag",
+            Self::AssignTag { .. } => "assign_tag",
+            Self::UnassignTag { .. } => "unassign_tag",
             Self::RenameHeading { .. } => "rename_heading",
             Self::ReorderHeading { .. } => "reorder_heading",
             Self::ArchiveHeading { .. } => "archive_heading",
@@ -496,6 +556,35 @@ pub enum DomainEvent {
     ProjectDeleted {
         /// Entity identity.
         id: EntityId,
+    },
+    /// A tag was created.
+    TagCreated {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A tag changed (title or placement).
+    TagChanged {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A tag was deleted.
+    TagDeleted {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A tag was assigned to a to-do.
+    TagAssigned {
+        /// To-do identity.
+        todo: EntityId,
+        /// Tag identity.
+        tag: EntityId,
+    },
+    /// A tag was removed from a to-do.
+    TagUnassigned {
+        /// To-do identity.
+        todo: EntityId,
+        /// Tag identity.
+        tag: EntityId,
     },
     /// A heading was created.
     HeadingCreated {
@@ -624,6 +713,9 @@ impl DomainEvent {
             | Self::AreaCreated { id }
             | Self::AreaRenamed { id }
             | Self::AreaDeleted { id }
+            | Self::TagCreated { id }
+            | Self::TagChanged { id }
+            | Self::TagDeleted { id }
             | Self::HeadingCreated { id, .. }
             | Self::HeadingChanged { id }
             | Self::HeadingReordered { id }
@@ -644,6 +736,7 @@ impl DomainEvent {
             | Self::TodoDeadlineChanged { id }
             | Self::TodoReminderChanged { id }
             | Self::ChecklistChanged { id } => *id,
+            Self::TagAssigned { todo, .. } | Self::TagUnassigned { todo, .. } => *todo,
         }
     }
 }
@@ -813,6 +906,32 @@ pub trait UnitOfWork: Send {
         account_id: AccountId,
         project_id: EntityId,
     ) -> Result<ProjectChildren, CommandError>;
+
+    /// Loads an account-scoped tag.
+    async fn load_tag(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<momentum_domain::model::Tag>, CommandError>;
+
+    /// Persists a tag with its sibling position, enforcing the expected version when updating.
+    async fn save_tag(
+        &mut self,
+        account_id: AccountId,
+        tag: &momentum_domain::model::Tag,
+        position: i64,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError>;
+
+    /// Lists an account's tags with sibling positions.
+    async fn list_tags(
+        &mut self,
+        account_id: AccountId,
+    ) -> Result<Vec<(momentum_domain::model::Tag, i64)>, CommandError>;
+
+    /// Removes a tag and its assignments.
+    async fn delete_tag(&mut self, account_id: AccountId, id: EntityId)
+        -> Result<(), CommandError>;
 
     /// Loads an account-scoped area.
     async fn load_area(
@@ -1343,6 +1462,193 @@ impl CommandDispatcher {
                 }
                 Ok((Some(*id), vec![DomainEvent::HeadingRestored { id: *id }]))
             }
+            Command::CreateTag { title, parent } => {
+                if let Some(parent_id) = parent {
+                    if unit.load_tag(account_id, *parent_id).await?.is_none() {
+                        return Err(CommandError::NotFound);
+                    }
+                }
+                let title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let tag = momentum_domain::model::Tag::new(title, *parent, now);
+                let position = next_tag_position(unit, account_id, *parent).await?;
+                unit.save_tag(account_id, &tag, position, None).await?;
+                Ok((
+                    Some(tag.id()),
+                    vec![DomainEvent::TagCreated { id: tag.id() }],
+                ))
+            }
+            Command::RenameTag { id, title } => {
+                let mut tag = unit
+                    .load_tag(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                tag.title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let position = tag_position_of(unit, account_id, *id).await?;
+                let expected = tag.meta.version;
+                tag.meta.touch(now);
+                unit.save_tag(account_id, &tag, position, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::TagChanged { id: *id }]))
+            }
+            Command::MoveTag { id, parent } => {
+                let mut tag = unit
+                    .load_tag(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if let Some(parent_id) = parent {
+                    if *parent_id == *id {
+                        return Err(CommandError::Validation(
+                            "a tag cannot be its own parent".to_string(),
+                        ));
+                    }
+                    let mut cursor = Some(*parent_id);
+                    let mut depth = 0;
+                    while let Some(current) = cursor {
+                        if current == *id {
+                            return Err(CommandError::Validation("tag cycle".to_string()));
+                        }
+                        depth += 1;
+                        if depth > 64 {
+                            return Err(CommandError::Validation(
+                                "tag hierarchy is too deep".to_string(),
+                            ));
+                        }
+                        cursor = unit
+                            .load_tag(account_id, current)
+                            .await?
+                            .ok_or(CommandError::NotFound)?
+                            .parent;
+                    }
+                }
+                tag.parent = *parent;
+                let position = next_tag_position(unit, account_id, *parent).await?;
+                let expected = tag.meta.version;
+                tag.meta.touch(now);
+                unit.save_tag(account_id, &tag, position, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::TagChanged { id: *id }]))
+            }
+            Command::ReorderTag { id, direction } => {
+                let tag = unit
+                    .load_tag(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let mut siblings: Vec<(momentum_domain::model::Tag, i64)> = unit
+                    .list_tags(account_id)
+                    .await?
+                    .into_iter()
+                    .filter(|(entry, _)| entry.parent == tag.parent)
+                    .collect();
+                siblings.sort_by_key(|(entry, position)| {
+                    (*position, entry.meta.created_at, entry.id())
+                });
+                let position = siblings
+                    .iter()
+                    .position(|(entry, _)| entry.id() == *id)
+                    .ok_or(CommandError::NotFound)?;
+                let target = match direction {
+                    ReorderDirection::Up => position.checked_sub(1),
+                    ReorderDirection::Down => {
+                        (position + 1 < siblings.len()).then_some(position + 1)
+                    }
+                };
+                if let Some(target) = target {
+                    let (left, left_position) = &siblings[position];
+                    let (right, right_position) = &siblings[target];
+                    let left = left.clone();
+                    let right = right.clone();
+                    let left_position = *left_position;
+                    let right_position = *right_position;
+                    let left_expected = left.meta.version;
+                    let right_expected = right.meta.version;
+                    unit.save_tag(account_id, &left, right_position, Some(left_expected))
+                        .await?;
+                    unit.save_tag(account_id, &right, left_position, Some(right_expected))
+                        .await?;
+                }
+                Ok((Some(*id), vec![DomainEvent::TagChanged { id: *id }]))
+            }
+            Command::DeleteTag { id } => {
+                let tag = unit
+                    .load_tag(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let tags = unit.list_tags(account_id).await?;
+                for (mut child, position) in tags {
+                    if child.parent == Some(*id) {
+                        child.parent = tag.parent;
+                        let expected = child.meta.version;
+                        child.meta.touch(now);
+                        unit.save_tag(account_id, &child, position, Some(expected))
+                            .await?;
+                    }
+                }
+                unit.delete_tag(account_id, *id).await?;
+                Ok((Some(*id), vec![DomainEvent::TagDeleted { id: *id }]))
+            }
+            Command::AssignTag { entity, tag } => {
+                let entity_id = *entity;
+                if unit.load_tag(account_id, *tag).await?.is_none() {
+                    return Err(CommandError::NotFound);
+                }
+                if let Some(mut todo) = unit.load_todo(account_id, entity_id).await? {
+                    let expected = todo.meta.version;
+                    todo.tags.insert(*tag);
+                    todo.meta.touch(now);
+                    unit.save_todo(account_id, &todo, Some(expected)).await?;
+                } else if let Some(mut project) = unit.load_project(account_id, entity_id).await? {
+                    let expected = project.meta.version;
+                    project.tags.insert(*tag);
+                    project.meta.touch(now);
+                    unit.save_project(account_id, &project, Some(expected))
+                        .await?;
+                } else if let Some(mut area) = unit.load_area(account_id, entity_id).await? {
+                    let expected = area.meta.version;
+                    area.tags.insert(*tag);
+                    area.meta.touch(now);
+                    unit.save_area(account_id, &area, Some(expected)).await?;
+                } else {
+                    return Err(CommandError::NotFound);
+                }
+                Ok((
+                    Some(entity_id),
+                    vec![DomainEvent::TagAssigned {
+                        todo: entity_id,
+                        tag: *tag,
+                    }],
+                ))
+            }
+            Command::UnassignTag { entity, tag } => {
+                let entity_id = *entity;
+                if let Some(mut todo) = unit.load_todo(account_id, entity_id).await? {
+                    let expected = todo.meta.version;
+                    todo.tags.remove(tag);
+                    todo.meta.touch(now);
+                    unit.save_todo(account_id, &todo, Some(expected)).await?;
+                } else if let Some(mut project) = unit.load_project(account_id, entity_id).await? {
+                    let expected = project.meta.version;
+                    project.tags.remove(tag);
+                    project.meta.touch(now);
+                    unit.save_project(account_id, &project, Some(expected))
+                        .await?;
+                } else if let Some(mut area) = unit.load_area(account_id, entity_id).await? {
+                    let expected = area.meta.version;
+                    area.tags.remove(tag);
+                    area.meta.touch(now);
+                    unit.save_area(account_id, &area, Some(expected)).await?;
+                } else {
+                    return Err(CommandError::NotFound);
+                }
+                Ok((
+                    Some(entity_id),
+                    vec![DomainEvent::TagUnassigned {
+                        todo: entity_id,
+                        tag: *tag,
+                    }],
+                ))
+            }
             Command::CreateArea { title } => {
                 let title = Title::parse(title)
                     .map_err(|error| CommandError::Validation(error.to_string()))?;
@@ -1450,6 +1756,33 @@ impl CommandDispatcher {
     }
 }
 
+async fn next_tag_position(
+    unit: &mut dyn UnitOfWork,
+    account_id: AccountId,
+    parent: Option<EntityId>,
+) -> Result<i64, CommandError> {
+    let tags = unit.list_tags(account_id).await?;
+    Ok(tags
+        .into_iter()
+        .filter(|(tag, _)| tag.parent == parent)
+        .map(|(_, position)| position)
+        .max()
+        .unwrap_or(0)
+        + 1)
+}
+
+async fn tag_position_of(
+    unit: &mut dyn UnitOfWork,
+    account_id: AccountId,
+    id: EntityId,
+) -> Result<i64, CommandError> {
+    let tags = unit.list_tags(account_id).await?;
+    tags.into_iter()
+        .find(|(tag, _)| tag.id() == id)
+        .map(|(_, position)| position)
+        .ok_or(CommandError::NotFound)
+}
+
 fn apply_to_todo(
     todo: &mut Todo,
     command: &Command,
@@ -1477,7 +1810,14 @@ fn apply_to_todo(
         | Command::RenameHeading { .. }
         | Command::ReorderHeading { .. }
         | Command::ArchiveHeading { .. }
-        | Command::RestoreHeading { .. } => Err(CommandError::Validation(
+        | Command::RestoreHeading { .. }
+        | Command::CreateTag { .. }
+        | Command::RenameTag { .. }
+        | Command::MoveTag { .. }
+        | Command::ReorderTag { .. }
+        | Command::DeleteTag { .. }
+        | Command::AssignTag { .. }
+        | Command::UnassignTag { .. } => Err(CommandError::Validation(
             "commands handled separately must not reach the generic path".to_string(),
         )),
         Command::SetTodoTitle { title, .. } => {
@@ -1653,6 +1993,13 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
             Projection::Deadlines,
             Projection::Logbook,
         ],
+        DomainEvent::TagCreated { .. }
+        | DomainEvent::TagChanged { .. }
+        | DomainEvent::TagDeleted { .. }
+        | DomainEvent::TagAssigned { .. }
+        | DomainEvent::TagUnassigned { .. } => {
+            vec![Projection::Inbox, Projection::Today, Projection::Anytime]
+        }
         DomainEvent::HeadingCreated { .. }
         | DomainEvent::HeadingChanged { .. }
         | DomainEvent::HeadingReordered { .. }

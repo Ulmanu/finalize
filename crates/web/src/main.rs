@@ -7,10 +7,11 @@ use momentum_app::areas::AreaService;
 use momentum_app::auth::AuthService;
 use momentum_app::commands::CommandDispatcher;
 use momentum_app::projects::ProjectService;
+use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::{
-    Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgProjectReadStore, PgTodoReadStore,
-    PgUnitOfWorkFactory, RandomTokenGenerator, ServerConfig, SystemClock,
+    Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgProjectReadStore, PgTagReadStore,
+    PgTodoReadStore, PgUnitOfWorkFactory, RandomTokenGenerator, ServerConfig, SystemClock,
 };
 use momentum_web::auth_routes::AuthContext;
 use momentum_web::server::{self, AppState};
@@ -29,51 +30,71 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ServerConfig::from_env()?;
     let database = connect_database(&config).await?;
 
-    let (session_resolver, auth, todos, areas, projects): (Arc<dyn SessionResolver>, _, _, _, _) =
-        match &database {
-            Some(database) => {
-                let store = Arc::new(PgAuthStore::new(database.pool().clone()));
-                let (accounts, sessions, tokens) = store.ports();
-                let service = Arc::new(AuthService::new(
-                    accounts,
-                    sessions,
-                    tokens,
-                    Arc::new(Argon2Hasher),
-                    Arc::new(RandomTokenGenerator),
-                    Arc::new(SystemClock),
-                ));
-                let context = Arc::new(AuthContext::new(service.clone(), config.secure_cookies));
+    let (session_resolver, auth, todos, areas, projects, tags): (
+        Arc<dyn SessionResolver>,
+        _,
+        _,
+        _,
+        _,
+        _,
+    ) = match &database {
+        Some(database) => {
+            let store = Arc::new(PgAuthStore::new(database.pool().clone()));
+            let (accounts, sessions, tokens) = store.ports();
+            let service = Arc::new(AuthService::new(
+                accounts,
+                sessions,
+                tokens,
+                Arc::new(Argon2Hasher),
+                Arc::new(RandomTokenGenerator),
+                Arc::new(SystemClock),
+            ));
+            let context = Arc::new(AuthContext::new(service.clone(), config.secure_cookies));
 
-                let clock = Arc::new(SystemClock);
-                let dispatcher = Arc::new(CommandDispatcher::new(
-                    Arc::new(PgUnitOfWorkFactory::new(database.pool().clone())),
-                    clock.clone(),
-                ));
-                let reader = Arc::new(PgTodoReadStore::new(database.pool().clone()));
-                let todo_service =
-                    Arc::new(TodoService::new(dispatcher.clone(), reader, clock.clone()));
+            let clock = Arc::new(SystemClock);
+            let dispatcher = Arc::new(CommandDispatcher::new(
+                Arc::new(PgUnitOfWorkFactory::new(database.pool().clone())),
+                clock.clone(),
+            ));
+            let reader = Arc::new(PgTodoReadStore::new(database.pool().clone()));
+            let todo_service =
+                Arc::new(TodoService::new(dispatcher.clone(), reader, clock.clone()));
 
-                let area_reader = Arc::new(PgAreaReadStore::new(database.pool().clone()));
-                let area_service = Arc::new(AreaService::new(
-                    dispatcher.clone(),
-                    area_reader,
-                    clock.clone(),
-                ));
+            let area_reader = Arc::new(PgAreaReadStore::new(database.pool().clone()));
+            let area_service = Arc::new(AreaService::new(
+                dispatcher.clone(),
+                area_reader,
+                clock.clone(),
+            ));
 
-                let project_reader = Arc::new(PgProjectReadStore::new(database.pool().clone()));
-                let project_service =
-                    Arc::new(ProjectService::new(dispatcher, project_reader, clock));
+            let project_reader = Arc::new(PgProjectReadStore::new(database.pool().clone()));
+            let project_service = Arc::new(ProjectService::new(
+                dispatcher.clone(),
+                project_reader,
+                clock.clone(),
+            ));
 
-                (
-                    Arc::new(CookieSessionResolver::new(service)),
-                    Some(context),
-                    Some(todo_service),
-                    Some(area_service),
-                    Some(project_service),
-                )
-            }
-            None => (Arc::new(AnonymousSessionResolver), None, None, None, None),
-        };
+            let tag_reader = Arc::new(PgTagReadStore::new(database.pool().clone()));
+            let tag_service = Arc::new(TagService::new(dispatcher, tag_reader, clock));
+
+            (
+                Arc::new(CookieSessionResolver::new(service)),
+                Some(context),
+                Some(todo_service),
+                Some(area_service),
+                Some(project_service),
+                Some(tag_service),
+            )
+        }
+        None => (
+            Arc::new(AnonymousSessionResolver),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+    };
 
     let state = AppState::new(
         server::leptos_options(),
@@ -84,6 +105,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         areas,
         projects,
     );
+    let state = match tags {
+        Some(tags) => state.with_tags(tags),
+        None => state,
+    };
     let router = server::router_with_state(state);
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
 

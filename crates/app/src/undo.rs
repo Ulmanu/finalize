@@ -208,7 +208,14 @@ pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Comm
         | Command::SetChecklistItemCompleted { .. }
         | Command::RemoveChecklistItem { .. }
         | Command::ReorderChecklistItem { .. }
-        | Command::ExpandChecklist { .. } => {
+        | Command::ExpandChecklist { .. }
+        | Command::CreateTag { .. }
+        | Command::RenameTag { .. }
+        | Command::MoveTag { .. }
+        | Command::ReorderTag { .. }
+        | Command::DeleteTag { .. }
+        | Command::AssignTag { .. }
+        | Command::UnassignTag { .. } => {
             // The created identity is only known after execution; the engine re-derives the
             // inverse from the post-state through the created event, so a create is undone by
             // deleting the entity the command produced.

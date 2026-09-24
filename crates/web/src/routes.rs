@@ -17,6 +17,7 @@ use crate::layouts::{Protected, PublicLayout};
 use crate::session::use_account;
 use momentum_app::areas::{AreaService, AreaSummary};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
+use momentum_app::tags::{TagService, TagSummary};
 use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::Status;
 use momentum_domain::EntityId;
@@ -39,6 +40,7 @@ pub fn AppRoutes() -> impl IntoView {
                 <Route path=path!("/logbook") view=LogbookPage/>
                 <Route path=path!("/projects") view=ProjectsPage/>
                 <Route path=path!("/areas") view=AreasPage/>
+                <Route path=path!("/tags") view=TagsPage/>
                 <Route path=path!("/settings") view=SettingsPage/>
                 <Route path=path!("/areas/:area_id") view=AreaPage/>
                 <Route path=path!("/projects/:project_id") view=ProjectPage/>
@@ -470,7 +472,10 @@ pub fn InboxPage() -> impl IntoView {
 #[component]
 fn InboxList() -> impl IntoView {
     let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let tag_service = use_context::<Option<Arc<TagService>>>().flatten();
     let account = use_account();
+    let account_for_tags = account.clone();
+    let query = use_query_map();
     let todos = AsyncDerived::new(move || {
         let service = service.clone();
         let account = account.clone();
@@ -484,6 +489,27 @@ fn InboxList() -> impl IntoView {
             }
         }
     });
+    let tags = AsyncDerived::new(move || {
+        let service = tag_service.clone();
+        let account = account_for_tags.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+    let selected_tags = move || -> Vec<EntityId> {
+        query
+            .read()
+            .get("tags")
+            .unwrap_or_default()
+            .split(',')
+            .filter_map(|value| value.parse::<EntityId>().ok())
+            .collect()
+    };
 
     view! {
         <section class="list-page" data-testid="list-page">
@@ -491,6 +517,65 @@ fn InboxList() -> impl IntoView {
                 <h1 class="list-title">"Inbox"</h1>
                 <p class="list-description">"Unprocessed captures land here."</p>
             </header>
+            <div class="tag-filter" data-testid="tag-filter">
+                <Suspense fallback=|| view! { <Loading/> }>
+                    {move || {
+                        let selected = selected_tags();
+                        let all = tags.get().unwrap_or_default();
+                        if all.is_empty() {
+                            return ().into_any();
+                        }
+                        let links = all
+                            .into_iter()
+                            .map(|tag| {
+                                let mut next = selected.clone();
+                                let active = next.contains(&tag.id);
+                                if active {
+                                    next.retain(|id| *id != tag.id);
+                                } else {
+                                    next.push(tag.id);
+                                }
+                                let href = if next.is_empty() {
+                                    "/inbox".to_string()
+                                } else {
+                                    format!(
+                                        "/inbox?tags={}",
+                                        next.iter()
+                                            .map(ToString::to_string)
+                                            .collect::<Vec<_>>()
+                                            .join(","),
+                                    )
+                                };
+                                let label = if active {
+                                    format!("Remove filter: {}", tag.title)
+                                } else {
+                                    format!("Filter by {}", tag.title)
+                                };
+                                view! {
+                                    <a
+                                        href=href
+                                        class=if active { "tag-chip tag-chip-active" } else { "tag-chip" }
+                                        aria-label=label
+                                        data-testid="tag-filter-link"
+                                    >
+                                        {tag.title}
+                                    </a>
+                                }
+                            })
+                            .collect_view();
+                        view! {
+                            {links}
+                            {(!selected.is_empty())
+                                .then(|| {
+                                    view! {
+                                        <a href="/inbox" class="tag-chip tag-chip-clear">"Clear"</a>
+                                    }
+                                })}
+                        }
+                            .into_any()
+                    }}
+                </Suspense>
+            </div>
             <form method="post" action="/todos" class="add-form" data-testid="add-todo-form">
                 <input type="hidden" name="return_to" value="/inbox"/>
                 <input
@@ -506,9 +591,23 @@ fn InboxList() -> impl IntoView {
             </form>
             <Suspense fallback=|| view! { <Loading/> }>
                 {move || {
+                    let selected = selected_tags();
                     todos
                         .get()
                         .map(|todos| {
+                            let todos: Vec<TodoSummary> = if selected.is_empty() {
+                                todos
+                            } else {
+                                todos
+                                    .into_iter()
+                                    .filter(|todo| {
+                                        selected.iter().any(|tag| {
+                                            todo.tags.contains(tag)
+                                                || todo.inherited_tags.contains(tag)
+                                        })
+                                    })
+                                    .collect()
+                            };
                             if todos.is_empty() {
                                 view! {
                                     <div class="list-empty" data-testid="list-empty">
@@ -794,6 +893,8 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                         }
                     })}
             </div>
+            <h2 class="section-heading">"Tags"</h2>
+            <TagAssignments todo_id=id tags=todo.tags.clone()/>
             <h2 class="section-heading">"Checklist"</h2>
             <ChecklistEditor todo=todo.clone()/>
             {is_terminal
@@ -805,6 +906,228 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                     }
                 })}
         </section>
+    }
+}
+
+#[component]
+fn TagAssignments(todo_id: EntityId, tags: Vec<EntityId>) -> impl IntoView {
+    let tag_service = use_context::<Option<Arc<TagService>>>().flatten();
+    let account = use_account();
+    let all_tags = AsyncDerived::new(move || {
+        let service = tag_service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="tag-assignments" data-testid="tag-assignments">
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let assigned = tags.clone();
+                    all_tags
+                        .get()
+                        .map(|all| {
+                            all.into_iter()
+                                .map(|tag| {
+                                    let is_assigned = assigned.contains(&tag.id);
+                                    let action = if is_assigned {
+                                        format!("/entities/{todo_id}/tags/{}/unassign", tag.id)
+                                    } else {
+                                        format!("/entities/{todo_id}/tags/{}/assign", tag.id)
+                                    };
+                                    let label = if is_assigned {
+                                        format!("Remove tag {}", tag.title)
+                                    } else {
+                                        format!("Assign tag {}", tag.title)
+                                    };
+                                    let button = if is_assigned { "Remove" } else { "Assign" };
+                                    view! {
+                                        <form method="post" action=action class="row-schedule">
+                                            <input
+                                                type="hidden"
+                                                name="return_to"
+                                                value=format!("/todos/{todo_id}")
+                                            />
+                                            <span class="tag-name">{tag.title}</span>
+                                            <button type="submit" class="button-secondary" aria-label=label>
+                                                {button}
+                                            </button>
+                                        </form>
+                                    }
+                                })
+                                .collect_view()
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+/// Tags management page.
+#[component]
+pub fn TagsPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <TagsList/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn TagsList() -> impl IntoView {
+    let service = use_context::<Option<Arc<TagService>>>().flatten();
+    let account = use_account();
+    let tags = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="tags-page">
+            <header class="list-header">
+                <h1 class="list-title">"Tags"</h1>
+                <p class="list-description">"Cross-cutting context with nesting."</p>
+            </header>
+            <form method="post" action="/tags" class="add-form" data-testid="add-tag-form">
+                <input type="hidden" name="return_to" value="/tags"/>
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="New tag"
+                    aria-label="New tag"
+                    autocomplete="off"
+                    required=true
+                />
+                <input
+                    type="text"
+                    name="parent"
+                    placeholder="Parent tag id (optional)"
+                    aria-label="Parent tag id"
+                    autocomplete="off"
+                />
+                <button type="submit" class="button-primary">"Add"</button>
+            </form>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    tags.get()
+                        .map(|tags| {
+                            if tags.is_empty() {
+                                view! {
+                                    <div class="list-empty" data-testid="tags-empty">
+                                        <p>"No tags yet."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                let all = tags.clone();
+                                view! {
+                                    <ul class="task-list" data-testid="tag-list">
+                                        {tags
+                                            .into_iter()
+                                            .map(|tag| {
+                                                view! { <TagRow tag=tag all=all.clone()/> }
+                                            })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn TagRow(tag: TagSummary, all: Vec<TagSummary>) -> impl IntoView {
+    let id = tag.id;
+    let title = tag.title.clone();
+    let parent_title = tag
+        .parent
+        .and_then(|parent| {
+            all.iter()
+                .find(|candidate| candidate.id == parent)
+                .map(|candidate| candidate.title.clone())
+        })
+        .unwrap_or_else(|| "Top level".to_string());
+    let counts = format!("{} tagged", tag.assigned_count);
+    let rename_target = format!("/tags/{id}/rename");
+    let move_target = format!("/tags/{id}/move");
+    let up_target = format!("/tags/{id}/move_up");
+    let down_target = format!("/tags/{id}/move_down");
+    let delete_target = format!("/tags/{id}/delete");
+    let parents = all
+        .into_iter()
+        .filter(|candidate| candidate.id != id)
+        .collect::<Vec<_>>();
+
+    view! {
+        <li class="task-row" data-testid="tag-row">
+            <div class="task-row-body">
+                <span class="task-title" data-testid="tag-title">{title.clone()}</span>
+                <span class="task-row-meta">
+                    <span class="row-badge">{parent_title}</span>
+                    <span class="row-badge">{counts}</span>
+                </span>
+            </div>
+            <div class="task-row-actions">
+                <form method="post" action=rename_target class="row-schedule">
+                    <input type="hidden" name="return_to" value="/tags"/>
+                    <input type="text" name="title" value=title aria-label="Tag title"/>
+                    <button type="submit" class="button-secondary">"Rename"</button>
+                </form>
+                <form method="post" action=move_target class="row-schedule">
+                    <input type="hidden" name="return_to" value="/tags"/>
+                    <select name="parent" aria-label="Parent tag">
+                        <option value="">"Top level"</option>
+                        {parents
+                            .into_iter()
+                            .map(|candidate| {
+                                let selected = Some(candidate.id) == tag.parent;
+                                view! {
+                                    <option value=candidate.id.to_string() selected=selected>
+                                        {candidate.title}
+                                    </option>
+                                }
+                            })
+                            .collect_view()}
+                    </select>
+                    <button type="submit" class="button-secondary">"Move"</button>
+                </form>
+                <form method="post" action=up_target>
+                    <input type="hidden" name="return_to" value="/tags"/>
+                    <button type="submit" class="row-action" aria-label="Move tag up">
+                        "\u{2191}"
+                    </button>
+                </form>
+                <form method="post" action=down_target>
+                    <input type="hidden" name="return_to" value="/tags"/>
+                    <button type="submit" class="row-action" aria-label="Move tag down">
+                        "\u{2193}"
+                    </button>
+                </form>
+                <form method="post" action=delete_target>
+                    <input type="hidden" name="return_to" value="/tags"/>
+                    <button type="submit" class="button-secondary">"Delete"</button>
+                </form>
+            </div>
+        </li>
     }
 }
 

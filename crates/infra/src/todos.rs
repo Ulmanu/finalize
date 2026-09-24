@@ -87,6 +87,8 @@ fn summary_from_row(row: &sqlx::postgres::PgRow) -> TodoSummary {
         created_at: row.get("created_at"),
         version: row.get("version"),
         checklist: Vec::new(),
+        tags: Vec::new(),
+        inherited_tags: Vec::new(),
     }
 }
 
@@ -116,6 +118,7 @@ impl TodoReadStore for PgTodoReadStore {
             .map_err(storage)?;
         let mut summaries: Vec<TodoSummary> = rows.iter().map(summary_from_row).collect();
         attach_checklists(&self.pool, account_id, &mut summaries).await?;
+        attach_tags(&self.pool, account_id, &mut summaries).await?;
         Ok(summaries)
     }
 
@@ -139,8 +142,67 @@ impl TodoReadStore for PgTodoReadStore {
         .map_err(storage)?;
         let mut summaries: Vec<TodoSummary> = row.iter().map(summary_from_row).collect();
         attach_checklists(&self.pool, account_id, &mut summaries).await?;
+        attach_tags(&self.pool, account_id, &mut summaries).await?;
         Ok(summaries.into_iter().next())
     }
+}
+
+async fn attach_tags(
+    pool: &PgPool,
+    account_id: AccountId,
+    summaries: &mut [TodoSummary],
+) -> Result<(), CommandError> {
+    if summaries.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<uuid::Uuid> = summaries
+        .iter()
+        .map(|summary| summary.id.as_uuid())
+        .collect();
+    let rows = sqlx::query(
+        "select entity_id, tag_id from tag_assignments \
+         where account_id = $1 and entity_id = any($2)",
+    )
+    .bind(account_id.as_uuid())
+    .bind(&ids)
+    .fetch_all(pool)
+    .await
+    .map_err(storage)?;
+    for summary in summaries.iter_mut() {
+        summary.tags = rows
+            .iter()
+            .filter(|row| row.get::<uuid::Uuid, _>("entity_id") == summary.id.as_uuid())
+            .map(|row| EntityId::from_uuid(row.get("tag_id")))
+            .collect();
+        let inherited: Vec<uuid::Uuid> = sqlx::query_scalar(
+            "select distinct ta.tag_id from tag_assignments ta \
+             where ta.account_id = $1 and ta.entity_id in ( \
+               select case \
+                 when d.parent_kind in ('project', 'area') then d.parent_id \
+                 when d.parent_kind = 'heading' then ( \
+                   select h.parent_id from placements h \
+                   where h.entity_id = d.parent_id and h.scope = 'context') \
+                 else null end \
+               from placements d where d.entity_id = $2 and d.scope = 'context' \
+               union \
+               select pa.parent_id from placements pa \
+               where pa.scope = 'context' and pa.parent_kind = 'area' and pa.entity_id in ( \
+                 select case \
+                   when d2.parent_kind = 'project' then d2.parent_id \
+                   when d2.parent_kind = 'heading' then ( \
+                     select h2.parent_id from placements h2 \
+                     where h2.entity_id = d2.parent_id and h2.scope = 'context') \
+                   else null end \
+                 from placements d2 where d2.entity_id = $2 and d2.scope = 'context'))",
+        )
+        .bind(account_id.as_uuid())
+        .bind(summary.id.as_uuid())
+        .fetch_all(pool)
+        .await
+        .map_err(storage)?;
+        summary.inherited_tags = inherited.into_iter().map(EntityId::from_uuid).collect();
+    }
+    Ok(())
 }
 
 async fn attach_checklists(

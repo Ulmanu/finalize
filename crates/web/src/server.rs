@@ -14,6 +14,7 @@ use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use momentum_app::areas::AreaService;
 use momentum_app::projects::ProjectService;
+use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::Database;
 use serde::Serialize;
@@ -23,6 +24,7 @@ use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
 use crate::project_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
+use crate::tag_routes;
 use crate::todo_routes;
 
 /// Base stylesheet embedded in the server binary.
@@ -52,6 +54,8 @@ pub struct AppState {
     pub areas: Option<Arc<AreaService>>,
     /// Project service, when persistence is configured.
     pub projects: Option<Arc<ProjectService>>,
+    /// Tag service, when persistence is configured.
+    pub tags: Option<Arc<TagService>>,
 }
 
 impl AppState {
@@ -74,7 +78,15 @@ impl AppState {
             todos,
             areas,
             projects,
+            tags: None,
         }
+    }
+
+    /// Adds the tag service.
+    #[must_use]
+    pub fn with_tags(mut self, tags: Arc<TagService>) -> Self {
+        self.tags = Some(tags);
+        self
     }
 
     /// Creates anonymous state without persistence or authentication.
@@ -154,6 +166,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let todo_service = state.todos.clone();
     let area_service = state.areas.clone();
     let project_service = state.projects.clone();
+    let tag_service = state.tags.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -164,6 +177,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(todo_routes::routes())
         .merge(area_routes::routes())
         .merge(project_routes::routes())
+        .merge(tag_routes::routes())
         .leptos_routes_with_context(
             &state,
             paths,
@@ -171,6 +185,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(todo_service.clone());
                 provide_context(area_service.clone());
                 provide_context(project_service.clone());
+                provide_context(tag_service.clone());
             },
             move || shell(shell_options.clone()),
         )

@@ -426,6 +426,29 @@ Agent: opencode (deepseek-v4.1-flash)
   transactional; bulk input normalizes bullets/checkboxes and drops empty lines.
 - Live integrations not verified: PostgreSQL checklist paths (no database).
 
+### 17 — `add-tags` — COMPLETE
+
+- Start: 2026-09-24 19:00 · End: 2026-09-24 20:05
+- Proposal validation: strict validation passed before apply.
+- Implementation: tag commands (create, rename, move/nest, reorder, delete with child
+  reparenting, assign/unassign to to-dos, projects, and areas) with cycle prevention and a
+  bounded parent walk; unit-of-work tag load/save/list/delete in memory and PostgreSQL;
+  `TagService`/`TagReadStore` with `TagSummary { id, title, parent, position, assigned_count }`;
+  `TodoSummary` gained direct `tags` and derived `inherited_tags` (project, heading→project,
+  area, and project's area) without synthetic child assignments; `/tags` management page; tag
+  assignment on the to-do editor; `/inbox?tags=` multi-tag filtering including inherited tags.
+- Migrations: `0004-tag-hierarchy` (`entities.tag_parent`, `entities.tag_position`, reversible).
+- Tests: 3 testkit tests (hierarchy/cycle/delete reparenting, assignment across entity kinds,
+  inherited context) and 2 web tests (tags page lifecycle, assignment + filtering); fmt, clippy,
+  workspace tests, WASM build, quality gates pass.
+- Verification: manual; every requirement scenario covered. No critical findings.
+- Archive: `2026-09-24-add-tags`; canonical `features/tags` spec created; strict validation pass.
+- Commit: `feat(17): add tags`
+- Decisions: sibling order lives on the entity row (`tag_position`) because placements only
+  model contextual parents; `AssignTag`/`UnassignTag` dispatch on the target entity kind;
+  inheritance is derived at read time.
+- Live integrations not verified: PostgreSQL tag paths (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -448,9 +471,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 14 | add-projects | COMPLETE | `feat(14)` |
 | 15 | add-project-headings | COMPLETE | `feat(15)` |
 | 16 | add-checklists | COMPLETE | `feat(16)` |
+| 17 | add-tags | COMPLETE | `feat(17)` |
 
-- Completed proposal range: 01–16 (16 of 74).
-- Incomplete: 17–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–17 (17 of 74).
+- Incomplete: 18–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`
