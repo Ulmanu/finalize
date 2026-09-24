@@ -85,8 +85,10 @@ async fn entity_routes_are_addressable() {
     let (status, body) =
         get_with_session(&format!("/areas/{area_id}"), authenticated_state()).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("data-testid=\"entity-page\""));
-    assert!(body.contains(&area_id));
+    assert!(
+        body.contains("data-testid=\"area-detail\""),
+        "area route must render its detail page"
+    );
 
     let project_id = AccountId::new().to_string();
     let (status, body) =

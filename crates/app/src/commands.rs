@@ -78,6 +78,25 @@ pub enum Command {
         /// Optional reminder.
         reminder: Option<ReminderInput>,
     },
+    /// Creates an area.
+    CreateArea {
+        /// Area title.
+        title: String,
+    },
+    /// Renames an area.
+    RenameArea {
+        /// Area to rename.
+        id: EntityId,
+        /// New title.
+        title: String,
+    },
+    /// Deletes an area under an explicit contents policy.
+    DeleteArea {
+        /// Area to delete.
+        id: EntityId,
+        /// What happens to contained projects and to-dos.
+        policy: AreaDeletionPolicy,
+    },
     /// Moves a to-do one position up or down within its contextual scope.
     ReorderTodo {
         /// Entity to move.
@@ -164,7 +183,8 @@ impl Command {
     #[must_use]
     pub const fn target(&self) -> Option<EntityId> {
         match self {
-            Self::CreateTodo { .. } => None,
+            Self::CreateTodo { .. } | Self::CreateArea { .. } => None,
+            Self::RenameArea { id, .. } | Self::DeleteArea { id, .. } => Some(*id),
             Self::DuplicateTodo { id }
             | Self::ReorderTodo { id, .. }
             | Self::SetTodoTitle { id, .. }
@@ -186,6 +206,9 @@ impl Command {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::CreateTodo { .. } => "create_todo",
+            Self::CreateArea { .. } => "create_area",
+            Self::RenameArea { .. } => "rename_area",
+            Self::DeleteArea { .. } => "delete_area",
             Self::DuplicateTodo { .. } => "duplicate_todo",
             Self::ReorderTodo { .. } => "reorder_todo",
             Self::SetTodoTitle { .. } => "set_todo_title",
@@ -201,6 +224,16 @@ impl Command {
             Self::SetTodoReminder { .. } => "set_todo_reminder",
         }
     }
+}
+
+/// Policy applied to an area's contents when the area is deleted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AreaDeletionPolicy {
+    /// Projects lose the area assignment and loose to-dos return to the Inbox.
+    Detach,
+    /// Contained to-dos go to Trash and contained projects are canceled.
+    TrashContents,
 }
 
 /// Direction of a manual reorder within a scope.
@@ -245,6 +278,21 @@ impl CommandEnvelope {
 pub enum DomainEvent {
     /// A to-do was created.
     TodoCreated {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// An area was created.
+    AreaCreated {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// An area was renamed.
+    AreaRenamed {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// An area was deleted.
+    AreaDeleted {
         /// Entity identity.
         id: EntityId,
     },
@@ -322,7 +370,10 @@ impl DomainEvent {
     #[must_use]
     pub const fn entity_id(&self) -> EntityId {
         match self {
-            Self::TodoCreated { id }
+            Self::AreaCreated { id }
+            | Self::AreaRenamed { id }
+            | Self::AreaDeleted { id }
+            | Self::TodoCreated { id }
             | Self::TodoReordered { id }
             | Self::TodoDuplicated { id, .. }
             | Self::TodoTitleChanged { id }
@@ -394,6 +445,15 @@ pub enum CommandError {
     Storage(String),
 }
 
+/// Direct children of an area.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AreaChildren {
+    /// To-do identities filed directly under the area.
+    pub todo_ids: Vec<EntityId>,
+    /// Project identities assigned to the area.
+    pub project_ids: Vec<EntityId>,
+}
+
 /// Persisted change record used for sync and idempotent replay.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChangeRecord {
@@ -450,6 +510,43 @@ pub trait UnitOfWork: Send {
         account_id: AccountId,
         context: ContextRef,
     ) -> Result<Vec<(EntityId, crate::ordering::Rank)>, CommandError>;
+
+    /// Loads an account-scoped area.
+    async fn load_area(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<momentum_domain::model::Area>, CommandError>;
+
+    /// Persists an area, enforcing the expected version when updating.
+    async fn save_area(
+        &mut self,
+        account_id: AccountId,
+        area: &momentum_domain::model::Area,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError>;
+
+    /// Lists the direct children of an area.
+    async fn list_area_children(
+        &mut self,
+        account_id: AccountId,
+        area_id: EntityId,
+    ) -> Result<AreaChildren, CommandError>;
+
+    /// Returns the area currently assigned to a project.
+    async fn project_area(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<Option<Option<EntityId>>, CommandError>;
+
+    /// Sets or clears a project's area assignment.
+    async fn set_project_area(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+        area_id: Option<EntityId>,
+    ) -> Result<(), CommandError>;
 
     /// Persists one entity's rank within its contextual scope.
     async fn set_context_rank(
@@ -629,6 +726,62 @@ impl CommandDispatcher {
                 }
                 Ok((Some(*id), vec![event]))
             }
+            Command::CreateArea { title } => {
+                let title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let area = momentum_domain::model::Area::new(title, now);
+                unit.save_area(account_id, &area, None).await?;
+                Ok((
+                    Some(area.id()),
+                    vec![DomainEvent::AreaCreated { id: area.id() }],
+                ))
+            }
+            Command::RenameArea { id, title } => {
+                let mut area = unit
+                    .load_area(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                area.title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                area.meta.touch(now);
+                let expected = area.meta.version - 1;
+                unit.save_area(account_id, &area, Some(expected)).await?;
+                Ok((Some(*id), vec![DomainEvent::AreaRenamed { id: *id }]))
+            }
+            Command::DeleteArea { id, policy } => {
+                let mut area = unit
+                    .load_area(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let children = unit.list_area_children(account_id, *id).await?;
+
+                for todo_id in children.todo_ids {
+                    let Some(mut todo) = unit.load_todo(account_id, todo_id).await? else {
+                        continue;
+                    };
+                    let expected = todo.meta.version;
+                    match policy {
+                        AreaDeletionPolicy::Detach => todo.move_to(ContextRef::Inbox, now),
+                        AreaDeletionPolicy::TrashContents => {
+                            todo.status = Status::Deleted;
+                            todo.meta.deleted_at = Some(now);
+                            todo.meta.touch(now);
+                        }
+                    }
+                    unit.save_todo(account_id, &todo, Some(expected)).await?;
+                }
+                for project_id in children.project_ids {
+                    if matches!(policy, AreaDeletionPolicy::Detach) {
+                        unit.set_project_area(account_id, project_id, None).await?;
+                    }
+                }
+
+                area.meta.deleted_at = Some(now);
+                area.meta.touch(now);
+                let expected = area.meta.version - 1;
+                unit.save_area(account_id, &area, Some(expected)).await?;
+                Ok((Some(*id), vec![DomainEvent::AreaDeleted { id: *id }]))
+            }
             Command::DuplicateTodo { id } => {
                 let source = unit
                     .load_todo(account_id, *id)
@@ -675,7 +828,10 @@ fn apply_to_todo(
     match command {
         Command::CreateTodo { .. }
         | Command::DuplicateTodo { .. }
-        | Command::ReorderTodo { .. } => Err(CommandError::Validation(
+        | Command::ReorderTodo { .. }
+        | Command::CreateArea { .. }
+        | Command::RenameArea { .. }
+        | Command::DeleteArea { .. } => Err(CommandError::Validation(
             "commands handled separately must not reach the generic path".to_string(),
         )),
         Command::SetTodoTitle { title, .. } => {
@@ -764,6 +920,15 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
             vec![Projection::Inbox]
         }
         DomainEvent::TodoReordered { .. } => vec![Projection::Inbox, Projection::Anytime],
+        DomainEvent::AreaCreated { id } | DomainEvent::AreaRenamed { id } => {
+            vec![Projection::Area(*id), Projection::AllProjects]
+        }
+        DomainEvent::AreaDeleted { id } => vec![
+            Projection::Area(*id),
+            Projection::AllProjects,
+            Projection::Inbox,
+            Projection::Trash,
+        ],
         DomainEvent::TodoTitleChanged { .. } | DomainEvent::TodoNotesChanged { .. } => {
             vec![Projection::Inbox, Projection::Today, Projection::Anytime]
         }

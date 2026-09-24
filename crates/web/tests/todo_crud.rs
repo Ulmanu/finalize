@@ -70,6 +70,7 @@ async fn harness() -> Harness {
         resolver,
         Some(Arc::new(AuthContext::new(auth, false))),
         Some(service.clone()),
+        None,
     );
 
     Harness {

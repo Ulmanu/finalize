@@ -15,6 +15,7 @@ use crate::boundaries::{Loading, NotFound};
 use crate::design::CheckControl;
 use crate::layouts::{Protected, PublicLayout};
 use crate::session::use_account;
+use momentum_app::areas::{AreaService, AreaSummary};
 use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::Status;
 
@@ -258,7 +259,6 @@ list_route_page!(
 );
 list_route_page!(LogbookPage, "Logbook", "Completed and canceled items.");
 list_route_page!(ProjectsPage, "Projects", "All open projects.");
-list_route_page!(AreasPage, "Areas", "Ongoing areas of responsibility.");
 list_route_page!(
     SettingsPage,
     "Settings",
@@ -296,7 +296,6 @@ macro_rules! entity_route_page {
     };
 }
 
-entity_route_page!(AreaPage, "Area", "area_id");
 entity_route_page!(ProjectPage, "Project", "project_id");
 
 /// Public catalog of every design-system primitive.
@@ -835,6 +834,241 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                         </p>
                     }
                 })}
+        </section>
+    }
+}
+
+/// Areas overview with create/delete controls.
+#[component]
+pub fn AreasPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <AreasList/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn AreasList() -> impl IntoView {
+    let service = use_context::<Option<Arc<AreaService>>>().flatten();
+    let account = use_account();
+    let areas = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="areas-page">
+            <header class="list-header">
+                <h1 class="list-title">"Areas"</h1>
+                <p class="list-description">"Ongoing responsibilities."</p>
+            </header>
+            <form method="post" action="/areas" class="add-form" data-testid="add-area-form">
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="New area"
+                    aria-label="New area"
+                    autocomplete="off"
+                    required=true
+                />
+                <button type="submit" class="button-primary">"Add"</button>
+            </form>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    areas
+                        .get()
+                        .map(|areas| {
+                            if areas.is_empty() {
+                                view! {
+                                    <div class="list-empty" data-testid="areas-empty">
+                                        <p>"No areas yet."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <ul class="task-list" data-testid="area-list">
+                                        {areas
+                                            .into_iter()
+                                            .map(|area| view! { <AreaRow area=area/> })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn AreaRow(area: AreaSummary) -> impl IntoView {
+    let id = area.id;
+    let title = area.title.clone();
+    let counts = format!(
+        "{} projects · {} to-dos",
+        area.project_count, area.todo_count
+    );
+    let open_target = format!("/areas/{id}");
+    let rename_target = format!("/areas/{id}/rename");
+    let delete_target = format!("/areas/{id}/delete");
+
+    view! {
+        <li class="task-row" data-testid="area-row">
+            <div class="task-row-body">
+                <a class="task-title" href=open_target>{title.clone()}</a>
+                <span class="task-row-meta">
+                    <span class="row-badge">{counts}</span>
+                </span>
+            </div>
+            <div class="task-row-actions">
+                <form method="post" action=rename_target class="row-schedule">
+                    <input type="text" name="title" value=title aria-label="Rename area"/>
+                    <button type="submit" class="row-action" aria-label="Rename area">"Rename"</button>
+                </form>
+                <form method="post" action=delete_target class="row-schedule">
+                    <select name="policy" aria-label="Deletion policy">
+                        <option value="detach">"Keep contents"</option>
+                        <option value="trash">"Trash contents"</option>
+                    </select>
+                    <button type="submit" class="row-action" aria-label="Delete area">"Delete"</button>
+                </form>
+            </div>
+        </li>
+    }
+}
+
+/// Area detail listing projects and loose to-dos.
+#[component]
+pub fn AreaPage() -> impl IntoView {
+    let params = use_params_map();
+    let id = move || params.read().get("area_id").unwrap_or_default();
+    view! {
+        <Protected>
+            {move || view! { <AreaDetail id=id()/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn AreaDetail(#[prop(into)] id: String) -> impl IntoView {
+    let area_service = use_context::<Option<Arc<AreaService>>>().flatten();
+    let todo_service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let account = use_account();
+    let account_for_area = account.clone();
+    let parsed = id.parse::<momentum_domain::EntityId>().ok();
+
+    let area = AsyncDerived::new(move || {
+        let service = area_service.clone();
+        let account = account_for_area.clone();
+        async move {
+            match (service, account, parsed) {
+                (Some(service), Some(account), Some(id)) => {
+                    service.get(account.account_id, id).await.ok().flatten()
+                }
+                _ => None,
+            }
+        }
+    });
+
+    let loose_todos = AsyncDerived::new(move || {
+        let service = todo_service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, TodoScope::AllOpen)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|todo| {
+                        parsed.is_some_and(|id| {
+                            todo.context == momentum_domain::model::ContextRef::Area(id)
+                        })
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="entity-page" data-testid="area-detail">
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    area.get()
+                        .map(|area| {
+                            area.map_or_else(
+                                || {
+                                    view! {
+                                        <header class="entity-header">
+                                            <h1 class="entity-title">"Area not found"</h1>
+                                            <p>
+                                                <a href="/areas">"Back to Areas"</a>
+                                            </p>
+                                        </header>
+                                    }
+                                        .into_any()
+                                },
+                                |area| {
+                                    view! {
+                                        <header class="entity-header">
+                                            <h1 class="entity-title" data-testid="area-title">
+                                                {area.title.clone()}
+                                            </h1>
+                                            <p class="todo-meta">
+                                                {format!(
+                                                    "{} projects · {} loose to-dos",
+                                                    area.project_count,
+                                                    area.todo_count,
+                                                )}
+                                            </p>
+                                        </header>
+                                    }
+                                        .into_any()
+                                },
+                            )
+                        })
+                }}
+            </Suspense>
+            <h2 class="section-heading">"Loose to-dos"</h2>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    loose_todos
+                        .get()
+                        .map(|todos| {
+                            if todos.is_empty() {
+                                view! {
+                                    <div class="list-empty" data-testid="area-loose-empty">
+                                        <p>"No loose to-dos."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <ul class="task-list" data-testid="area-loose-list">
+                                        {todos
+                                            .into_iter()
+                                            .map(|todo| view! { <TodoRow todo=todo/> })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
         </section>
     }
 }

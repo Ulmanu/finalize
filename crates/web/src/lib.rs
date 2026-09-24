@@ -13,6 +13,8 @@
 
 pub mod app;
 #[cfg(feature = "ssr")]
+pub mod area_routes;
+#[cfg(feature = "ssr")]
 pub mod auth_routes;
 pub mod boundaries;
 pub mod design;

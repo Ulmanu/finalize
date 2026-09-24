@@ -5,15 +5,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use momentum_app::commands::{ChangeRecord, CommandError, UnitOfWork, UnitOfWorkFactory};
+use momentum_app::commands::{
+    AreaChildren, ChangeRecord, CommandError, UnitOfWork, UnitOfWorkFactory,
+};
 use momentum_app::ordering::{OrderedItem, OrderingScope, Rank, ScopeOrder};
-use momentum_domain::model::{ContextRef, Todo};
+use momentum_domain::model::{Area, ContextRef, Todo};
 use momentum_domain::{AccountId, EntityId};
 use uuid::Uuid;
 
 #[derive(Default)]
 struct MemoryState {
     todos: HashMap<(AccountId, EntityId), Todo>,
+    areas: HashMap<(AccountId, EntityId), Area>,
+    project_areas: HashMap<(AccountId, EntityId), EntityId>,
     changes: Vec<(AccountId, ChangeRecord)>,
     context_ranks: HashMap<(AccountId, EntityId), Rank>,
     next_ranks: HashMap<(AccountId, ContextRef), i64>,
@@ -62,6 +66,83 @@ impl MemoryDatabase {
             .todos
             .get(&(account_id, id))
             .cloned()
+    }
+
+    /// Returns a stored area.
+    #[must_use]
+    pub fn area(&self, account_id: AccountId, id: EntityId) -> Option<Area> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .areas
+            .get(&(account_id, id))
+            .cloned()
+    }
+
+    /// Returns every stored area for an account.
+    #[must_use]
+    pub fn areas_for(&self, account_id: AccountId) -> Vec<Area> {
+        let state = self.state.lock().expect("memory state lock");
+        let mut areas: Vec<Area> = state
+            .areas
+            .iter()
+            .filter(|((account, _), _)| *account == account_id)
+            .map(|(_, area)| area.clone())
+            .collect();
+        areas.sort_by_key(|area| area.meta.created_at);
+        areas
+    }
+
+    /// Returns `(project_count, todo_count)` for an area.
+    #[must_use]
+    pub fn area_children(&self, account_id: AccountId, area_id: EntityId) -> (usize, usize) {
+        let state = self.state.lock().expect("memory state lock");
+        let todos = state
+            .todos
+            .iter()
+            .filter(|((account, _), todo)| {
+                *account == account_id
+                    && todo.context == ContextRef::Area(area_id)
+                    && todo.status != momentum_domain::model::Status::Deleted
+            })
+            .count();
+        let projects = state
+            .project_areas
+            .iter()
+            .filter(|((account, _), assigned)| *account == account_id && **assigned == area_id)
+            .count();
+        (projects, todos)
+    }
+
+    /// Returns a project's area assignment.
+    #[must_use]
+    pub fn project_area(&self, account_id: AccountId, project_id: EntityId) -> Option<EntityId> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .project_areas
+            .get(&(account_id, project_id))
+            .copied()
+    }
+
+    /// Assigns a project to an area (or clears it).
+    pub fn assign_project_area(
+        &self,
+        account_id: AccountId,
+        project_id: EntityId,
+        area_id: Option<EntityId>,
+    ) {
+        let mut state = self.state.lock().expect("memory state lock");
+        match area_id {
+            Some(area_id) => {
+                state
+                    .project_areas
+                    .insert((account_id, project_id), area_id);
+            }
+            None => {
+                state.project_areas.remove(&(account_id, project_id));
+            }
+        }
     }
 
     /// Returns an entity's context-scope rank, when assigned.
@@ -184,6 +265,81 @@ impl UnitOfWork for MemoryUnitOfWork {
         }
         self.staged_saves
             .push((todo.id(), todo.clone(), expected_version));
+        Ok(())
+    }
+
+    async fn load_area(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<Area>, CommandError> {
+        Ok(self.database.area(account_id, id))
+    }
+
+    async fn save_area(
+        &mut self,
+        account_id: AccountId,
+        area: &Area,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        if let Some(expected) = expected_version {
+            let actual = state
+                .areas
+                .get(&(account_id, area.id()))
+                .map_or(0, |current| current.meta.version);
+            if actual != expected {
+                return Err(CommandError::Conflict { expected, actual });
+            }
+        }
+        state.areas.insert((account_id, area.id()), area.clone());
+        Ok(())
+    }
+
+    async fn list_area_children(
+        &mut self,
+        account_id: AccountId,
+        area_id: EntityId,
+    ) -> Result<AreaChildren, CommandError> {
+        let state = self.database.state.lock().expect("memory state lock");
+        let todo_ids = state
+            .todos
+            .iter()
+            .filter(|((account, _), todo)| {
+                *account == account_id
+                    && todo.context == ContextRef::Area(area_id)
+                    && todo.status != momentum_domain::model::Status::Deleted
+            })
+            .map(|((_, id), _)| *id)
+            .collect();
+        let project_ids = state
+            .project_areas
+            .iter()
+            .filter(|((account, _), assigned)| *account == account_id && **assigned == area_id)
+            .map(|((_, project), _)| *project)
+            .collect();
+        Ok(AreaChildren {
+            todo_ids,
+            project_ids,
+        })
+    }
+
+    async fn project_area(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<Option<Option<EntityId>>, CommandError> {
+        Ok(Some(self.database.project_area(account_id, project_id)))
+    }
+
+    async fn set_project_area(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+        area_id: Option<EntityId>,
+    ) -> Result<(), CommandError> {
+        self.database
+            .assign_project_area(account_id, project_id, area_id);
         Ok(())
     }
 

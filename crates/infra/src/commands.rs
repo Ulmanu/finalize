@@ -8,7 +8,7 @@ use momentum_app::commands::{
     ChangeRecord, CommandError, DomainEvent, UnitOfWork, UnitOfWorkFactory,
 };
 use momentum_domain::model::{
-    ContextRef, Deadline, Reminder, ReminderState, Schedule, Status, Title, Todo,
+    Area, ContextRef, Deadline, EntityMeta, Reminder, ReminderState, Schedule, Status, Title, Todo,
 };
 use momentum_domain::time::LocalDate;
 use momentum_domain::{AccountId, EntityId};
@@ -353,6 +353,210 @@ impl UnitOfWork for PgUnitOfWork {
         Ok(())
     }
 
+    async fn load_area(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<Area>, CommandError> {
+        let tx = self.tx()?;
+        let row = sqlx::query(
+            "select id, title, deleted_at, created_at, updated_at, version \
+             from entities where account_id = $1 and id = $2 and kind = 'area'",
+        )
+        .bind(account_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let title = Title::parse(row.get::<String, _>("title").as_str())
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+        Ok(Some(Area {
+            meta: EntityMeta {
+                id: EntityId::from_uuid(row.get("id")),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                version: row.get("version"),
+                deleted_at: row.get("deleted_at"),
+            },
+            title,
+            tags: std::collections::BTreeSet::new(),
+        }))
+    }
+
+    async fn save_area(
+        &mut self,
+        account_id: AccountId,
+        area: &Area,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        let status = if area.meta.deleted_at.is_some() {
+            "deleted"
+        } else {
+            "open"
+        };
+        match expected_version {
+            None => {
+                sqlx::query(
+                    "insert into entities \
+                     (id, account_id, kind, title, notes, status, schedule_kind, deleted_at, \
+                      created_at, updated_at, version) \
+                     values ($1, $2, 'area', $3, '', $4, 'anytime', $5, $6, $7, $8)",
+                )
+                .bind(area.id().as_uuid())
+                .bind(account_id.as_uuid())
+                .bind(area.title.as_str())
+                .bind(status)
+                .bind(area.meta.deleted_at)
+                .bind(area.meta.created_at)
+                .bind(area.meta.updated_at)
+                .bind(area.meta.version)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+            }
+            Some(expected) => {
+                let result = sqlx::query(
+                    "update entities set title = $3, status = $4, deleted_at = $5, \
+                     updated_at = $6, version = version + 1 \
+                     where account_id = $1 and id = $2 and version = $7 and kind = 'area'",
+                )
+                .bind(account_id.as_uuid())
+                .bind(area.id().as_uuid())
+                .bind(area.title.as_str())
+                .bind(status)
+                .bind(area.meta.deleted_at)
+                .bind(area.meta.updated_at)
+                .bind(expected)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+                if result.rows_affected() == 0 {
+                    let actual: Option<i64> = sqlx::query_scalar(
+                        "select version from entities where account_id = $1 and id = $2",
+                    )
+                    .bind(account_id.as_uuid())
+                    .bind(area.id().as_uuid())
+                    .fetch_optional(&mut **tx)
+                    .await
+                    .map_err(storage)?;
+                    return match actual {
+                        Some(actual) => Err(CommandError::Conflict { expected, actual }),
+                        None => Err(CommandError::NotFound),
+                    };
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn list_area_children(
+        &mut self,
+        account_id: AccountId,
+        area_id: EntityId,
+    ) -> Result<momentum_app::commands::AreaChildren, CommandError> {
+        let tx = self.tx()?;
+        let todo_ids: Vec<Uuid> = sqlx::query_scalar(
+            "select e.id from entities e \
+             join placements p on p.entity_id = e.id and p.scope = 'context' \
+             where e.account_id = $1 and e.kind = 'todo' and e.status <> 'deleted' \
+             and p.parent_kind = 'area' and p.parent_id = $2",
+        )
+        .bind(account_id.as_uuid())
+        .bind(area_id.as_uuid())
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
+
+        let project_ids: Vec<Uuid> = sqlx::query_scalar(
+            "select e.id from entities e \
+             join placements p on p.entity_id = e.id and p.scope = 'context' \
+             where e.account_id = $1 and e.kind = 'project' and e.status = 'open' \
+             and p.parent_kind = 'area' and p.parent_id = $2",
+        )
+        .bind(account_id.as_uuid())
+        .bind(area_id.as_uuid())
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
+
+        Ok(momentum_app::commands::AreaChildren {
+            todo_ids: todo_ids.into_iter().map(EntityId::from_uuid).collect(),
+            project_ids: project_ids.into_iter().map(EntityId::from_uuid).collect(),
+        })
+    }
+
+    async fn project_area(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<Option<Option<EntityId>>, CommandError> {
+        let tx = self.tx()?;
+        let exists: Option<Uuid> = sqlx::query_scalar(
+            "select id from entities where account_id = $1 and id = $2 and kind = 'project'",
+        )
+        .bind(account_id.as_uuid())
+        .bind(project_id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
+        if exists.is_none() {
+            return Ok(None);
+        }
+
+        let area_id: Option<Uuid> = sqlx::query_scalar(
+            "select parent_id from placements \
+             where account_id = $1 and entity_id = $2 and scope = 'context' \
+             and parent_kind = 'area' limit 1",
+        )
+        .bind(account_id.as_uuid())
+        .bind(project_id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(Some(area_id.map(EntityId::from_uuid)))
+    }
+
+    async fn set_project_area(
+        &mut self,
+        account_id: AccountId,
+        project_id: EntityId,
+        area_id: Option<EntityId>,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        sqlx::query(
+            "delete from placements \
+             where account_id = $1 and entity_id = $2 and scope = 'context' and parent_kind = 'area'",
+        )
+        .bind(account_id.as_uuid())
+        .bind(project_id.as_uuid())
+        .execute(&mut **tx)
+        .await
+        .map_err(storage)?;
+
+        if let Some(area_id) = area_id {
+            let rank = next_context_rank(tx, account_id, ContextRef::Area(area_id)).await?;
+            sqlx::query(
+                "insert into placements \
+                 (id, account_id, entity_id, scope, parent_kind, parent_id, rank) \
+                 values ($1, $2, $3, 'context', 'area', $4, $5)",
+            )
+            .bind(Uuid::now_v7())
+            .bind(account_id.as_uuid())
+            .bind(project_id.as_uuid())
+            .bind(area_id.as_uuid())
+            .bind(format!("{rank:019}"))
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        }
+        Ok(())
+    }
+
     async fn load_context_order(
         &mut self,
         account_id: AccountId,
@@ -459,6 +663,9 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::TodoCreated { .. } => "todo_created",
                 DomainEvent::TodoDuplicated { .. } => "todo_duplicated",
                 DomainEvent::TodoReordered { .. } => "todo_reordered",
+                DomainEvent::AreaCreated { .. } => "area_created",
+                DomainEvent::AreaRenamed { .. } => "area_renamed",
+                DomainEvent::AreaDeleted { .. } => "area_deleted",
                 DomainEvent::TodoTitleChanged { .. } => "todo_title_changed",
                 DomainEvent::TodoNotesChanged { .. } => "todo_notes_changed",
                 DomainEvent::TodoCompleted { .. } => "todo_completed",

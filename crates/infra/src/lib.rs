@@ -6,12 +6,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod areas;
 pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod db;
 pub mod todos;
 
+pub use areas::PgAreaReadStore;
 pub use auth::{Argon2Hasher, PgAuthStore, RandomTokenGenerator, SystemClock};
 pub use commands::PgUnitOfWorkFactory;
 pub use config::{ConfigError, ServerConfig};

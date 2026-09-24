@@ -338,6 +338,27 @@ Agent: opencode (deepseek-v4.1-flash)
   read store takes the caller's local date (UTC until localization lands).
 - Live integrations not verified: PostgreSQL scope-order read/write path (no database).
 
+### 13 — `add-areas` — COMPLETE
+
+- Start: 2026-09-24 10:40 · End: 2026-09-24 12:05
+- Proposal validation: strict validation passed before apply.
+- Implementation: `CreateArea`/`RenameArea`/`DeleteArea` commands with required
+  `AreaDeletionPolicy` (`Detach` | `TrashContents`); unit-of-work area load/save,
+  contained-child listing, and project-area assignment (memory + PostgreSQL); `AreaSummary`,
+  `AreaReadStore`, `AreaService`; `/areas` list (create, rename, delete with policy) and
+  `/areas/:area_id` detail with loose to-dos; sidebar/`AreaService` wiring in `AppState`.
+- Migrations: none.
+- Tests: 6 area web/service tests (create/rename/list counts, loose to-do listing, detach
+  returns to Inbox, trash moves to Trash, project assignment cleared on detach, unauthenticated
+  mutation rejected); fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual; all requirement scenarios covered. No critical findings.
+- Archive: `2026-09-24-add-areas`; canonical `features/areas` spec created; strict validation
+  pass.
+- Commit: `feat(13): add areas`
+- Decisions: deletion always requires an explicit policy; loose to-dos keep their identity and
+  stay loose; area ordering reuses the context/inbox placement scope (documented).
+- Live integrations not verified: PostgreSQL area paths (no database).
+
 ## Run summary
 
 (Filled at run end.)

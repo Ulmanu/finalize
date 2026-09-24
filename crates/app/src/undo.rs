@@ -184,7 +184,10 @@ pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Comm
     match command {
         Command::DuplicateTodo { .. }
         | Command::CreateTodo { .. }
-        | Command::ReorderTodo { .. } => {
+        | Command::ReorderTodo { .. }
+        | Command::CreateArea { .. }
+        | Command::RenameArea { .. }
+        | Command::DeleteArea { .. } => {
             // The created identity is only known after execution; the engine re-derives the
             // inverse from the post-state through the created event, so a create is undone by
             // deleting the entity the command produced.
