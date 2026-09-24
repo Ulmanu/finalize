@@ -232,6 +232,15 @@ impl MemoryDatabase {
                 completed_at: todo.completed_at,
                 created_at: todo.meta.created_at,
                 version: todo.meta.version,
+                checklist: todo
+                    .checklist
+                    .iter()
+                    .map(|item| momentum_app::todos::ChecklistItemSummary {
+                        id: item.id,
+                        title: item.title.as_str().to_string(),
+                        completed: item.completed,
+                    })
+                    .collect(),
             })
             .collect()
     }

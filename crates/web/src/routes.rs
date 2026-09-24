@@ -794,6 +794,8 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                         }
                     })}
             </div>
+            <h2 class="section-heading">"Checklist"</h2>
+            <ChecklistEditor todo=todo.clone()/>
             {is_terminal
                 .then(|| {
                     view! {
@@ -802,6 +804,113 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                         </p>
                     }
                 })}
+        </section>
+    }
+}
+
+#[component]
+fn ChecklistEditor(todo: TodoSummary) -> impl IntoView {
+    let id = todo.id;
+    let items = todo.checklist.clone();
+    let return_to = format!("/todos/{id}");
+
+    view! {
+        <section class="checklist" data-testid="checklist-editor">
+            <ul class="checklist-items" data-testid="checklist-items">
+                {items
+                    .into_iter()
+                    .map(|item| {
+                        let item_id = item.id;
+                        let toggle_target = format!("/todos/{id}/checklist/{item_id}/toggle");
+                        let rename_target = format!("/todos/{id}/checklist/{item_id}/rename");
+                        let up_target = format!("/todos/{id}/checklist/{item_id}/move_up");
+                        let down_target = format!("/todos/{id}/checklist/{item_id}/move_down");
+                        let remove_target = format!("/todos/{id}/checklist/{item_id}/remove");
+                        let next_completed = if item.completed { "0" } else { "1" };
+                        let marker = if item.completed { "\u{2611}" } else { "\u{2610}" };
+                        let toggle_label = if item.completed {
+                            "Mark checklist item incomplete"
+                        } else {
+                            "Mark checklist item complete"
+                        };
+                        view! {
+                            <li class="checklist-item" data-testid="checklist-item">
+                                <form method="post" action=toggle_target class="row-schedule">
+                                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                                    <input type="hidden" name="completed" value=next_completed/>
+                                    <button type="submit" class="row-action" aria-label=toggle_label>
+                                        {marker}
+                                    </button>
+                                </form>
+                                <form method="post" action=rename_target class="row-schedule">
+                                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                                    <input
+                                        type="text"
+                                        name="title"
+                                        value=item.title
+                                        aria-label="Checklist item"
+                                    />
+                                    <button type="submit" class="button-secondary">"Rename"</button>
+                                </form>
+                                <form method="post" action=up_target>
+                                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                                    <button
+                                        type="submit"
+                                        class="row-action"
+                                        aria-label="Move checklist item up"
+                                    >
+                                        "\u{2191}"
+                                    </button>
+                                </form>
+                                <form method="post" action=down_target>
+                                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                                    <button
+                                        type="submit"
+                                        class="row-action"
+                                        aria-label="Move checklist item down"
+                                    >
+                                        "\u{2193}"
+                                    </button>
+                                </form>
+                                <form method="post" action=remove_target>
+                                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                                    <button type="submit" class="row-action">"Remove"</button>
+                                </form>
+                            </li>
+                        }
+                    })
+                    .collect_view()}
+            </ul>
+            <form
+                method="post"
+                action=format!("/todos/{id}/checklist")
+                class="add-form"
+                data-testid="add-checklist-item-form"
+            >
+                <input type="hidden" name="return_to" value=return_to.clone()/>
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="New checklist item"
+                    aria-label="New checklist item"
+                    autocomplete="off"
+                    required=true
+                />
+                <button type="submit" class="button-primary">"Add item"</button>
+            </form>
+            <form
+                method="post"
+                action=format!("/todos/{id}/checklist/expand")
+                class="auth-form"
+                data-testid="expand-checklist-form"
+            >
+                <input type="hidden" name="return_to" value=return_to/>
+                <label class="form-field">
+                    <span>"Paste lines"</span>
+                    <textarea name="text" rows="4" aria-label="Paste checklist lines"></textarea>
+                </label>
+                <button type="submit" class="button-secondary">"Add pasted lines"</button>
+            </form>
         </section>
     }
 }

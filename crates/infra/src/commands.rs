@@ -132,6 +132,44 @@ async fn load_context(
     }))
 }
 
+async fn load_checklist(
+    tx: &mut Transaction<'static, Postgres>,
+    entity_id: EntityId,
+) -> Result<Vec<momentum_domain::model::ChecklistItem>, CommandError> {
+    let rows = sqlx::query(
+        "select id, title, completed from checklist_items \
+         where entity_id = $1 order by rank asc, id asc",
+    )
+    .bind(entity_id.as_uuid())
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(storage)?;
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let title = Title::parse(row.get::<String, _>("title").as_str())
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+        items.push(momentum_domain::model::ChecklistItem {
+            id: momentum_domain::ChecklistItemId::from_uuid(row.get("id")),
+            title,
+            completed: row.get("completed"),
+        });
+    }
+    Ok(items)
+}
+
+async fn load_tags(
+    tx: &mut Transaction<'static, Postgres>,
+    entity_id: EntityId,
+) -> Result<std::collections::BTreeSet<EntityId>, CommandError> {
+    let rows: Vec<Uuid> =
+        sqlx::query_scalar("select tag_id from tag_assignments where entity_id = $1")
+            .bind(entity_id.as_uuid())
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(storage)?;
+    Ok(rows.into_iter().map(EntityId::from_uuid).collect())
+}
+
 async fn upsert_placement(
     tx: &mut Transaction<'static, Postgres>,
     account_id: AccountId,
@@ -205,6 +243,8 @@ impl UnitOfWork for PgUnitOfWork {
         };
 
         let context = load_context(tx, id).await?;
+        let checklist = load_checklist(tx, id).await?;
+        let tags = load_tags(tx, id).await?;
         let title = Title::parse(row.get::<String, _>("title").as_str())
             .map_err(|error| CommandError::Storage(error.to_string()))?;
 
@@ -248,8 +288,8 @@ impl UnitOfWork for PgUnitOfWork {
                 .map(|date| Deadline::new(LocalDate::from_naive(date))),
             reminder,
             context,
-            tags: std::collections::BTreeSet::new(),
-            checklist: Vec::new(),
+            tags,
+            checklist,
             completed_at: row.get("completed_at"),
             canceled_at: row.get("canceled_at"),
             logged_at: row.get("logged_at"),
@@ -351,6 +391,48 @@ impl UnitOfWork for PgUnitOfWork {
         }
 
         upsert_placement(tx, account_id, todo.id(), todo.context).await?;
+        sqlx::query("delete from checklist_items where entity_id = $1")
+            .bind(todo.id().as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        for (index, item) in todo.checklist.iter().enumerate() {
+            let rank = momentum_app::ordering::Rank::new(
+                (i64::try_from(index).unwrap_or(0) + 1) * momentum_app::ordering::STEP,
+            )
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+            sqlx::query(
+                "insert into checklist_items \
+                 (id, account_id, entity_id, title, completed, rank, created_at, updated_at, \
+                  version) values ($1, $2, $3, $4, $5, $6, now(), now(), 1)",
+            )
+            .bind(item.id.as_uuid())
+            .bind(account_id.as_uuid())
+            .bind(todo.id().as_uuid())
+            .bind(item.title.as_str())
+            .bind(item.completed)
+            .bind(rank.encode())
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        }
+        sqlx::query("delete from tag_assignments where entity_id = $1")
+            .bind(todo.id().as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        for tag in &todo.tags {
+            sqlx::query(
+                "insert into tag_assignments (account_id, entity_id, tag_id) values ($1, $2, $3) \
+                 on conflict (entity_id, tag_id) do nothing",
+            )
+            .bind(account_id.as_uuid())
+            .bind(todo.id().as_uuid())
+            .bind(tag.as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        }
         Ok(())
     }
 
@@ -988,6 +1070,7 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::TodoScheduled { .. } => "todo_scheduled",
                 DomainEvent::TodoDeadlineChanged { .. } => "todo_deadline_changed",
                 DomainEvent::TodoReminderChanged { .. } => "todo_reminder_changed",
+                DomainEvent::ChecklistChanged { .. } => "checklist_changed",
             });
 
         let payload = serde_json::to_value(&record.events)

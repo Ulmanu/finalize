@@ -405,6 +405,27 @@ Agent: opencode (deepseek-v4.1-flash)
   archive persists as a flag so children keep identity.
 - Live integrations not verified: PostgreSQL heading paths (no database).
 
+### 16 — `add-checklists` — COMPLETE
+
+- Start: 2026-09-24 17:30 · End: 2026-09-24 18:15
+- Proposal validation: strict validation passed before apply.
+- Implementation: checklist commands on the to-do aggregate (add/rename/complete/uncomplete/
+  remove/reorder/bulk expand); deterministic `parse_checklist_lines` normalization; duplication
+  copies structure and resets completion (template/copy semantics); `TodoSummary` exposes
+  ordered checklist items; PostgreSQL load/save synchronizes `checklist_items` (and tag
+  assignments) transactionally with the parent to-do; to-do editor renders a checklist with
+  labeled controls plus add-item and bulk-paste forms.
+- Migrations: none (`checklist_items` existed).
+- Tests: 3 testkit tests (editing/order, bulk normalization, duplicate reset) and 2 web tests
+  (editor controls, bulk endpoint); fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual; every requirement scenario covered. No critical findings.
+- Archive: `2026-09-24-add-checklists`; canonical `features/checklists` spec created; strict
+  validation pass.
+- Commit: `feat(16): add checklists`
+- Decisions: checklist stays inside the to-do aggregate so copy semantics are pure and
+  transactional; bulk input normalizes bullets/checkboxes and drops empty lines.
+- Live integrations not verified: PostgreSQL checklist paths (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -426,9 +447,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 13 | add-areas | COMPLETE | `feat(13)` |
 | 14 | add-projects | COMPLETE | `feat(14)` |
 | 15 | add-project-headings | COMPLETE | `feat(15)` |
+| 16 | add-checklists | COMPLETE | `feat(16)` |
 
-- Completed proposal range: 01–15 (15 of 74).
-- Incomplete: 16–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–16 (16 of 74).
+- Incomplete: 17–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

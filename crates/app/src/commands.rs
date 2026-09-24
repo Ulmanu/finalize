@@ -247,6 +247,54 @@ pub enum Command {
         /// Entity to restore.
         id: EntityId,
     },
+    /// Adds a checklist item to a to-do.
+    AddChecklistItem {
+        /// Parent to-do.
+        todo: EntityId,
+        /// Item title.
+        title: String,
+    },
+    /// Replaces a checklist item title.
+    SetChecklistItemTitle {
+        /// Parent to-do.
+        todo: EntityId,
+        /// Item to update.
+        item: momentum_domain::ChecklistItemId,
+        /// New title.
+        title: String,
+    },
+    /// Sets a checklist item's completion state.
+    SetChecklistItemCompleted {
+        /// Parent to-do.
+        todo: EntityId,
+        /// Item to update.
+        item: momentum_domain::ChecklistItemId,
+        /// New completion state.
+        completed: bool,
+    },
+    /// Removes a checklist item.
+    RemoveChecklistItem {
+        /// Parent to-do.
+        todo: EntityId,
+        /// Item to remove.
+        item: momentum_domain::ChecklistItemId,
+    },
+    /// Moves a checklist item one position up or down.
+    ReorderChecklistItem {
+        /// Parent to-do.
+        todo: EntityId,
+        /// Item to move.
+        item: momentum_domain::ChecklistItemId,
+        /// Direction within the checklist.
+        direction: ReorderDirection,
+    },
+    /// Expands pasted multi-line content into checklist items.
+    ExpandChecklist {
+        /// Parent to-do.
+        todo: EntityId,
+        /// Pasted content.
+        text: String,
+    },
     /// Moves a to-do to a new contextual parent.
     MoveTodo {
         /// Entity to move.
@@ -314,6 +362,12 @@ impl Command {
             | Self::ScheduleTodo { id, .. }
             | Self::SetTodoDeadline { id, .. }
             | Self::SetTodoReminder { id, .. } => Some(*id),
+            Self::AddChecklistItem { todo, .. }
+            | Self::SetChecklistItemTitle { todo, .. }
+            | Self::SetChecklistItemCompleted { todo, .. }
+            | Self::RemoveChecklistItem { todo, .. }
+            | Self::ReorderChecklistItem { todo, .. }
+            | Self::ExpandChecklist { todo, .. } => Some(*todo),
         }
     }
 
@@ -350,6 +404,12 @@ impl Command {
             Self::DeleteTodo { .. } => "delete_todo",
             Self::RestoreTodo { .. } => "restore_todo",
             Self::MoveTodo { .. } => "move_todo",
+            Self::AddChecklistItem { .. } => "add_checklist_item",
+            Self::SetChecklistItemTitle { .. } => "set_checklist_item_title",
+            Self::SetChecklistItemCompleted { .. } => "set_checklist_item_completed",
+            Self::RemoveChecklistItem { .. } => "remove_checklist_item",
+            Self::ReorderChecklistItem { .. } => "reorder_checklist_item",
+            Self::ExpandChecklist { .. } => "expand_checklist",
             Self::ScheduleTodo { .. } => "schedule_todo",
             Self::SetTodoDeadline { .. } => "set_todo_deadline",
             Self::SetTodoReminder { .. } => "set_todo_reminder",
@@ -546,6 +606,11 @@ pub enum DomainEvent {
         /// Entity identity.
         id: EntityId,
     },
+    /// The embedded checklist changed.
+    ChecklistChanged {
+        /// Parent to-do identity.
+        id: EntityId,
+    },
 }
 
 impl DomainEvent {
@@ -577,7 +642,8 @@ impl DomainEvent {
             | Self::TodoMoved { id }
             | Self::TodoScheduled { id }
             | Self::TodoDeadlineChanged { id }
-            | Self::TodoReminderChanged { id } => *id,
+            | Self::TodoReminderChanged { id }
+            | Self::ChecklistChanged { id } => *id,
         }
     }
 }
@@ -1345,6 +1411,11 @@ impl CommandDispatcher {
                 copy.reminder = source.reminder.clone();
                 copy.context = source.context;
                 copy.tags = source.tags.clone();
+                copy.checklist = source
+                    .checklist
+                    .iter()
+                    .map(|item| momentum_domain::model::ChecklistItem::new(item.title.clone()))
+                    .collect();
                 unit.save_todo(account_id, &copy, None).await?;
                 Ok((
                     Some(copy.id()),
@@ -1470,6 +1541,82 @@ fn apply_to_todo(
             todo.set_reminder(reminder, now);
             Ok(DomainEvent::TodoReminderChanged { id })
         }
+        Command::AddChecklistItem { title, .. } => {
+            let title =
+                Title::parse(title).map_err(|error| CommandError::Validation(error.to_string()))?;
+            todo.checklist
+                .push(momentum_domain::model::ChecklistItem::new(title));
+            todo.meta.touch(now);
+            Ok(DomainEvent::ChecklistChanged { id })
+        }
+        Command::SetChecklistItemTitle { item, title, .. } => {
+            let item = todo
+                .checklist
+                .iter_mut()
+                .find(|entry| entry.id == *item)
+                .ok_or(CommandError::NotFound)?;
+            item.title =
+                Title::parse(title).map_err(|error| CommandError::Validation(error.to_string()))?;
+            todo.meta.touch(now);
+            Ok(DomainEvent::ChecklistChanged { id })
+        }
+        Command::SetChecklistItemCompleted {
+            item, completed, ..
+        } => {
+            let item = todo
+                .checklist
+                .iter_mut()
+                .find(|entry| entry.id == *item)
+                .ok_or(CommandError::NotFound)?;
+            item.completed = *completed;
+            todo.meta.touch(now);
+            Ok(DomainEvent::ChecklistChanged { id })
+        }
+        Command::RemoveChecklistItem { item, .. } => {
+            let before = todo.checklist.len();
+            todo.checklist.retain(|entry| entry.id != *item);
+            if todo.checklist.len() == before {
+                return Err(CommandError::NotFound);
+            }
+            todo.meta.touch(now);
+            Ok(DomainEvent::ChecklistChanged { id })
+        }
+        Command::ReorderChecklistItem {
+            item, direction, ..
+        } => {
+            let position = todo
+                .checklist
+                .iter()
+                .position(|entry| entry.id == *item)
+                .ok_or(CommandError::NotFound)?;
+            let target = match direction {
+                ReorderDirection::Up => position.checked_sub(1),
+                ReorderDirection::Down => {
+                    (position + 1 < todo.checklist.len()).then_some(position + 1)
+                }
+            };
+            if let Some(target) = target {
+                todo.checklist.swap(position, target);
+                todo.meta.touch(now);
+            }
+            Ok(DomainEvent::ChecklistChanged { id })
+        }
+        Command::ExpandChecklist { text, .. } => {
+            let lines = momentum_domain::model::parse_checklist_lines(text);
+            if lines.is_empty() {
+                return Err(CommandError::Validation(
+                    "no checklist lines to add".to_string(),
+                ));
+            }
+            for line in lines {
+                let title = Title::parse(&line)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                todo.checklist
+                    .push(momentum_domain::model::ChecklistItem::new(title));
+            }
+            todo.meta.touch(now);
+            Ok(DomainEvent::ChecklistChanged { id })
+        }
     }
 }
 
@@ -1526,7 +1673,9 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
             Projection::Inbox,
             Projection::Trash,
         ],
-        DomainEvent::TodoTitleChanged { .. } | DomainEvent::TodoNotesChanged { .. } => {
+        DomainEvent::TodoTitleChanged { .. }
+        | DomainEvent::TodoNotesChanged { .. }
+        | DomainEvent::ChecklistChanged { .. } => {
             vec![Projection::Inbox, Projection::Today, Projection::Anytime]
         }
         DomainEvent::TodoCompleted { .. }

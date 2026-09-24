@@ -32,6 +32,17 @@ pub enum QuickSchedule {
     Anytime,
 }
 
+/// Read model for one checklist item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChecklistItemSummary {
+    /// Item identity.
+    pub id: momentum_domain::ChecklistItemId,
+    /// Item text.
+    pub title: String,
+    /// Completion state.
+    pub completed: bool,
+}
+
 /// Read model for a to-do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodoSummary {
@@ -57,6 +68,8 @@ pub struct TodoSummary {
     pub created_at: DateTime<Utc>,
     /// Optimistic version.
     pub version: i64,
+    /// Ordered checklist items.
+    pub checklist: Vec<ChecklistItemSummary>,
 }
 
 /// Scope of a to-do listing.
@@ -431,6 +444,132 @@ impl TodoService {
     ) -> Result<CommandOutcome, CommandError> {
         self.dispatch(account_id, Command::SetTodoReminder { id, reminder })
             .await
+    }
+
+    /// Adds a checklist item.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn add_checklist_item(
+        &self,
+        account_id: AccountId,
+        todo: EntityId,
+        title: &str,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::AddChecklistItem {
+                todo,
+                title: title.to_string(),
+            },
+        )
+        .await
+    }
+
+    /// Renames a checklist item.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn rename_checklist_item(
+        &self,
+        account_id: AccountId,
+        todo: EntityId,
+        item: momentum_domain::ChecklistItemId,
+        title: &str,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::SetChecklistItemTitle {
+                todo,
+                item,
+                title: title.to_string(),
+            },
+        )
+        .await
+    }
+
+    /// Sets checklist item completion.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn set_checklist_item_completed(
+        &self,
+        account_id: AccountId,
+        todo: EntityId,
+        item: momentum_domain::ChecklistItemId,
+        completed: bool,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::SetChecklistItemCompleted {
+                todo,
+                item,
+                completed,
+            },
+        )
+        .await
+    }
+
+    /// Removes a checklist item.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn remove_checklist_item(
+        &self,
+        account_id: AccountId,
+        todo: EntityId,
+        item: momentum_domain::ChecklistItemId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::RemoveChecklistItem { todo, item })
+            .await
+    }
+
+    /// Moves a checklist item up or down.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn reorder_checklist_item(
+        &self,
+        account_id: AccountId,
+        todo: EntityId,
+        item: momentum_domain::ChecklistItemId,
+        direction: crate::commands::ReorderDirection,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::ReorderChecklistItem {
+                todo,
+                item,
+                direction,
+            },
+        )
+        .await
+    }
+
+    /// Expands pasted multi-line content into checklist items.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn expand_checklist(
+        &self,
+        account_id: AccountId,
+        todo: EntityId,
+        text: &str,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::ExpandChecklist {
+                todo,
+                text: text.to_string(),
+            },
+        )
+        .await
     }
 
     async fn dispatch(

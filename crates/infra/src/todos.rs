@@ -86,6 +86,7 @@ fn summary_from_row(row: &sqlx::postgres::PgRow) -> TodoSummary {
         completed_at: row.get("completed_at"),
         created_at: row.get("created_at"),
         version: row.get("version"),
+        checklist: Vec::new(),
     }
 }
 
@@ -113,7 +114,9 @@ impl TodoReadStore for PgTodoReadStore {
             .fetch_all(&self.pool)
             .await
             .map_err(storage)?;
-        Ok(rows.iter().map(summary_from_row).collect())
+        let mut summaries: Vec<TodoSummary> = rows.iter().map(summary_from_row).collect();
+        attach_checklists(&self.pool, account_id, &mut summaries).await?;
+        Ok(summaries)
     }
 
     async fn get_todo(
@@ -134,6 +137,50 @@ impl TodoReadStore for PgTodoReadStore {
         .fetch_optional(&self.pool)
         .await
         .map_err(storage)?;
-        Ok(row.as_ref().map(summary_from_row))
+        let mut summaries: Vec<TodoSummary> = row.iter().map(summary_from_row).collect();
+        attach_checklists(&self.pool, account_id, &mut summaries).await?;
+        Ok(summaries.into_iter().next())
     }
+}
+
+async fn attach_checklists(
+    pool: &PgPool,
+    account_id: AccountId,
+    summaries: &mut [TodoSummary],
+) -> Result<(), CommandError> {
+    let _ = pool;
+    {
+        if summaries.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<uuid::Uuid> = summaries
+            .iter()
+            .map(|summary| summary.id.as_uuid())
+            .collect();
+        let rows = sqlx::query(
+            "select id, entity_id, title, completed from checklist_items \
+             where account_id = $1 and entity_id = any($2) order by rank asc, id asc",
+        )
+        .bind(account_id.as_uuid())
+        .bind(&ids)
+        .fetch_all(pool)
+        .await
+        .map_err(storage)?;
+        for summary in summaries.iter_mut() {
+            summary.checklist = rows
+                .iter()
+                .filter(|row| row.get::<uuid::Uuid, _>("entity_id") == summary.id.as_uuid())
+                .filter_map(|row| {
+                    let title = row.get::<String, _>("title");
+                    let title = momentum_domain::model::Title::parse(&title).ok()?;
+                    Some(momentum_app::todos::ChecklistItemSummary {
+                        id: momentum_domain::ChecklistItemId::from_uuid(row.get("id")),
+                        title: title.as_str().to_string(),
+                        completed: row.get("completed"),
+                    })
+                })
+                .collect();
+        }
+    }
+    Ok(())
 }

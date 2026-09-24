@@ -34,6 +34,28 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/move-down", post(move_down))
         .route("/todos/{todo_id}/schedule", post(schedule_todo))
         .route("/todos/{todo_id}/move", post(move_todo))
+        .route("/todos/{todo_id}/checklist", post(add_checklist_item))
+        .route("/todos/{todo_id}/checklist/expand", post(expand_checklist))
+        .route(
+            "/todos/{todo_id}/checklist/{item_id}/toggle",
+            post(toggle_checklist_item),
+        )
+        .route(
+            "/todos/{todo_id}/checklist/{item_id}/rename",
+            post(rename_checklist_item),
+        )
+        .route(
+            "/todos/{todo_id}/checklist/{item_id}/remove",
+            post(remove_checklist_item),
+        )
+        .route(
+            "/todos/{todo_id}/checklist/{item_id}/move_up",
+            post(move_checklist_item_up),
+        )
+        .route(
+            "/todos/{todo_id}/checklist/{item_id}/move_down",
+            post(move_checklist_item_down),
+        )
 }
 
 fn redirect(to: &str) -> Response {
@@ -380,6 +402,207 @@ async fn move_todo(
     match service.move_to(account_id, id, context).await {
         Ok(_) => redirect(&target),
         Err(_) => redirect(&format!("{target}?error=move")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ChecklistAddForm {
+    title: String,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+fn todo_target(form: &ChecklistAddForm, todo: EntityId) -> String {
+    form.return_to
+        .clone()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| format!("/todos/{todo}"))
+}
+
+async fn add_checklist_item(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<ChecklistAddForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(todo) = todo_id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = todo_target(&form, todo);
+    match service
+        .add_checklist_item(account_id, todo, &form.title)
+        .await
+    {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=checklist")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ChecklistExpandForm {
+    text: String,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn expand_checklist(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<ChecklistExpandForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(todo) = todo_id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = form
+        .return_to
+        .clone()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| format!("/todos/{todo}"));
+    match service.expand_checklist(account_id, todo, &form.text).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=checklist")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ChecklistItemForm {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    completed: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+fn item_ids(todo: &str, item: &str) -> Option<(EntityId, momentum_domain::ChecklistItemId)> {
+    Some((todo.parse().ok()?, item.parse().ok()?))
+}
+
+fn item_target(form: &ChecklistItemForm, todo: EntityId) -> String {
+    form.return_to
+        .clone()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| format!("/todos/{todo}"))
+}
+
+async fn toggle_checklist_item(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path((todo_id, item_id)): Path<(String, String)>,
+    Form(form): Form<ChecklistItemForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Some((todo, item)) = item_ids(&todo_id, &item_id) else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = item_target(&form, todo);
+    let completed = form.completed.as_deref() == Some("1");
+    match service
+        .set_checklist_item_completed(account_id, todo, item, completed)
+        .await
+    {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=checklist")),
+    }
+}
+
+async fn rename_checklist_item(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path((todo_id, item_id)): Path<(String, String)>,
+    Form(form): Form<ChecklistItemForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Some((todo, item)) = item_ids(&todo_id, &item_id) else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = item_target(&form, todo);
+    let Some(title) = form.title else {
+        return redirect(&format!("{target}?error=checklist"));
+    };
+    match service
+        .rename_checklist_item(account_id, todo, item, &title)
+        .await
+    {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=checklist")),
+    }
+}
+
+async fn remove_checklist_item(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path((todo_id, item_id)): Path<(String, String)>,
+    Form(form): Form<ChecklistItemForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Some((todo, item)) = item_ids(&todo_id, &item_id) else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = item_target(&form, todo);
+    match service.remove_checklist_item(account_id, todo, item).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=checklist")),
+    }
+}
+
+async fn move_checklist_item_up(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path((todo_id, item_id)): Path<(String, String)>,
+    Form(form): Form<ChecklistItemForm>,
+) -> Response {
+    reorder_checklist_item(&state, &session, &todo_id, &item_id, form, true).await
+}
+
+async fn move_checklist_item_down(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path((todo_id, item_id)): Path<(String, String)>,
+    Form(form): Form<ChecklistItemForm>,
+) -> Response {
+    reorder_checklist_item(&state, &session, &todo_id, &item_id, form, false).await
+}
+
+async fn reorder_checklist_item(
+    state: &AppState,
+    session: &SessionState,
+    todo_id: &str,
+    item_id: &str,
+    form: ChecklistItemForm,
+    up: bool,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Some((todo, item)) = item_ids(todo_id, item_id) else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = item_target(&form, todo);
+    let direction = if up {
+        momentum_app::commands::ReorderDirection::Up
+    } else {
+        momentum_app::commands::ReorderDirection::Down
+    };
+    match service
+        .reorder_checklist_item(account_id, todo, item, direction)
+        .await
+    {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=checklist")),
     }
 }
 

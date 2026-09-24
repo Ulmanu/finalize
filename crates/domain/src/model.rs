@@ -472,6 +472,34 @@ impl ChecklistItem {
     }
 }
 
+/// Normalizes pasted multi-line checklist content into item titles.
+///
+/// Lines are trimmed, empty lines dropped, and common bullet/checkbox prefixes removed while
+/// preserving order.
+#[must_use]
+pub fn parse_checklist_lines(input: &str) -> Vec<String> {
+    input
+        .lines()
+        .map(str::trim)
+        .map(strip_checklist_prefix)
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn strip_checklist_prefix(line: &str) -> &str {
+    let line = line
+        .strip_prefix("- [ ] ")
+        .or_else(|| line.strip_prefix("- [x] "))
+        .or_else(|| line.strip_prefix("- [X] "))
+        .unwrap_or(line);
+    line.strip_prefix("- ")
+        .or_else(|| line.strip_prefix("* "))
+        .or_else(|| line.strip_prefix("\u{2022} "))
+        .unwrap_or(line)
+}
+
 /// A to-do: the only entity that appears in built-in list projections.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Todo {
