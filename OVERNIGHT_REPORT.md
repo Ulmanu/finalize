@@ -491,6 +491,30 @@ Agent: opencode (deepseek-v4.1-flash)
   syntax degrades to literal text.
 - Live integrations not verified: none specific to this change.
 
+### 20 — `add-scheduling-model` — COMPLETE
+
+- Start: 2026-09-24 21:45 · End: 2026-09-24 22:40
+- Proposal validation: strict validation passed (artifacts committed separately in `feat(20):
+  archive scheduling spec` after the implementation commit).
+- Implementation: `TodoScope` gained Today/Upcoming/Anytime/Someday with schedule-driven
+  membership semantics (overdue date-based items stay in Today; This Evening is a Today
+  presentation flag; Someday/Anytime separated) in the memory and PostgreSQL read stores, with
+  date-aware ordering for Today/Upcoming; `TodoService::list_at` evaluates membership at an
+  explicit UTC-offset local date; web scheduling handlers derive Today/Tomorrow/This Evening
+  from the service clock instead of the wall clock; real projection pages replaced the
+  placeholder Today/Upcoming/Anytime/Someday pages.
+- Migrations: none (dates already stored as SQL `date`).
+- Tests: 3 testkit tests (membership, transition metadata preservation, UTC-offset boundary)
+  and 1 web test (scheduling moves items across pages); fmt, clippy, workspace tests, WASM
+  build, quality gates pass.
+- Verification: manual; every requirement scenario covered. No critical findings.
+- Archive: `2026-09-25-add-scheduling-model`; canonical `features/scheduling` spec created;
+  strict validation pass.
+- Commit: implementation `16bb648` (`feat(20): add scheduling model`) plus specification commit.
+- Decisions: until localization stores a per-account timezone, the service clock (UTC) defines
+  the local date; the offset-aware entry point keeps boundary semantics testable.
+- Live integrations not verified: PostgreSQL scope filters (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -516,9 +540,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 17 | add-tags | COMPLETE | `feat(17)` |
 | 18 | add-notes-editor | COMPLETE | `feat(18)` |
 | 19 | add-things-markdown | COMPLETE | `feat(19)` |
+| 20 | add-scheduling-model | COMPLETE | `feat(20)` |
 
-- Completed proposal range: 01–19 (19 of 74).
-- Incomplete: 20–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–20 (20 of 74).
+- Incomplete: 21–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`
