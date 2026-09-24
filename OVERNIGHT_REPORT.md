@@ -361,4 +361,108 @@ Agent: opencode (deepseek-v4.1-flash)
 
 ## Run summary
 
-(Filled at run end.)
+### Completed changes
+
+| # | Change | Status | Commit |
+|---:|---|---|---|
+| 01 | bootstrap-fullstack-rust-workspace | COMPLETE | `feat(01)` |
+| 02 | add-web-application-shell | COMPLETE | `feat(02)` |
+| 03 | add-things-design-system | COMPLETE | `feat(03)` |
+| 04 | add-responsive-layout-foundation | COMPLETE | `feat(04)` |
+| 05 | add-persistence-foundation | COMPLETE | `feat(05)` |
+| 06 | add-account-authentication | COMPLETE | `feat(06)` |
+| 07 | add-task-domain-core | COMPLETE | `feat(07)` |
+| 08 | add-fractional-ordering-engine | COMPLETE | `feat(08)` |
+| 09 | add-command-transaction-layer | COMPLETE | `feat(09)` |
+| 10 | add-undo-redo-engine | COMPLETE | `feat(10)` |
+| 11 | add-todo-crud | COMPLETE | `feat(11)` |
+| 12 | add-inbox | COMPLETE | `feat(12)` |
+| 13 | add-areas | COMPLETE | `feat(13)` |
+
+- Completed proposal range: 01–13 (13 of 74).
+- Incomplete: 14–74 (not started; sequential order means each depends on the previous state).
+- Blocked: none. Change 14 was next and unblocked when the session's working context ended.
+- Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
+- Branch: `agent/things-web-overnight`
+- HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
+  implementation commit; this report is committed after it).
+
+### OpenSpec validation state
+
+- `openspec validate --specs --strict --no-interactive`: all 13 canonical capabilities pass.
+- `openspec validate --archived --strict --no-interactive`: all 13 archived changes pass with
+  complete tasks.
+- Canonical specs: `platform/rust-workspace`, `app/shell`, `ui/design-system`,
+  `ui/responsive-layout`, `persistence/schema`, `auth/accounts`, `domain/tasks`,
+  `domain/ordering`, `app/commands`, `app/undo`, `features/todo-crud`, `features/inbox`,
+  `features/areas`.
+
+### Rust test state
+
+- `cargo test --workspace --all-features`: all green (domain 28, app 23, infra 23, testkit 32
+  across auth/command/undo suites, web 60+ across smoke/shell/design/responsive/auth/CRUD/
+  inbox/areas).
+- `cargo fmt --all -- --check` and
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`: clean.
+- `scripts/quality-gates.sh` (fmt + arch-check + OpenSpec specs + clippy + tests): passes.
+- WASM client: `scripts/build-web.sh` produces
+  `target/wasm32-unknown-unknown/debug/momentum_web.wasm` (rustup stable with the
+  `wasm32-unknown-unknown` target).
+
+### Not executed in this environment (recorded limitations)
+
+- Live PostgreSQL paths (migrations apply/rollback, auth store, command unit of work, read
+  stores): no PostgreSQL server or Docker daemon; conditional tests record the skip.
+  Run them with `DATABASE_URL=postgres://… cargo test --workspace --all-features`.
+- Browser end-to-end, hydration, visual parity, and behavior parity suites: introduced by
+  changes 71/72, which were not reached. SSR + integration coverage exists through Axum
+  `oneshot` tests.
+- Email delivery for verification/reset tokens: no provider configured; tokens are logged for
+  operators and recorded as a live-integration gap.
+- wasm-bindgen JS glue: the raw WASM artifact builds; browser hydration glue wiring is part of
+  the later PWA/hydration work.
+
+### Exact commands
+
+Run the app (persistence optional):
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo run -p momentum-web --bin momentum-server
+# http://127.0.0.1:3000  (MOMENTUM_BIND_ADDR to override)
+# With persistence: DATABASE_URL=postgres://user:pass@host/db (migrations run at startup)
+```
+
+Run the tests and gates:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+scripts/quality-gates.sh
+scripts/build-web.sh
+openspec validate --specs --strict --no-interactive
+openspec validate --archived --strict --no-interactive
+```
+
+### Remaining real follow-ups
+
+1. Change 14 (`add-projects`) and the rest of the roadmap, strictly in order; the workspace,
+   command layer, and read-store patterns are in place to make each one mechanical.
+2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
+   Rust hydration entry point and session bootstrap element already exist.
+3. Execute the conditional PostgreSQL suites against a real database.
+4. Configure email delivery for verification/reset tokens.
+5. Localization (change 65) must replace the documented UTC fallback used for "today".
+6. Visual/behavior parity harnesses (changes 71/72) remain the main unverified parity gap.
+
+### Environment notes
+
+- Toolchain: rustup stable 1.98.1 with `rustfmt`, `clippy`, `wasm32-unknown-unknown`
+  (`rust-toolchain.toml`); Homebrew Rust 1.95 is also installed. `scripts/*.sh` prefer
+  `$HOME/.cargo/bin`.
+- Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
+  index would otherwise stall.
+
+
