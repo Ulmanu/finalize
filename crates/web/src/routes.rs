@@ -2036,6 +2036,7 @@ fn NotesTools(
                         </ul>
                     }
                 })}
+            <MarkdownPreview notes=link_source.clone()/>
             <form method="get" action="" class="row-schedule" data-testid="find-form">
                 <input
                     type="text"
@@ -2098,6 +2099,150 @@ fn NotesTools(
                         </form>
                     }
                 })}
+        </section>
+    }
+}
+
+fn render_span(span: momentum_domain::markdown::InlineSpan) -> AnyView {
+    let mut node: AnyView = view! { {span.text.clone()} }.into_any();
+    if span.code {
+        node = view! { <code class="md-inline-code">{node}</code> }.into_any();
+    }
+    if span.highlight {
+        node = view! { <mark class="md-highlight">{node}</mark> }.into_any();
+    }
+    if span.emphasis {
+        node = view! { <em>{node}</em> }.into_any();
+    }
+    if span.strong {
+        node = view! { <strong>{node}</strong> }.into_any();
+    }
+    if let Some(link) = span.link {
+        node = if link.safe {
+            let url = link.url;
+            view! {
+                <a
+                    class="md-link"
+                    href=url
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="markdown-link"
+                >
+                    {node}
+                </a>
+            }
+            .into_any()
+        } else {
+            view! {
+                <span
+                    class="md-blocked"
+                    data-testid="markdown-blocked-link"
+                    aria-label="Blocked unsafe link"
+                >
+                    {node}
+                </span>
+            }
+            .into_any()
+        };
+    }
+    node
+}
+
+fn render_spans(spans: Vec<momentum_domain::markdown::InlineSpan>) -> AnyView {
+    spans.into_iter().map(render_span).collect_view().into_any()
+}
+
+/// Renders the supported Markdown subset derived from the stored source.
+#[component]
+fn MarkdownPreview(#[prop(into)] notes: String) -> impl IntoView {
+    let blocks = momentum_domain::markdown::parse_markdown(&notes);
+    let mut nodes: Vec<AnyView> = Vec::new();
+    let mut list: Vec<(bool, String, Vec<momentum_domain::markdown::InlineSpan>)> = Vec::new();
+
+    fn flush_list(
+        list: &mut Vec<(bool, String, Vec<momentum_domain::markdown::InlineSpan>)>,
+        nodes: &mut Vec<AnyView>,
+    ) {
+        if list.is_empty() {
+            return;
+        }
+        let ordered = list[0].0;
+        let items: Vec<AnyView> = list
+            .drain(..)
+            .map(|(_, marker, spans)| {
+                view! {
+                    <li class="md-list-item" data-marker=marker>
+                        {render_spans(spans)}
+                    </li>
+                }
+                .into_any()
+            })
+            .collect();
+        if ordered {
+            nodes.push(view! { <ol class="md-list">{items}</ol> }.into_any());
+        } else {
+            nodes.push(view! { <ul class="md-list">{items}</ul> }.into_any());
+        }
+    }
+
+    for block in blocks {
+        match block {
+            momentum_domain::markdown::Block::ListItem {
+                ordered,
+                marker,
+                spans,
+            } => {
+                if list.last().is_some_and(|(kind, _, _)| *kind != ordered) {
+                    flush_list(&mut list, &mut nodes);
+                }
+                list.push((ordered, marker, spans));
+            }
+            momentum_domain::markdown::Block::Heading { level, spans } => {
+                flush_list(&mut list, &mut nodes);
+                let class = format!("md-heading md-heading-{level}");
+                nodes.push(
+                    view! {
+                        <h3 class=class data-level=level.to_string()>
+                            {render_spans(spans)}
+                        </h3>
+                    }
+                    .into_any(),
+                );
+            }
+            momentum_domain::markdown::Block::Paragraph { spans } => {
+                flush_list(&mut list, &mut nodes);
+                nodes.push(view! { <p class="md-paragraph">{render_spans(spans)}</p> }.into_any());
+            }
+            momentum_domain::markdown::Block::Quote { spans } => {
+                flush_list(&mut list, &mut nodes);
+                nodes.push(
+                    view! { <blockquote class="md-quote">{render_spans(spans)}</blockquote> }
+                        .into_any(),
+                );
+            }
+            momentum_domain::markdown::Block::CodeBlock { language, text } => {
+                flush_list(&mut list, &mut nodes);
+                let label = language.clone().unwrap_or_else(|| "code".to_string());
+                nodes.push(
+                    view! {
+                        <pre class="md-code" aria-label=format!("Code block ({label})")>
+                            <code>{text}</code>
+                        </pre>
+                    }
+                    .into_any(),
+                );
+            }
+        }
+    }
+    flush_list(&mut list, &mut nodes);
+
+    view! {
+        <section
+            class="markdown-preview"
+            data-testid="markdown-preview"
+            aria-label="Formatted note preview"
+        >
+            {nodes}
         </section>
     }
 }
