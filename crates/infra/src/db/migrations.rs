@@ -40,6 +40,13 @@ pub const MIGRATIONS: &[Migration] = &[
         down: Some(schema::AUTH_TOKENS_DOWN),
         irreversible_reason: None,
     },
+    Migration {
+        version: 3,
+        name: "entity-archived",
+        up: schema::ENTITY_ARCHIVED_UP,
+        down: Some(schema::ENTITY_ARCHIVED_DOWN),
+        irreversible_reason: None,
+    },
 ];
 
 /// Migration failures.

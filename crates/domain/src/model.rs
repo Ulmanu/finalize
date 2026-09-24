@@ -779,6 +779,12 @@ pub struct Heading {
 }
 
 impl Heading {
+    /// Returns the canonical identity.
+    #[must_use]
+    pub const fn id(&self) -> EntityId {
+        self.meta.id
+    }
+
     /// Creates a heading inside a project.
     #[must_use]
     pub fn new(title: Title, project: EntityId, now: DateTime<Utc>) -> Self {

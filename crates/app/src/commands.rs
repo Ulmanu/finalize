@@ -146,6 +146,37 @@ pub enum Command {
         /// Policy for direct children.
         policy: ProjectDeletionPolicy,
     },
+    /// Creates a heading inside a project.
+    CreateHeading {
+        /// Owning project.
+        project: EntityId,
+        /// Heading title.
+        title: String,
+    },
+    /// Renames a heading.
+    RenameHeading {
+        /// Heading to rename.
+        id: EntityId,
+        /// New title.
+        title: String,
+    },
+    /// Reorders a heading with its assigned child to-dos.
+    ReorderHeading {
+        /// Heading to move.
+        id: EntityId,
+        /// Direction within the project scope.
+        direction: ReorderDirection,
+    },
+    /// Archives a heading, hiding it without deleting its children.
+    ArchiveHeading {
+        /// Heading to archive.
+        id: EntityId,
+    },
+    /// Restores an archived heading.
+    RestoreHeading {
+        /// Heading to restore.
+        id: EntityId,
+    },
     /// Creates an area.
     CreateArea {
         /// Area title.
@@ -251,7 +282,10 @@ impl Command {
     #[must_use]
     pub const fn target(&self) -> Option<EntityId> {
         match self {
-            Self::CreateTodo { .. } | Self::CreateArea { .. } | Self::CreateProject { .. } => None,
+            Self::CreateTodo { .. }
+            | Self::CreateArea { .. }
+            | Self::CreateProject { .. }
+            | Self::CreateHeading { .. } => None,
             Self::RenameArea { id, .. }
             | Self::DeleteArea { id, .. }
             | Self::RenameProject { id, .. }
@@ -262,7 +296,11 @@ impl Command {
             | Self::CancelProject { id }
             | Self::ReopenProject { id }
             | Self::MoveProject { id, .. }
-            | Self::DeleteProject { id, .. } => Some(*id),
+            | Self::DeleteProject { id, .. }
+            | Self::RenameHeading { id, .. }
+            | Self::ReorderHeading { id, .. }
+            | Self::ArchiveHeading { id }
+            | Self::RestoreHeading { id } => Some(*id),
             Self::DuplicateTodo { id }
             | Self::ReorderTodo { id, .. }
             | Self::SetTodoTitle { id, .. }
@@ -286,6 +324,11 @@ impl Command {
             Self::CreateTodo { .. } => "create_todo",
             Self::CreateArea { .. } => "create_area",
             Self::CreateProject { .. } => "create_project",
+            Self::CreateHeading { .. } => "create_heading",
+            Self::RenameHeading { .. } => "rename_heading",
+            Self::ReorderHeading { .. } => "reorder_heading",
+            Self::ArchiveHeading { .. } => "archive_heading",
+            Self::RestoreHeading { .. } => "restore_heading",
             Self::RenameProject { .. } => "rename_project",
             Self::SetProjectNotes { .. } => "set_project_notes",
             Self::ScheduleProject { .. } => "schedule_project",
@@ -394,6 +437,33 @@ pub enum DomainEvent {
         /// Entity identity.
         id: EntityId,
     },
+    /// A heading was created.
+    HeadingCreated {
+        /// Entity identity.
+        id: EntityId,
+        /// Owning project.
+        project: EntityId,
+    },
+    /// A heading changed (title or placement).
+    HeadingChanged {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A heading was reordered within its project.
+    HeadingReordered {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A heading was archived.
+    HeadingArchived {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A heading was restored.
+    HeadingRestored {
+        /// Entity identity.
+        id: EntityId,
+    },
     /// An area was created.
     AreaCreated {
         /// Entity identity.
@@ -489,6 +559,11 @@ impl DomainEvent {
             | Self::AreaCreated { id }
             | Self::AreaRenamed { id }
             | Self::AreaDeleted { id }
+            | Self::HeadingCreated { id, .. }
+            | Self::HeadingChanged { id }
+            | Self::HeadingReordered { id }
+            | Self::HeadingArchived { id }
+            | Self::HeadingRestored { id }
             | Self::TodoCreated { id }
             | Self::TodoReordered { id }
             | Self::TodoDuplicated { id, .. }
@@ -648,6 +723,21 @@ pub trait UnitOfWork: Send {
         &mut self,
         account_id: AccountId,
         project: &momentum_domain::model::Project,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError>;
+
+    /// Loads an account-scoped heading.
+    async fn load_heading(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<momentum_domain::model::Heading>, CommandError>;
+
+    /// Persists a heading, enforcing the expected version when updating.
+    async fn save_heading(
+        &mut self,
+        account_id: AccountId,
+        heading: &momentum_domain::model::Heading,
         expected_version: Option<i64>,
     ) -> Result<(), CommandError>;
 
@@ -823,6 +913,11 @@ impl CommandDispatcher {
             } => {
                 let title = Title::parse(title)
                     .map_err(|error| CommandError::Validation(error.to_string()))?;
+                if let ContextRef::Heading(heading_id) = context {
+                    if unit.load_heading(account_id, *heading_id).await?.is_none() {
+                        return Err(CommandError::Validation("unknown heading".to_string()));
+                    }
+                }
                 let mut todo = Todo::new(title, now);
                 if let Some(notes) = notes {
                     todo.notes = notes.clone();
@@ -834,6 +929,23 @@ impl CommandDispatcher {
                     .clone()
                     .map(|reminder| Reminder::scheduled(reminder.at, reminder.timezone));
                 unit.save_todo(account_id, &todo, None).await?;
+                let items = unit.load_context_order(account_id, *context).await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Context(*context),
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                let change = order
+                    .append(todo.id())
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                unit.set_context_rank(account_id, todo.id(), change.rank)
+                    .await?;
+                for item in change.rebalanced {
+                    unit.set_context_rank(account_id, item.entity_id, item.rank)
+                        .await?;
+                }
                 Ok((
                     Some(todo.id()),
                     vec![DomainEvent::TodoCreated { id: todo.id() }],
@@ -1051,6 +1163,120 @@ impl CommandDispatcher {
                     .await?;
                 Ok((Some(*id), vec![DomainEvent::ProjectDeleted { id: *id }]))
             }
+            Command::CreateHeading { project, title } => {
+                let project_entity = unit
+                    .load_project(account_id, *project)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if project_entity.status == Status::Deleted {
+                    return Err(CommandError::NotFound);
+                }
+                let title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let heading = momentum_domain::model::Heading::new(title, *project, now);
+                unit.save_heading(account_id, &heading, None).await?;
+                let items = unit
+                    .load_context_order(account_id, ContextRef::Project(*project))
+                    .await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Context(ContextRef::Project(*project)),
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                let change = order
+                    .append(heading.id())
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                unit.set_context_rank(account_id, heading.id(), change.rank)
+                    .await?;
+                for item in change.rebalanced {
+                    unit.set_context_rank(account_id, item.entity_id, item.rank)
+                        .await?;
+                }
+                Ok((
+                    Some(heading.id()),
+                    vec![DomainEvent::HeadingCreated {
+                        id: heading.id(),
+                        project: *project,
+                    }],
+                ))
+            }
+            Command::RenameHeading { id, title } => {
+                let mut heading = unit
+                    .load_heading(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                heading.title = Title::parse(title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let expected = heading.meta.version;
+                heading.meta.touch(now);
+                unit.save_heading(account_id, &heading, Some(expected))
+                    .await?;
+                Ok((Some(*id), vec![DomainEvent::HeadingChanged { id: *id }]))
+            }
+            Command::ReorderHeading { id, direction } => {
+                let heading = unit
+                    .load_heading(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let context = ContextRef::Project(heading.project);
+                let items = unit.load_context_order(account_id, context).await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Context(context),
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                let position = order.position_of(*id).ok_or(CommandError::NotFound)?;
+                let target = match direction {
+                    ReorderDirection::Up => position.checked_sub(1),
+                    ReorderDirection::Down => {
+                        (position + 1 < order.items().len()).then_some(position + 1)
+                    }
+                };
+                let event = DomainEvent::HeadingReordered { id: *id };
+                if let Some(target) = target {
+                    let change = order
+                        .move_item(*id, target)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    unit.set_context_rank(account_id, *id, change.rank).await?;
+                    for item in change.rebalanced {
+                        unit.set_context_rank(account_id, item.entity_id, item.rank)
+                            .await?;
+                    }
+                }
+                Ok((Some(*id), vec![event]))
+            }
+            Command::ArchiveHeading { id } => {
+                let mut heading = unit
+                    .load_heading(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if !heading.archived {
+                    heading.archived = true;
+                    let expected = heading.meta.version;
+                    heading.meta.touch(now);
+                    unit.save_heading(account_id, &heading, Some(expected))
+                        .await?;
+                }
+                Ok((Some(*id), vec![DomainEvent::HeadingArchived { id: *id }]))
+            }
+            Command::RestoreHeading { id } => {
+                let mut heading = unit
+                    .load_heading(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if heading.archived {
+                    heading.archived = false;
+                    let expected = heading.meta.version;
+                    heading.meta.touch(now);
+                    unit.save_heading(account_id, &heading, Some(expected))
+                        .await?;
+                }
+                Ok((Some(*id), vec![DomainEvent::HeadingRestored { id: *id }]))
+            }
             Command::CreateArea { title } => {
                 let title = Title::parse(title)
                     .map_err(|error| CommandError::Validation(error.to_string()))?;
@@ -1129,6 +1355,15 @@ impl CommandDispatcher {
                 ))
             }
             command => {
+                if let Command::MoveTodo {
+                    context: ContextRef::Heading(heading_id),
+                    ..
+                } = command
+                {
+                    if unit.load_heading(account_id, *heading_id).await?.is_none() {
+                        return Err(CommandError::Validation("unknown heading".to_string()));
+                    }
+                }
                 let id = command.target().ok_or(CommandError::NotFound)?;
                 let mut todo = unit
                     .load_todo(account_id, id)
@@ -1166,7 +1401,12 @@ fn apply_to_todo(
         | Command::CancelProject { .. }
         | Command::ReopenProject { .. }
         | Command::MoveProject { .. }
-        | Command::DeleteProject { .. } => Err(CommandError::Validation(
+        | Command::DeleteProject { .. }
+        | Command::CreateHeading { .. }
+        | Command::RenameHeading { .. }
+        | Command::ReorderHeading { .. }
+        | Command::ArchiveHeading { .. }
+        | Command::RestoreHeading { .. } => Err(CommandError::Validation(
             "commands handled separately must not reach the generic path".to_string(),
         )),
         Command::SetTodoTitle { title, .. } => {
@@ -1265,6 +1505,17 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
             Projection::Anytime,
             Projection::Deadlines,
             Projection::Logbook,
+        ],
+        DomainEvent::HeadingCreated { .. }
+        | DomainEvent::HeadingChanged { .. }
+        | DomainEvent::HeadingReordered { .. }
+        | DomainEvent::HeadingArchived { .. }
+        | DomainEvent::HeadingRestored { .. } => vec![
+            Projection::AllProjects,
+            Projection::Today,
+            Projection::Upcoming,
+            Projection::Anytime,
+            Projection::Deadlines,
         ],
         DomainEvent::AreaCreated { id } | DomainEvent::AreaRenamed { id } => {
             vec![Projection::Area(*id), Projection::AllProjects]

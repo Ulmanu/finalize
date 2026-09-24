@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use momentum_app::commands::CommandError;
-use momentum_app::projects::{ProjectReadStore, ProjectSummary};
+use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectReadStore, ProjectSummary};
 use momentum_domain::model::{Deadline, Schedule, Status};
 use momentum_domain::time::LocalDate;
 use momentum_domain::{AccountId, EntityId};
@@ -75,6 +75,8 @@ impl PgProjectReadStore {
             _ => Schedule::anytime(),
         };
         let (open_count, completed_count) = self.counts(account_id, id).await?;
+        let headings = self.headings(account_id, id).await?;
+        let order = self.order(account_id, id).await?;
         Ok(ProjectSummary {
             id,
             title: row.get("title"),
@@ -94,7 +96,82 @@ impl PgProjectReadStore {
                 .map(EntityId::from_uuid),
             open_count,
             completed_count,
+            headings,
+            order,
         })
+    }
+
+    async fn headings(
+        &self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<Vec<HeadingSummary>, CommandError> {
+        let rows = sqlx::query(
+            "select e.id, e.title, e.archived from entities e \
+             join placements p on p.entity_id = e.id and p.scope = 'context' \
+             where e.account_id = $1 and e.kind = 'heading' and p.parent_kind = 'project' \
+             and p.parent_id = $2 order by p.rank asc, e.created_at asc, e.id asc",
+        )
+        .bind(account_id.as_uuid())
+        .bind(project_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| CommandError::Storage(error.to_string()))?;
+
+        let mut headings = Vec::with_capacity(rows.len());
+        for row in rows {
+            let id = EntityId::from_uuid(row.get("id"));
+            let todo_ids: Vec<uuid::Uuid> = sqlx::query_scalar(
+                "select e.id from entities e \
+                 join placements p on p.entity_id = e.id and p.scope = 'context' \
+                 where e.account_id = $1 and e.kind = 'todo' and e.status <> 'deleted' \
+                 and p.parent_kind = 'heading' and p.parent_id = $2 \
+                 order by p.rank asc, e.created_at asc, e.id asc",
+            )
+            .bind(account_id.as_uuid())
+            .bind(id.as_uuid())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+            headings.push(HeadingSummary {
+                id,
+                title: row.get("title"),
+                archived: row.get("archived"),
+                todo_ids: todo_ids.into_iter().map(EntityId::from_uuid).collect(),
+            });
+        }
+        Ok(headings)
+    }
+
+    async fn order(
+        &self,
+        account_id: AccountId,
+        project_id: EntityId,
+    ) -> Result<Vec<ProjectOrderItem>, CommandError> {
+        let rows = sqlx::query(
+            "select e.id, e.kind from entities e \
+             join placements p on p.entity_id = e.id and p.scope = 'context' \
+             where e.account_id = $1 and p.parent_kind = 'project' and p.parent_id = $2 \
+             and e.status <> 'deleted' and e.kind in ('todo', 'heading') \
+             and (e.kind <> 'heading' or e.archived = false) \
+             order by p.rank asc, e.created_at asc, e.id asc",
+        )
+        .bind(account_id.as_uuid())
+        .bind(project_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| CommandError::Storage(error.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let id = EntityId::from_uuid(row.get("id"));
+                if row.get::<String, _>("kind") == "heading" {
+                    ProjectOrderItem::Heading(id)
+                } else {
+                    ProjectOrderItem::Todo(id)
+                }
+            })
+            .collect())
     }
 }
 

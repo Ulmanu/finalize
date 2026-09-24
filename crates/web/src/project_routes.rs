@@ -27,6 +27,12 @@ pub fn routes() -> Router<AppState> {
         .route("/projects/{project_id}/reopen", post(reopen_project))
         .route("/projects/{project_id}/schedule", post(schedule_project))
         .route("/projects/{project_id}/delete", post(delete_project))
+        .route("/headings", post(create_heading))
+        .route("/headings/{heading_id}/rename", post(rename_heading))
+        .route("/headings/{heading_id}/move_up", post(move_heading_up))
+        .route("/headings/{heading_id}/move_down", post(move_heading_down))
+        .route("/headings/{heading_id}/archive", post(archive_heading))
+        .route("/headings/{heading_id}/restore", post(restore_heading))
 }
 
 fn redirect(to: &str) -> Response {
@@ -230,6 +236,164 @@ async fn delete_project(
     match service.delete(account_id, id, policy).await {
         Ok(_) => redirect("/projects"),
         Err(_) => redirect(&format!("/projects/{id}?error=delete")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateHeadingForm {
+    project_id: String,
+    title: String,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn create_heading(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Form(form): Form<CreateHeadingForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(project_id) = form.project_id.parse::<EntityId>() else {
+        return redirect("/projects?error=notfound");
+    };
+    let target = form
+        .return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| format!("/projects/{project_id}"));
+    match service
+        .create_heading(account_id, project_id, &form.title)
+        .await
+    {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=heading")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct HeadingForm {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn rename_heading(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(heading_id): Path<String>,
+    Form(form): Form<HeadingForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = heading_id.parse::<EntityId>() else {
+        return redirect("/projects?error=notfound");
+    };
+    let target = form
+        .return_to
+        .clone()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/projects".to_string());
+    let Some(title) = form.title else {
+        return redirect(&format!("{target}?error=heading"));
+    };
+    match service.rename_heading(account_id, id, &title).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=heading")),
+    }
+}
+
+async fn move_heading_up(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(heading_id): Path<String>,
+    Form(form): Form<HeadingForm>,
+) -> Response {
+    reorder_heading(&state, &session, &heading_id, form, true).await
+}
+
+async fn move_heading_down(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(heading_id): Path<String>,
+    Form(form): Form<HeadingForm>,
+) -> Response {
+    reorder_heading(&state, &session, &heading_id, form, false).await
+}
+
+async fn reorder_heading(
+    state: &AppState,
+    session: &SessionState,
+    raw_id: &str,
+    form: HeadingForm,
+    up: bool,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = raw_id.parse::<EntityId>() else {
+        return redirect("/projects?error=notfound");
+    };
+    let target = form
+        .return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/projects".to_string());
+    let direction = if up {
+        momentum_app::commands::ReorderDirection::Up
+    } else {
+        momentum_app::commands::ReorderDirection::Down
+    };
+    match service.reorder_heading(account_id, id, direction).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=heading")),
+    }
+}
+
+async fn archive_heading(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(heading_id): Path<String>,
+    Form(form): Form<HeadingForm>,
+) -> Response {
+    heading_lifecycle(&state, &session, &heading_id, form, true).await
+}
+
+async fn restore_heading(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(heading_id): Path<String>,
+    Form(form): Form<HeadingForm>,
+) -> Response {
+    heading_lifecycle(&state, &session, &heading_id, form, false).await
+}
+
+async fn heading_lifecycle(
+    state: &AppState,
+    session: &SessionState,
+    raw_id: &str,
+    form: HeadingForm,
+    archive: bool,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = raw_id.parse::<EntityId>() else {
+        return redirect("/projects?error=notfound");
+    };
+    let target = form
+        .return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/projects".to_string());
+    let result = if archive {
+        service.archive_heading(account_id, id).await
+    } else {
+        service.restore_heading(account_id, id).await
+    };
+    match result {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=heading")),
     }
 }
 

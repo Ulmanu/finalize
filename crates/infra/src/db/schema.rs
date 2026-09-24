@@ -217,3 +217,16 @@ create index if not exists auth_tokens_account_idx on auth_tokens (account_id, k
 
 /// Rollback SQL for migration 0002.
 pub const AUTH_TOKENS_DOWN: &str = "drop table if exists auth_tokens;";
+
+/// Forward SQL for migration 0003: persist entity archive state.
+///
+/// Archive hides an entity from active views without deleting it or its children, so a
+/// non-destructive `archived` flag is stored on the shared entity row.
+pub const ENTITY_ARCHIVED_UP: &str = r"
+-- Archive is a non-destructive state: headings disappear from active project order but
+-- keep their identity, children, and change history.
+alter table entities add column if not exists archived boolean not null default false;
+";
+
+/// Rollback SQL for migration 0003.
+pub const ENTITY_ARCHIVED_DOWN: &str = "alter table entities drop column if exists archived;";

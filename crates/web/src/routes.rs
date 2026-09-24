@@ -16,9 +16,10 @@ use crate::design::CheckControl;
 use crate::layouts::{Protected, PublicLayout};
 use crate::session::use_account;
 use momentum_app::areas::{AreaService, AreaSummary};
-use momentum_app::projects::{ProjectService, ProjectSummary};
+use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::Status;
+use momentum_domain::EntityId;
 
 /// Root route tree rendered inside the session provider.
 #[component]
@@ -1185,14 +1186,7 @@ fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
                 (Some(service), Some(account)) => service
                     .list(account.account_id, TodoScope::AllOpen)
                     .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|todo| {
-                        parsed.is_some_and(|id| {
-                            todo.context == momentum_domain::model::ContextRef::Project(id)
-                        })
-                    })
-                    .collect(),
+                    .unwrap_or_default(),
                 _ => Vec::new(),
             }
         }
@@ -1222,6 +1216,20 @@ fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
                         })
                 }}
             </Suspense>
+            <h2 class="section-heading">"Headings"</h2>
+            <form method="post" action="/headings" class="add-form" data-testid="add-heading-form">
+                <input type="hidden" name="project_id" value=id.clone()/>
+                <input type="hidden" name="return_to" value=format!("/projects/{id}")/>
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="New heading"
+                    aria-label="New heading"
+                    autocomplete="off"
+                    required=true
+                />
+                <button type="submit" class="button-secondary">"Add heading"</button>
+            </form>
             <h2 class="section-heading">"To-Dos"</h2>
             <form method="post" action="/todos" class="add-form">
                 <input type="hidden" name="return_to" value=format!("/projects/{id}")/>
@@ -1239,30 +1247,149 @@ fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
             </form>
             <Suspense fallback=|| view! { <Loading/> }>
                 {move || {
-                    children
-                        .get()
-                        .map(|todos| {
-                            if todos.is_empty() {
-                                view! {
-                                    <div class="list-empty" data-testid="project-children-empty">
-                                        <p>"No to-dos in this project."</p>
-                                    </div>
-                                }
-                                    .into_any()
-                            } else {
-                                view! {
-                                    <ul class="task-list" data-testid="project-children">
-                                        {todos
-                                            .into_iter()
-                                            .map(|todo| view! { <TodoRow todo=todo/> })
-                                            .collect_view()}
-                                    </ul>
-                                }
-                                    .into_any()
-                            }
-                        })
+                    let Some(Some(project)) = project.get() else {
+                        return ().into_any();
+                    };
+                    let todos = children.get().unwrap_or_default();
+                    let by_id: std::collections::HashMap<EntityId, TodoSummary> =
+                        todos.into_iter().map(|todo| (todo.id, todo)).collect();
+                    let archived: Vec<HeadingSummary> =
+                        project.headings.iter().filter(|heading| heading.archived).cloned().collect();
+                    let return_to = format!("/projects/{id}");
+                    view! {
+                        <div data-testid="project-structure">
+                            {project
+                                .order
+                                .iter()
+                                .map(|item| {
+                                    match item {
+                                        ProjectOrderItem::Heading(heading_id) => {
+                                            project
+                                                .headings
+                                                .iter()
+                                                .find(|heading| heading.id == *heading_id)
+                                                .map(|heading| {
+                                                    let heading_todos = heading
+                                                        .todo_ids
+                                                        .iter()
+                                                        .filter_map(|todo_id| by_id.get(todo_id).cloned())
+                                                        .collect::<Vec<_>>();
+                                                    view! {
+                                                        <HeadingSection
+                                                            heading=heading.clone()
+                                                            todos=heading_todos
+                                                            return_to=return_to.clone()
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                })
+                                        }
+                                        ProjectOrderItem::Todo(todo_id) => {
+                                            by_id
+                                                .get(todo_id)
+                                                .cloned()
+                                                .map(|todo| view! { <TodoRow todo=todo/> }.into_any())
+                                        }
+                                    }
+                                })
+                                .collect_view()}
+                            {(!archived.is_empty())
+                                .then(|| {
+                                    view! {
+                                        <section
+                                            class="archived-headings"
+                                            data-testid="archived-headings"
+                                        >
+                                            <h3 class="section-heading">"Archived headings"</h3>
+                                            {archived
+                                                .into_iter()
+                                                .map(|heading| {
+                                                    let restore = format!("/headings/{}/restore", heading.id);
+                                                    view! {
+                                                        <form method="post" action=restore class="row-schedule">
+                                                            <input
+                                                                type="hidden"
+                                                                name="return_to"
+                                                                value=return_to.clone()
+                                                            />
+                                                            <span>{heading.title}</span>
+                                                            <button type="submit" class="button-secondary">
+                                                                "Restore"
+                                                            </button>
+                                                        </form>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </section>
+                                    }
+                                })}
+                        </div>
+                    }
+                        .into_any()
                 }}
             </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn HeadingSection(
+    heading: HeadingSummary,
+    todos: Vec<TodoSummary>,
+    #[prop(into)] return_to: String,
+) -> impl IntoView {
+    let id = heading.id;
+    let title = heading.title.clone();
+    let rename_target = format!("/headings/{id}/rename");
+    let up_target = format!("/headings/{id}/move_up");
+    let down_target = format!("/headings/{id}/move_down");
+    let archive_target = format!("/headings/{id}/archive");
+
+    view! {
+        <section class="heading-section" data-testid="heading-section">
+            <div class="heading-row">
+                <h3 class="heading-title" data-testid="heading-title">
+                    {title.clone()}
+                </h3>
+                <form method="post" action=rename_target class="row-schedule">
+                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                    <input type="text" name="title" value=title aria-label="Heading title"/>
+                    <button type="submit" class="button-secondary">"Rename"</button>
+                </form>
+                <form method="post" action=up_target>
+                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                    <button type="submit" class="button-secondary" aria-label="Move heading up">
+                        "Up"
+                    </button>
+                </form>
+                <form method="post" action=down_target>
+                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                    <button type="submit" class="button-secondary" aria-label="Move heading down">
+                        "Down"
+                    </button>
+                </form>
+                <form method="post" action=archive_target>
+                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                    <button type="submit" class="button-secondary">"Archive"</button>
+                </form>
+            </div>
+            <form method="post" action="/todos" class="add-form">
+                <input type="hidden" name="return_to" value=return_to.clone()/>
+                <input type="hidden" name="context_kind" value="heading"/>
+                <input type="hidden" name="context_id" value=id.to_string()/>
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="New to-do in this heading"
+                    aria-label="New to-do in this heading"
+                    autocomplete="off"
+                    required=true
+                />
+                <button type="submit" class="button-primary">"Add"</button>
+            </form>
+            <ul class="task-list" data-testid="heading-children">
+                {todos.into_iter().map(|todo| view! { <TodoRow todo=todo/> }).collect_view()}
+            </ul>
         </section>
     }
 }

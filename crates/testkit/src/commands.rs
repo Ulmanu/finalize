@@ -9,7 +9,7 @@ use momentum_app::commands::{
     AreaChildren, ChangeRecord, CommandError, ProjectChildren, UnitOfWork, UnitOfWorkFactory,
 };
 use momentum_app::ordering::{OrderedItem, OrderingScope, Rank, ScopeOrder};
-use momentum_domain::model::{Area, ContextRef, Project, Todo};
+use momentum_domain::model::{Area, ContextRef, Heading, Project, Todo};
 use momentum_domain::{AccountId, EntityId};
 use uuid::Uuid;
 
@@ -18,6 +18,7 @@ struct MemoryState {
     todos: HashMap<(AccountId, EntityId), Todo>,
     areas: HashMap<(AccountId, EntityId), Area>,
     projects: HashMap<(AccountId, EntityId), Project>,
+    headings: HashMap<(AccountId, EntityId), Heading>,
     project_areas: HashMap<(AccountId, EntityId), EntityId>,
     changes: Vec<(AccountId, ChangeRecord)>,
     context_ranks: HashMap<(AccountId, EntityId), Rank>,
@@ -67,6 +68,30 @@ impl MemoryDatabase {
             .todos
             .get(&(account_id, id))
             .cloned()
+    }
+
+    /// Returns a stored heading.
+    #[must_use]
+    pub fn heading(&self, account_id: AccountId, id: EntityId) -> Option<Heading> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .headings
+            .get(&(account_id, id))
+            .cloned()
+    }
+
+    /// Returns every heading stored for an account.
+    #[must_use]
+    pub fn headings_for(&self, account_id: AccountId) -> Vec<Heading> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .headings
+            .iter()
+            .filter(|((account, _), _)| *account == account_id)
+            .map(|(_, heading)| heading.clone())
+            .collect()
     }
 
     /// Returns a stored project.
@@ -324,6 +349,36 @@ impl UnitOfWork for MemoryUnitOfWork {
         Ok(())
     }
 
+    async fn load_heading(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<Heading>, CommandError> {
+        Ok(self.database.heading(account_id, id))
+    }
+
+    async fn save_heading(
+        &mut self,
+        account_id: AccountId,
+        heading: &Heading,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        if let Some(expected) = expected_version {
+            let actual = state
+                .headings
+                .get(&(account_id, heading.id()))
+                .map_or(0, |current| current.meta.version);
+            if actual != expected {
+                return Err(CommandError::Conflict { expected, actual });
+            }
+        }
+        state
+            .headings
+            .insert((account_id, heading.id()), heading.clone());
+        Ok(())
+    }
+
     async fn list_project_children(
         &mut self,
         account_id: AccountId,
@@ -338,9 +393,17 @@ impl UnitOfWork for MemoryUnitOfWork {
             })
             .map(|((_, id), _)| *id)
             .collect();
+        let heading_ids = state
+            .headings
+            .iter()
+            .filter(|((account, _), heading)| {
+                *account == account_id && heading.project == project_id
+            })
+            .map(|((_, id), _)| *id)
+            .collect();
         Ok(ProjectChildren {
             todo_ids,
-            heading_ids: Vec::new(),
+            heading_ids,
         })
     }
 
@@ -435,6 +498,17 @@ impl UnitOfWork for MemoryUnitOfWork {
             })
             .map(|((_, id), todo)| (todo.meta.created_at, *id))
             .collect();
+        if let ContextRef::Project(project_id) = context {
+            entities.extend(
+                state
+                    .headings
+                    .iter()
+                    .filter_map(|((account, id), heading)| {
+                        (*account == account_id && heading.project == project_id)
+                            .then_some((heading.meta.created_at, *id))
+                    }),
+            );
+        }
         entities.sort_by_key(|(created_at, id)| (*created_at, *id));
         let entities: Vec<EntityId> = entities.into_iter().map(|(_, id)| id).collect();
 

@@ -197,7 +197,12 @@ pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Comm
         | Command::CancelProject { .. }
         | Command::ReopenProject { .. }
         | Command::MoveProject { .. }
-        | Command::DeleteProject { .. } => {
+        | Command::DeleteProject { .. }
+        | Command::CreateHeading { .. }
+        | Command::RenameHeading { .. }
+        | Command::ReorderHeading { .. }
+        | Command::ArchiveHeading { .. }
+        | Command::RestoreHeading { .. } => {
             // The created identity is only known after execution; the engine re-derives the
             // inverse from the post-state through the created event, so a create is undone by
             // deleting the entity the command produced.

@@ -381,6 +381,30 @@ Agent: opencode (deepseek-v4.1-flash)
   identity across projections; project ordering/membership reuse placement ranks.
 - Live integrations not verified: PostgreSQL project paths (no database).
 
+### 15 — `add-project-headings` — COMPLETE
+
+- Start: 2026-09-24 16:30 · End: 2026-09-24 17:20
+- Proposal validation: strict validation passed before apply.
+- Implementation: heading lifecycle commands (create/rename/reorder/archive/restore) with events
+  and invalidations; unit-of-work heading load/save in the memory and PostgreSQL adapters;
+  project-scope ordering now includes headings and every created to-do is ranked at the end of
+  its context scope; `ProjectSummary` gained ordered `headings` (with ordered child to-do ids)
+  and a top-level `order` of headings and unheaded to-dos; project detail renders heading
+  sections with rename/up/down/archive controls, archived-heading restore, and heading-scoped
+  to-do creation; `ContextRef::Heading` requires a live heading for create and move.
+- Migrations: `0003-entity-archived` (`entities.archived`, reversible) for non-destructive
+  heading archive.
+- Tests: 4 testkit lifecycle/child-movement/scope tests plus 3 web tests (controls, heading
+  to-do flow, reorder endpoints); all suites, fmt, clippy, WASM build, and quality gates pass.
+- Verification: manual; every requirement scenario covered. No critical findings.
+- Archive: `2026-09-24-add-project-headings`; canonical `features/project-headings` spec created;
+  strict validation pass.
+- Commit: `feat(15): add project headings`
+- Decisions: heading→project conversion is unsupported by the model and documented as a
+  non-goal; children move with a heading implicitly because they are grouped by heading context;
+  archive persists as a flag so children keep identity.
+- Live integrations not verified: PostgreSQL heading paths (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -401,9 +425,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 12 | add-inbox | COMPLETE | `feat(12)` |
 | 13 | add-areas | COMPLETE | `feat(13)` |
 | 14 | add-projects | COMPLETE | `feat(14)` |
+| 15 | add-project-headings | COMPLETE | `feat(15)` |
 
-- Completed proposal range: 01–14 (14 of 74).
-- Incomplete: 15–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–15 (15 of 74).
+- Incomplete: 16–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

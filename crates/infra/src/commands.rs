@@ -514,6 +514,114 @@ impl UnitOfWork for PgUnitOfWork {
         Ok(())
     }
 
+    async fn load_heading(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<momentum_domain::model::Heading>, CommandError> {
+        let tx = self.tx()?;
+        let row = sqlx::query(
+            "select e.id, e.title, e.archived, e.created_at, e.updated_at, e.version, \
+             e.deleted_at, p.parent_id \
+             from entities e \
+             left join placements p on p.entity_id = e.id and p.scope = 'context' \
+             where e.account_id = $1 and e.id = $2 and e.kind = 'heading'",
+        )
+        .bind(account_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let title = Title::parse(row.get::<String, _>("title").as_str())
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+        let project = row
+            .get::<Option<Uuid>, _>("parent_id")
+            .map(EntityId::from_uuid)
+            .unwrap_or_else(EntityId::new);
+        Ok(Some(momentum_domain::model::Heading {
+            meta: EntityMeta {
+                id: EntityId::from_uuid(row.get("id")),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                version: row.get("version"),
+                deleted_at: row.get("deleted_at"),
+            },
+            title,
+            project,
+            archived: row.get("archived"),
+        }))
+    }
+
+    async fn save_heading(
+        &mut self,
+        account_id: AccountId,
+        heading: &momentum_domain::model::Heading,
+        expected_version: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        match expected_version {
+            None => {
+                sqlx::query(
+                    "insert into entities \
+                     (id, account_id, kind, title, notes, status, archived, created_at, updated_at, \
+                      version) \
+                     values ($1, $2, 'heading', $3, '', 'open', $4, $5, $6, $7)",
+                )
+                .bind(heading.id().as_uuid())
+                .bind(account_id.as_uuid())
+                .bind(heading.title.as_str())
+                .bind(heading.archived)
+                .bind(heading.meta.created_at)
+                .bind(heading.meta.updated_at)
+                .bind(heading.meta.version)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+            }
+            Some(expected) => {
+                let updated = sqlx::query(
+                    "update entities set title = $3, archived = $4, updated_at = $5, \
+                     version = $6 where account_id = $1 and id = $2 and version = $7",
+                )
+                .bind(account_id.as_uuid())
+                .bind(heading.id().as_uuid())
+                .bind(heading.title.as_str())
+                .bind(heading.archived)
+                .bind(heading.meta.updated_at)
+                .bind(heading.meta.version)
+                .bind(expected)
+                .execute(&mut **tx)
+                .await
+                .map_err(storage)?;
+                if updated.rows_affected() == 0 {
+                    let actual: Option<i64> = sqlx::query_scalar(
+                        "select version from entities where account_id = $1 and id = $2",
+                    )
+                    .bind(account_id.as_uuid())
+                    .bind(heading.id().as_uuid())
+                    .fetch_optional(&mut **tx)
+                    .await
+                    .map_err(storage)?;
+                    return match actual {
+                        Some(actual) => Err(CommandError::Conflict { expected, actual }),
+                        None => Err(CommandError::NotFound),
+                    };
+                }
+            }
+        }
+        upsert_placement(
+            tx,
+            account_id,
+            heading.id(),
+            ContextRef::Project(heading.project),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn list_project_children(
         &mut self,
         account_id: AccountId,
@@ -861,6 +969,11 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::ProjectCreated { .. } => "project_created",
                 DomainEvent::ProjectChanged { .. } => "project_changed",
                 DomainEvent::ProjectDeleted { .. } => "project_deleted",
+                DomainEvent::HeadingCreated { .. } => "heading_created",
+                DomainEvent::HeadingChanged { .. } => "heading_changed",
+                DomainEvent::HeadingReordered { .. } => "heading_reordered",
+                DomainEvent::HeadingArchived { .. } => "heading_archived",
+                DomainEvent::HeadingRestored { .. } => "heading_restored",
                 DomainEvent::AreaCreated { .. } => "area_created",
                 DomainEvent::AreaRenamed { .. } => "area_renamed",
                 DomainEvent::AreaDeleted { .. } => "area_deleted",

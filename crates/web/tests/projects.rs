@@ -232,7 +232,7 @@ async fn todo_created_in_project_appears_in_children() {
 
     let detail = request(&h, "GET", &format!("/projects/{id}"), None).await.2;
     assert!(
-        detail.contains("data-testid=\"project-children\""),
+        detail.contains("data-testid=\"project-structure\""),
         "{detail}"
     );
     assert!(detail.contains("Project task"), "{detail}");

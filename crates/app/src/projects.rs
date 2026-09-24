@@ -13,6 +13,28 @@ use crate::commands::{
     ProjectDeletionPolicy, ScheduleInput,
 };
 
+/// Summary of a heading inside a project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeadingSummary {
+    /// Canonical identity.
+    pub id: EntityId,
+    /// Title.
+    pub title: String,
+    /// Whether the heading is archived.
+    pub archived: bool,
+    /// Ordered to-do identities filed under this heading.
+    pub todo_ids: Vec<EntityId>,
+}
+
+/// An item in a project's top-level order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectOrderItem {
+    /// A heading.
+    Heading(EntityId),
+    /// A to-do filed directly in the project.
+    Todo(EntityId),
+}
+
 /// Read model for a project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectSummary {
@@ -34,6 +56,10 @@ pub struct ProjectSummary {
     pub open_count: usize,
     /// Number of completed direct to-dos.
     pub completed_count: usize,
+    /// Headings in the project, archived ones included.
+    pub headings: Vec<HeadingSummary>,
+    /// Top-level order of headings and unheaded to-dos.
+    pub order: Vec<ProjectOrderItem>,
 }
 
 impl ProjectSummary {
@@ -115,6 +141,91 @@ impl ProjectService {
         id: EntityId,
     ) -> Result<Option<ProjectSummary>, CommandError> {
         self.reader.get_project(account_id, id).await
+    }
+
+    /// Creates a heading inside a project.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn create_heading(
+        &self,
+        account_id: AccountId,
+        project: EntityId,
+        title: &str,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::CreateHeading {
+                project,
+                title: title.to_string(),
+            },
+        )
+        .await
+    }
+
+    /// Renames a heading.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn rename_heading(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        title: &str,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::RenameHeading {
+                id,
+                title: title.to_string(),
+            },
+        )
+        .await
+    }
+
+    /// Moves a heading one position up or down, taking its children with it.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn reorder_heading(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        direction: crate::commands::ReorderDirection,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::ReorderHeading { id, direction })
+            .await
+    }
+
+    /// Archives a heading without deleting its children.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn archive_heading(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::ArchiveHeading { id })
+            .await
+    }
+
+    /// Restores an archived heading.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn restore_heading(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::RestoreHeading { id })
+            .await
     }
 
     /// Creates a project.
