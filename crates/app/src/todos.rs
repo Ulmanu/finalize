@@ -195,6 +195,21 @@ impl TodoService {
         LocalDate::today_in_timezone(self.clock.now(), "UTC")
     }
 
+    /// Moves a Today item within its Today/This Evening ordering bucket.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn reorder_today(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        direction: crate::commands::ReorderDirection,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::ReorderToday { id, direction })
+            .await
+    }
+
     /// Loads one to-do.
     ///
     /// # Errors

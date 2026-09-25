@@ -1151,6 +1151,76 @@ impl UnitOfWork for PgUnitOfWork {
         Ok(())
     }
 
+    async fn load_projection_order(
+        &mut self,
+        account_id: AccountId,
+        scope: momentum_app::ordering::ProjectionScope,
+    ) -> Result<Vec<(EntityId, momentum_app::ordering::Rank)>, CommandError> {
+        let tx = self.tx()?;
+        let rows = sqlx::query(
+            "select entity_id, rank from placements \
+             where account_id = $1 and scope = $2 order by rank asc",
+        )
+        .bind(account_id.as_uuid())
+        .bind(scope.as_str())
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
+        let mut order = Vec::with_capacity(rows.len());
+        for row in rows {
+            let rank_text: String = row.get("rank");
+            if let Ok(rank) = momentum_app::ordering::Rank::parse(&rank_text) {
+                order.push((EntityId::from_uuid(row.get("entity_id")), rank));
+            }
+        }
+        Ok(order)
+    }
+
+    async fn set_projection_rank(
+        &mut self,
+        account_id: AccountId,
+        scope: momentum_app::ordering::ProjectionScope,
+        entity_id: EntityId,
+        rank: momentum_app::ordering::Rank,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        sqlx::query(
+            "insert into placements \
+             (id, account_id, entity_id, scope, parent_kind, parent_id, rank, created_at, \
+              updated_at, version) \
+             values ($1, $2, $3, $4, 'inbox', null, $5, now(), now(), 1) \
+             on conflict (entity_id, scope) do update \
+             set rank = excluded.rank, updated_at = now(), version = placements.version + 1",
+        )
+        .bind(Uuid::now_v7())
+        .bind(account_id.as_uuid())
+        .bind(entity_id.as_uuid())
+        .bind(scope.as_str())
+        .bind(rank.encode())
+        .execute(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(())
+    }
+
+    async fn clear_today_ranks(
+        &mut self,
+        account_id: AccountId,
+        entity_id: EntityId,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        sqlx::query(
+            "delete from placements \
+             where account_id = $1 and entity_id = $2 and scope in ('today', 'today_evening')",
+        )
+        .bind(account_id.as_uuid())
+        .bind(entity_id.as_uuid())
+        .execute(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(())
+    }
+
     async fn change_by_operation(
         &mut self,
         account_id: AccountId,
@@ -1229,6 +1299,7 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::TodoDeadlineChanged { .. } => "todo_deadline_changed",
                 DomainEvent::TodoReminderChanged { .. } => "todo_reminder_changed",
                 DomainEvent::ChecklistChanged { .. } => "checklist_changed",
+                DomainEvent::TodayReordered { .. } => "today_reordered",
                 DomainEvent::TagCreated { .. } => "tag_created",
                 DomainEvent::TagChanged { .. } => "tag_changed",
                 DomainEvent::TagDeleted { .. } => "tag_deleted",

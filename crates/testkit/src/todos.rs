@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use momentum_app::commands::CommandError;
+use momentum_app::ordering::{ProjectionScope, Rank};
 use momentum_app::todos::{TodoReadStore, TodoScope, TodoSummary};
 use momentum_domain::model::{ScheduleState, Status};
 use momentum_domain::time::LocalDate;
@@ -82,7 +83,22 @@ impl TodoReadStore for MemoryTodoReadStore {
             }),
             TodoScope::Deadlines => todos
                 .sort_by_key(|todo| (todo.deadline.map(|deadline| deadline.date), todo.created_at)),
-            TodoScope::Today | TodoScope::Upcoming => todos.sort_by_key(|todo| {
+            TodoScope::Today => todos.sort_by_key(|todo| {
+                let scope = if todo.schedule.is_evening() {
+                    ProjectionScope::ThisEvening
+                } else {
+                    ProjectionScope::Today
+                };
+                (
+                    todo.schedule.is_evening(),
+                    self.database
+                        .projection_rank(account_id, scope, todo.id)
+                        .map_or(i64::MAX, Rank::value),
+                    todo.created_at,
+                    todo.id,
+                )
+            }),
+            TodoScope::Upcoming => todos.sort_by_key(|todo| {
                 (
                     todo.schedule.date(),
                     todo.schedule.is_evening(),

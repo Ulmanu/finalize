@@ -244,3 +244,22 @@ pub const TAG_HIERARCHY_DOWN: &str = "
 alter table entities drop column if exists tag_parent;
 alter table entities drop column if exists tag_position;
 ";
+
+/// Forward SQL for migration 0005: an independent This Evening ordering bucket.
+///
+/// Today's day section and This Evening section order independently, so the placement scope
+/// check gains the `today_evening` bucket alongside `today`.
+pub const PROJECTION_SCOPE_EVENING_UP: &str = r"
+alter table placements drop constraint if exists placements_scope_check;
+delete from placements where scope = 'today_evening';
+alter table placements add constraint placements_scope_check
+    check (scope in ('context', 'today', 'today_evening'));
+";
+
+/// Rollback SQL for migration 0005.
+pub const PROJECTION_SCOPE_EVENING_DOWN: &str = "
+delete from placements where scope = 'today_evening';
+alter table placements drop constraint if exists placements_scope_check;
+alter table placements add constraint placements_scope_check
+    check (scope in ('context', 'today'));
+";

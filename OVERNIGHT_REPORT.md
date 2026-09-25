@@ -40,6 +40,19 @@ Agent: opencode (deepseek-v4.1-flash)
   `$HOME/.cargo/bin`. Homebrew Rust 1.95 remains on PATH for manual shells but the project
   toolchain is now rustup-managed so WASM builds are reproducible.
 
+## Build environment notes
+
+- 2026-09-25/26: the volume holding `target/` reached 99% capacity during change 22
+  verification, and rustc failed with `rustc-LLVM ERROR: IO failure on output stream: No space
+  left on device`. Recovery: removed only reproducible Cargo build artifacts (`target/`
+  contents: incremental caches, fingerprints, build outputs, dependency artifacts), first with
+  `cargo clean`, then the remaining artifacts. Disk free went from 2.4 GiB (99% used) before
+  cleanup to 134 GiB (42% used) after (`df -h /Volumes/CULMANU`, 2026-09-26 01:21 EEST).
+- To keep unattended builds from regrowing artifacts to 100+ GiB, the workspace `Cargo.toml`
+  now sets `[profile.dev]` and `[profile.test]` to `debug = 0` and `incremental = false`. This
+  only removes debug symbols and incremental caches; debug assertions, overflow checks, tests,
+  Clippy, and OpenSpec validation remain fully enabled.
+
 ## Change log
 
 ### 01 — `bootstrap-fullstack-rust-workspace` — COMPLETE
@@ -537,6 +550,31 @@ Agent: opencode (deepseek-v4.1-flash)
   canonical value; unparseable dates clear the deadline deterministically.
 - Live integrations not verified: PostgreSQL deadline scope/order (no database).
 
+### 22 — `add-today-projection` — COMPLETE
+
+- Start: 2026-09-25 02:00 · End: 2026-09-26 01:10 (long wall-clock span due to a full-volume
+  event; see Build environment notes)
+- Proposal validation: strict validation passed before archive.
+- Implementation: `ProjectionScope { Today, ThisEvening }` maps to `placements` scopes
+  `today`/`today_evening` (migration `0005`, reversible); `ReorderToday` command swaps an item
+  with its bucket neighbor through the existing `ScopeOrder` engine; ranks are materialized
+  when an item becomes Today-eligible (create/schedule/reopen) and cleared when it stops;
+  PostgreSQL orders Today by a `CASE` join on the evening flag, memory by stored rank with a
+  created-at fallback; the Today page renders separate Today and This Evening sections with
+  labeled move controls; `TodoRow` gained an opt-in Today ordering mode; navigation link added.
+- Migrations: `0005-projection-scope-evening` (widens the placement scope check).
+- Tests: 3 testkit tests (membership without moving context, evening/day ordering independence,
+  manual order vs context order) and 1 web test (sections, manual reorder, context stability);
+  full workspace suite (41 binaries) passes, plus fmt, arch-check, clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-25-add-today-projection` (the archive date rolls to the next day because the
+  disk-recovery window crossed midnight); canonical `features/today` spec created.
+- Commit: `feat(22): add Today projection`
+- Decisions: Today ordering lives in the existing `placements` table (the ordering engine and
+  schema already anticipated a `today` scope) with a second `today_evening` bucket; items
+  without a rank keep creation order until first moved, so no bulk backfill is needed.
+- Live integrations not verified: PostgreSQL Today ordering/`CASE` join (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -564,9 +602,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 19 | add-things-markdown | COMPLETE | `feat(19)` |
 | 20 | add-scheduling-model | COMPLETE | `feat(20)` |
 | 21 | add-deadlines | COMPLETE | `feat(21)` |
+| 22 | add-today-projection | COMPLETE | `feat(22)` |
 
-- Completed proposal range: 01–21 (21 of 74).
-- Incomplete: 22–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–22 (22 of 74).
+- Incomplete: 23–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

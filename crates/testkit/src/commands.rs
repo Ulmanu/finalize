@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use momentum_app::commands::{
     AreaChildren, ChangeRecord, CommandError, ProjectChildren, UnitOfWork, UnitOfWorkFactory,
 };
-use momentum_app::ordering::{OrderedItem, OrderingScope, Rank, ScopeOrder};
+use momentum_app::ordering::{OrderedItem, OrderingScope, ProjectionScope, Rank, ScopeOrder};
 use momentum_domain::model::{Area, ContextRef, Heading, Project, Tag, Todo};
 use momentum_domain::{AccountId, EntityId};
 use uuid::Uuid;
@@ -23,6 +23,7 @@ struct MemoryState {
     project_areas: HashMap<(AccountId, EntityId), EntityId>,
     changes: Vec<(AccountId, ChangeRecord)>,
     context_ranks: HashMap<(AccountId, EntityId), Rank>,
+    projection_ranks: HashMap<(AccountId, ProjectionScope, EntityId), Rank>,
     next_ranks: HashMap<(AccountId, ContextRef), i64>,
 }
 
@@ -158,6 +159,22 @@ impl MemoryDatabase {
         project_id = None;
         let _ = project_id;
         result.into_iter().collect()
+    }
+
+    /// Returns a stored Today-projection rank.
+    #[must_use]
+    pub fn projection_rank(
+        &self,
+        account_id: AccountId,
+        scope: ProjectionScope,
+        id: EntityId,
+    ) -> Option<Rank> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .projection_ranks
+            .get(&(account_id, scope, id))
+            .copied()
     }
 
     /// Returns a stored project.
@@ -680,6 +697,55 @@ impl UnitOfWork for MemoryUnitOfWork {
             .expect("memory state lock")
             .context_ranks
             .insert((account_id, entity_id), rank);
+        Ok(())
+    }
+
+    async fn load_projection_order(
+        &mut self,
+        account_id: AccountId,
+        scope: ProjectionScope,
+    ) -> Result<Vec<(EntityId, Rank)>, CommandError> {
+        let state = self.database.state.lock().expect("memory state lock");
+        let mut items: Vec<(EntityId, Rank)> = state
+            .projection_ranks
+            .iter()
+            .filter(|((account, stored_scope, _), _)| {
+                *account == account_id && *stored_scope == scope
+            })
+            .map(|((_, _, entity), rank)| (*entity, *rank))
+            .collect();
+        items.sort_by_key(|(entity, rank)| (rank.value(), *entity));
+        Ok(items)
+    }
+
+    async fn set_projection_rank(
+        &mut self,
+        account_id: AccountId,
+        scope: ProjectionScope,
+        entity_id: EntityId,
+        rank: Rank,
+    ) -> Result<(), CommandError> {
+        self.database
+            .state
+            .lock()
+            .expect("memory state lock")
+            .projection_ranks
+            .insert((account_id, scope, entity_id), rank);
+        Ok(())
+    }
+
+    async fn clear_today_ranks(
+        &mut self,
+        account_id: AccountId,
+        entity_id: EntityId,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        state
+            .projection_ranks
+            .remove(&(account_id, ProjectionScope::Today, entity_id));
+        state
+            .projection_ranks
+            .remove(&(account_id, ProjectionScope::ThisEvening, entity_id));
         Ok(())
     }
 

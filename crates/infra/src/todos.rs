@@ -109,12 +109,18 @@ impl TodoReadStore for PgTodoReadStore {
         scope: TodoScope,
         today: LocalDate,
     ) -> Result<Vec<TodoSummary>, CommandError> {
-        let order = match scope {
-            TodoScope::Deadlines => "e.deadline asc, e.created_at asc, e.id asc",
-            TodoScope::Today | TodoScope::Upcoming => {
-                "e.schedule_date asc, e.schedule_evening asc, e.created_at asc, e.id asc"
-            }
-            _ => "p.rank asc nulls last, e.created_at asc, e.id asc",
+        let (extra_join, order) = match scope {
+            TodoScope::Deadlines => ("", "e.deadline asc, e.created_at asc, e.id asc"),
+            TodoScope::Today => (
+                " left join placements rp on rp.entity_id = e.id \
+                 and rp.scope = case when e.schedule_evening then 'today_evening' else 'today' end",
+                "e.schedule_evening asc, rp.rank asc nulls last, e.created_at asc, e.id asc",
+            ),
+            TodoScope::Upcoming => (
+                "",
+                "e.schedule_date asc, e.schedule_evening asc, e.created_at asc, e.id asc",
+            ),
+            _ => ("", "p.rank asc nulls last, e.created_at asc, e.id asc"),
         };
         let sql = format!(
             "select e.id, e.title, e.notes, e.status, e.schedule_kind, e.schedule_date, \
@@ -122,6 +128,7 @@ impl TodoReadStore for PgTodoReadStore {
              e.reminder_rule, p.parent_kind, p.parent_id \
              from entities e \
              left join placements p on p.entity_id = e.id and p.scope = 'context' \
+             {extra_join} \
              where e.account_id = $1 and e.kind = 'todo' and {} \
              order by {order}",
             scope_filter(scope)

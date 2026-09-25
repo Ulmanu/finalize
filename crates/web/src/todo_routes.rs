@@ -32,6 +32,8 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/duplicate", post(duplicate_todo))
         .route("/todos/{todo_id}/move-up", post(move_up))
         .route("/todos/{todo_id}/move-down", post(move_down))
+        .route("/todos/{todo_id}/today-up", post(move_today_up))
+        .route("/todos/{todo_id}/today-down", post(move_today_down))
         .route("/todos/{todo_id}/schedule", post(schedule_todo))
         .route("/todos/{todo_id}/move", post(move_todo))
         .route("/todos/{todo_id}/deadline", post(set_deadline))
@@ -251,6 +253,49 @@ async fn move_down(
     Form(form): Form<RedirectForm>,
 ) -> Response {
     reorder(&state, &session, &id, false, &back(&form)).await
+}
+
+async fn move_today_up(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<RedirectForm>,
+) -> Response {
+    reorder_today(&state, &session, &todo_id, form, true).await
+}
+
+async fn move_today_down(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<RedirectForm>,
+) -> Response {
+    reorder_today(&state, &session, &todo_id, form, false).await
+}
+
+async fn reorder_today(
+    state: &AppState,
+    session: &SessionState,
+    raw_id: &str,
+    form: RedirectForm,
+    up: bool,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = raw_id.parse::<EntityId>() else {
+        return redirect("/today?error=notfound");
+    };
+    let target = back(&form);
+    let direction = if up {
+        momentum_app::commands::ReorderDirection::Up
+    } else {
+        momentum_app::commands::ReorderDirection::Down
+    };
+    match service.reorder_today(account_id, id, direction).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=reorder")),
+    }
 }
 
 async fn reorder(

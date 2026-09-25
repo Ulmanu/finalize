@@ -26,6 +26,27 @@ pub enum OrderingScope {
     Today,
 }
 
+/// A Today-projection ordering bucket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectionScope {
+    /// The daytime Today section.
+    Today,
+    /// The This Evening section, ordered independently.
+    ThisEvening,
+}
+
+impl ProjectionScope {
+    /// Storage scope label used by placements.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Today => "today",
+            Self::ThisEvening => "today_evening",
+        }
+    }
+}
+
 /// Ordering failures.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum OrderingError {

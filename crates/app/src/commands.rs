@@ -268,6 +268,13 @@ pub enum Command {
         /// Destination parent, or `None` for top level.
         parent: Option<EntityId>,
     },
+    /// Moves a Today item one position up or down within its Today/Evening bucket.
+    ReorderToday {
+        /// Entity to move.
+        id: EntityId,
+        /// Direction within the bucket.
+        direction: ReorderDirection,
+    },
     /// Moves a tag one position up or down among its siblings.
     ReorderTag {
         /// Tag to move.
@@ -393,6 +400,7 @@ impl Command {
             | Self::ReopenProject { id }
             | Self::MoveProject { id, .. }
             | Self::DeleteProject { id, .. }
+            | Self::ReorderToday { id, .. }
             | Self::RenameHeading { id, .. }
             | Self::ReorderHeading { id, .. }
             | Self::ArchiveHeading { id }
@@ -432,6 +440,7 @@ impl Command {
             Self::CreateArea { .. } => "create_area",
             Self::CreateProject { .. } => "create_project",
             Self::CreateHeading { .. } => "create_heading",
+            Self::ReorderToday { .. } => "reorder_today",
             Self::CreateTag { .. } => "create_tag",
             Self::RenameTag { .. } => "rename_tag",
             Self::MoveTag { .. } => "move_tag",
@@ -554,6 +563,11 @@ pub enum DomainEvent {
     },
     /// A project was deleted.
     ProjectDeleted {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A Today item was reordered within its bucket.
+    TodayReordered {
         /// Entity identity.
         id: EntityId,
     },
@@ -713,6 +727,7 @@ impl DomainEvent {
             | Self::AreaCreated { id }
             | Self::AreaRenamed { id }
             | Self::AreaDeleted { id }
+            | Self::TodayReordered { id }
             | Self::TagCreated { id }
             | Self::TagChanged { id }
             | Self::TagDeleted { id }
@@ -978,6 +993,29 @@ pub trait UnitOfWork: Send {
         rank: crate::ordering::Rank,
     ) -> Result<(), CommandError>;
 
+    /// Loads a projection ordering bucket.
+    async fn load_projection_order(
+        &mut self,
+        account_id: AccountId,
+        scope: crate::ordering::ProjectionScope,
+    ) -> Result<Vec<(EntityId, crate::ordering::Rank)>, CommandError>;
+
+    /// Persists one entity's rank within a projection ordering bucket.
+    async fn set_projection_rank(
+        &mut self,
+        account_id: AccountId,
+        scope: crate::ordering::ProjectionScope,
+        entity_id: EntityId,
+        rank: crate::ordering::Rank,
+    ) -> Result<(), CommandError>;
+
+    /// Removes an entity from every Today ordering bucket.
+    async fn clear_today_ranks(
+        &mut self,
+        account_id: AccountId,
+        entity_id: EntityId,
+    ) -> Result<(), CommandError>;
+
     /// Looks up a change record by operation id (idempotency check).
     async fn change_by_operation(
         &mut self,
@@ -1131,6 +1169,7 @@ impl CommandDispatcher {
                     unit.set_context_rank(account_id, item.entity_id, item.rank)
                         .await?;
                 }
+                sync_today_rank(unit, account_id, &todo, now).await?;
                 Ok((
                     Some(todo.id()),
                     vec![DomainEvent::TodoCreated { id: todo.id() }],
@@ -1347,6 +1386,61 @@ impl CommandDispatcher {
                 unit.save_project(account_id, &project, Some(expected))
                     .await?;
                 Ok((Some(*id), vec![DomainEvent::ProjectDeleted { id: *id }]))
+            }
+            Command::ReorderToday { id, direction } => {
+                let todo = unit
+                    .load_todo(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let today = LocalDate::today_in_timezone(now, "UTC");
+                if !todo.is_open() || !todo.schedule.is_actionable(today) {
+                    return Err(CommandError::Validation(
+                        "only open Today items can be reordered in Today".to_string(),
+                    ));
+                }
+                let scope = if todo.schedule.is_evening() {
+                    crate::ordering::ProjectionScope::ThisEvening
+                } else {
+                    crate::ordering::ProjectionScope::Today
+                };
+                let items = unit.load_projection_order(account_id, scope).await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Today,
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                if order.position_of(*id).is_none() {
+                    let change = order
+                        .append(*id)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    unit.set_projection_rank(account_id, scope, *id, change.rank)
+                        .await?;
+                    for item in change.rebalanced {
+                        unit.set_projection_rank(account_id, scope, item.entity_id, item.rank)
+                            .await?;
+                    }
+                }
+                let position = order.position_of(*id).ok_or(CommandError::NotFound)?;
+                let target = match direction {
+                    ReorderDirection::Up => position.checked_sub(1),
+                    ReorderDirection::Down => {
+                        (position + 1 < order.items().len()).then_some(position + 1)
+                    }
+                };
+                if let Some(target) = target {
+                    let change = order
+                        .move_item(*id, target)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    unit.set_projection_rank(account_id, scope, *id, change.rank)
+                        .await?;
+                    for item in change.rebalanced {
+                        unit.set_projection_rank(account_id, scope, item.entity_id, item.rank)
+                            .await?;
+                    }
+                }
+                Ok((Some(*id), vec![DomainEvent::TodayReordered { id: *id }]))
             }
             Command::CreateHeading { project, title } => {
                 let project_entity = unit
@@ -1750,10 +1844,59 @@ impl CommandDispatcher {
                 let event = apply_to_todo(&mut todo, command, now)?;
                 unit.save_todo(account_id, &todo, Some(expected_version))
                     .await?;
+                if matches!(
+                    command,
+                    Command::ScheduleTodo { .. } | Command::ReopenTodo { .. }
+                ) {
+                    sync_today_rank(unit, account_id, &todo, now).await?;
+                }
                 Ok((Some(todo.id()), vec![event]))
             }
         }
     }
+}
+
+async fn sync_today_rank(
+    unit: &mut dyn UnitOfWork,
+    account_id: AccountId,
+    todo: &Todo,
+    now: DateTime<Utc>,
+) -> Result<(), CommandError> {
+    let today = LocalDate::today_in_timezone(now, "UTC");
+    let eligible = todo.is_open()
+        && matches!(
+            todo.schedule.state(),
+            momentum_domain::model::ScheduleState::On(date) if date <= today
+        );
+    if !eligible {
+        return unit.clear_today_ranks(account_id, todo.id()).await;
+    }
+    let scope = if todo.schedule.is_evening() {
+        crate::ordering::ProjectionScope::ThisEvening
+    } else {
+        crate::ordering::ProjectionScope::Today
+    };
+    let items = unit.load_projection_order(account_id, scope).await?;
+    if items.iter().any(|(entity, _)| *entity == todo.id()) {
+        return Ok(());
+    }
+    let mut order = crate::ordering::ScopeOrder::from_items(
+        crate::ordering::OrderingScope::Today,
+        items
+            .into_iter()
+            .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+            .collect(),
+    );
+    let change = order
+        .append(todo.id())
+        .map_err(|error| CommandError::Validation(error.to_string()))?;
+    unit.set_projection_rank(account_id, scope, todo.id(), change.rank)
+        .await?;
+    for item in change.rebalanced {
+        unit.set_projection_rank(account_id, scope, item.entity_id, item.rank)
+            .await?;
+    }
+    Ok(())
 }
 
 async fn next_tag_position(
@@ -1811,6 +1954,7 @@ fn apply_to_todo(
         | Command::ReorderHeading { .. }
         | Command::ArchiveHeading { .. }
         | Command::RestoreHeading { .. }
+        | Command::ReorderToday { .. }
         | Command::CreateTag { .. }
         | Command::RenameTag { .. }
         | Command::MoveTag { .. }
@@ -1993,6 +2137,7 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
             Projection::Deadlines,
             Projection::Logbook,
         ],
+        DomainEvent::TodayReordered { .. } => vec![Projection::Today],
         DomainEvent::TagCreated { .. }
         | DomainEvent::TagChanged { .. }
         | DomainEvent::TagDeleted { .. }

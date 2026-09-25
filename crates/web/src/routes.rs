@@ -251,17 +251,103 @@ macro_rules! list_route_page {
 pub fn TodayPage() -> impl IntoView {
     view! {
         <Protected>
-            {move || {
-                view! {
-                    <ProjectionList
-                        title="Today"
-                        description="Everything scheduled for today."
-                        scope=TodoScope::Today
-                        slug="today"
-                    />
-                }
-            }}
+            {move || view! { <TodayList/> }}
         </Protected>
+    }
+}
+
+#[component]
+fn TodayList() -> impl IntoView {
+    let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let account = use_account();
+    let today = service.as_ref().map(|service| service.local_today());
+    let todos = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, TodoScope::Today)
+                    .await
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="today-page">
+            <header class="list-header">
+                <h1 class="list-title">"Today"</h1>
+                <p class="list-description">"Everything scheduled for today."</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    todos
+                        .get()
+                        .map(|todos| {
+                            let (evening, day): (Vec<TodoSummary>, Vec<TodoSummary>) = todos
+                                .into_iter()
+                                .partition(|todo| todo.schedule.is_evening());
+                            view! {
+                                <h2 class="section-heading">"Today"</h2>
+                                {if day.is_empty() {
+                                    view! {
+                                        <div class="list-empty" data-testid="today-empty">
+                                            <p>"Nothing scheduled for today."</p>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <ul class="task-list" data-testid="today-day-list">
+                                            {day
+                                                .into_iter()
+                                                .map(|todo| {
+                                                    view! {
+                                                        <TodoRow todo=todo today=today today_order=true/>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </ul>
+                                    }
+                                        .into_any()
+                                }}
+                                <h2 class="section-heading">"This Evening"</h2>
+                                {if evening.is_empty() {
+                                    view! {
+                                        <div
+                                            class="list-empty"
+                                            data-testid="today-evening-empty"
+                                        >
+                                            <p>"Nothing planned for this evening."</p>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <ul
+                                            class="task-list"
+                                            data-testid="today-evening-list"
+                                        >
+                                            {evening
+                                                .into_iter()
+                                                .map(|todo| {
+                                                    view! {
+                                                        <TodoRow todo=todo today=today today_order=true/>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </ul>
+                                    }
+                                        .into_any()
+                                }}
+                            }
+                                .into_any()
+                        })
+                }}
+            </Suspense>
+        </section>
     }
 }
 
@@ -710,7 +796,11 @@ fn InboxList() -> impl IntoView {
 }
 
 #[component]
-fn TodoRow(todo: TodoSummary, #[prop(default = None)] today: Option<LocalDate>) -> impl IntoView {
+fn TodoRow(
+    todo: TodoSummary,
+    #[prop(default = None)] today: Option<LocalDate>,
+    #[prop(default = false)] today_order: bool,
+) -> impl IntoView {
     let id = todo.id;
     let title = todo.title.clone();
     let completed = todo.status == Status::Completed;
@@ -722,8 +812,16 @@ fn TodoRow(todo: TodoSummary, #[prop(default = None)] today: Option<LocalDate>) 
     let toggle_target = format!("/todos/{id}/complete");
     let open_target = format!("/todos/{id}");
     let delete_target = format!("/todos/{id}/delete");
-    let up_target = format!("/todos/{id}/move-up");
-    let down_target = format!("/todos/{id}/move-down");
+    let up_target = if today_order {
+        format!("/todos/{id}/today-up")
+    } else {
+        format!("/todos/{id}/move-up")
+    };
+    let down_target = if today_order {
+        format!("/todos/{id}/today-down")
+    } else {
+        format!("/todos/{id}/move-down")
+    };
     let schedule_target = format!("/todos/{id}/schedule");
     let schedule = todo.schedule.date().map(|date| format!("When: {date}"));
     let deadline = todo.deadline.map(|deadline| {

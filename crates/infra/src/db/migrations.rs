@@ -54,6 +54,13 @@ pub const MIGRATIONS: &[Migration] = &[
         down: Some(schema::TAG_HIERARCHY_DOWN),
         irreversible_reason: None,
     },
+    Migration {
+        version: 5,
+        name: "projection-scope-evening",
+        up: schema::PROJECTION_SCOPE_EVENING_UP,
+        down: Some(schema::PROJECTION_SCOPE_EVENING_DOWN),
+        irreversible_reason: None,
+    },
 ];
 
 /// Migration failures.
