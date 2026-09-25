@@ -515,6 +515,28 @@ Agent: opencode (deepseek-v4.1-flash)
   the local date; the offset-aware entry point keeps boundary semantics testable.
 - Live integrations not verified: PostgreSQL scope filters (no database).
 
+### 21 — `add-deadlines` — COMPLETE
+
+- Start: 2026-09-25 00:20 · End: 2026-09-25 01:30
+- Proposal validation: strict validation passed before implementation was committed.
+- Implementation: `TodoSummary::deadline_state(today)` derives Future/DueToday/Overdue from the
+  stored local date without mutation; `TodoScope::Deadlines` lists open items with deadlines
+  ordered by due date (memory and PostgreSQL); list rows show state badges (text, not color
+  alone) when the view supplies the service's local date; to-do and project pages gained
+  set/clear deadline forms through the existing commands; `/deadlines` page and navigation
+  entry added.
+- Migrations: none.
+- Tests: 3 testkit tests (independence from schedule/reminder/metadata, state derivation, sorted
+  projection with shared identity) and 2 web tests (set/clear + page membership, overdue badge
+  in list views); fmt, clippy, workspace tests, WASM build, quality gates pass.
+- Verification: manual; every requirement scenario covered. No critical findings.
+- Archive: `2026-09-25-add-deadlines`; canonical `features/deadlines` spec created; strict
+  validation pass.
+- Commit: `feat(21): add deadlines`
+- Decisions: deadline state is derived on read (never stored), so all projections show the same
+  canonical value; unparseable dates clear the deadline deterministically.
+- Live integrations not verified: PostgreSQL deadline scope/order (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -541,9 +563,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 18 | add-notes-editor | COMPLETE | `feat(18)` |
 | 19 | add-things-markdown | COMPLETE | `feat(19)` |
 | 20 | add-scheduling-model | COMPLETE | `feat(20)` |
+| 21 | add-deadlines | COMPLETE | `feat(21)` |
 
-- Completed proposal range: 01–20 (20 of 74).
-- Incomplete: 21–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–21 (21 of 74).
+- Incomplete: 22–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

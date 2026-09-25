@@ -26,6 +26,10 @@ pub fn routes() -> Router<AppState> {
         .route("/projects/{project_id}/cancel", post(cancel_project))
         .route("/projects/{project_id}/reopen", post(reopen_project))
         .route("/projects/{project_id}/schedule", post(schedule_project))
+        .route(
+            "/projects/{project_id}/deadline",
+            post(set_project_deadline),
+        )
         .route("/projects/{project_id}/delete", post(delete_project))
         .route("/headings", post(create_heading))
         .route("/headings/{heading_id}/rename", post(rename_heading))
@@ -207,6 +211,42 @@ async fn schedule_project(
     match service.schedule(account_id, id, schedule).await {
         Ok(_) => redirect(&format!("/projects/{id}")),
         Err(_) => redirect(&format!("/projects/{id}?error=schedule")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectDeadlineForm {
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn set_project_deadline(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(project_id): Path<String>,
+    Form(form): Form<ProjectDeadlineForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = project_id.parse::<EntityId>() else {
+        return redirect("/projects?error=notfound");
+    };
+    let target = form
+        .return_to
+        .clone()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| format!("/projects/{id}"));
+    let deadline = form
+        .date
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<momentum_domain::time::LocalDate>().ok());
+    match service.set_deadline(account_id, id, deadline).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=deadline")),
     }
 }
 

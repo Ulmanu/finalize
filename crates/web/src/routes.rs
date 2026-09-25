@@ -19,7 +19,8 @@ use momentum_app::areas::{AreaService, AreaSummary};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::tags::{TagService, TagSummary};
 use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
-use momentum_domain::model::Status;
+use momentum_domain::model::{DeadlineState, Status};
+use momentum_domain::time::LocalDate;
 use momentum_domain::EntityId;
 
 /// Root route tree rendered inside the session provider.
@@ -41,6 +42,7 @@ pub fn AppRoutes() -> impl IntoView {
                 <Route path=path!("/projects") view=ProjectsPage/>
                 <Route path=path!("/areas") view=AreasPage/>
                 <Route path=path!("/tags") view=TagsPage/>
+                <Route path=path!("/deadlines") view=DeadlinesPage/>
                 <Route path=path!("/settings") view=SettingsPage/>
                 <Route path=path!("/areas/:area_id") view=AreaPage/>
                 <Route path=path!("/projects/:project_id") view=ProjectPage/>
@@ -300,6 +302,24 @@ pub fn AnytimePage() -> impl IntoView {
 }
 
 #[component]
+pub fn DeadlinesPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || {
+                view! {
+                    <ProjectionList
+                        title="Deadlines"
+                        description="Open items with an explicit due date."
+                        scope=TodoScope::Deadlines
+                        slug="deadlines"
+                    />
+                }
+            }}
+        </Protected>
+    }
+}
+
+#[component]
 pub fn SomedayPage() -> impl IntoView {
     view! {
         <Protected>
@@ -530,6 +550,7 @@ fn InboxList() -> impl IntoView {
     let tag_service = use_context::<Option<Arc<TagService>>>().flatten();
     let account = use_account();
     let account_for_tags = account.clone();
+    let today = service.as_ref().map(|service| service.local_today());
     let query = use_query_map();
     let todos = AsyncDerived::new(move || {
         let service = service.clone();
@@ -675,7 +696,7 @@ fn InboxList() -> impl IntoView {
                                     <ul class="task-list" data-testid="task-list">
                                         {todos
                                             .into_iter()
-                                            .map(|todo| view! { <TodoRow todo=todo/> })
+                                            .map(|todo| view! { <TodoRow todo=todo today=today/> })
                                             .collect_view()}
                                     </ul>
                                 }
@@ -689,7 +710,7 @@ fn InboxList() -> impl IntoView {
 }
 
 #[component]
-fn TodoRow(todo: TodoSummary) -> impl IntoView {
+fn TodoRow(todo: TodoSummary, #[prop(default = None)] today: Option<LocalDate>) -> impl IntoView {
     let id = todo.id;
     let title = todo.title.clone();
     let completed = todo.status == Status::Completed;
@@ -705,9 +726,15 @@ fn TodoRow(todo: TodoSummary) -> impl IntoView {
     let down_target = format!("/todos/{id}/move-down");
     let schedule_target = format!("/todos/{id}/schedule");
     let schedule = todo.schedule.date().map(|date| format!("When: {date}"));
-    let deadline = todo
-        .deadline
-        .map(|deadline| format!("Due: {}", deadline.date));
+    let deadline = todo.deadline.map(|deadline| {
+        let state = today.map(|today| deadline.state(today));
+        let label = match state {
+            Some(DeadlineState::Overdue) => format!("Overdue: {}", deadline.date),
+            Some(DeadlineState::DueToday) => format!("Due today: {}", deadline.date),
+            _ => format!("Due: {}", deadline.date),
+        };
+        (label, matches!(state, Some(DeadlineState::Overdue)))
+    });
     let note = (!todo.notes.is_empty()).then(|| todo.notes.clone());
 
     view! {
@@ -728,10 +755,13 @@ fn TodoRow(todo: TodoSummary) -> impl IntoView {
                     {schedule
                         .map(|label| view! { <span class="row-badge date-badge">{label}</span> })}
                     {deadline
-                        .map(|label| {
-                            view! {
-                                <span class="row-badge date-badge date-badge-deadline">{label}</span>
-                            }
+                        .map(|(label, overdue)| {
+                            let class = if overdue {
+                                "row-badge date-badge date-badge-deadline deadline-overdue"
+                            } else {
+                                "row-badge date-badge date-badge-deadline"
+                            };
+                            view! { <span class=class data-testid="deadline-badge">{label}</span> }
                         })}
                 </span>
             </div>
@@ -904,6 +934,15 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
                     <input type="date" name="date" aria-label="Schedule date"/>
                 </label>
                 <button type="submit" class="button-secondary">"Apply schedule"</button>
+            </form>
+
+            <form method="post" action=format!("/todos/{id}/deadline") class="auth-form">
+                <input type="hidden" name="return_to" value=format!("/todos/{id}")/>
+                <label class="form-field">
+                    <span>"Deadline"</span>
+                    <input type="date" name="date" aria-label="Deadline date"/>
+                </label>
+                <button type="submit" class="button-secondary">"Apply deadline"</button>
             </form>
 
             <form method="post" action=format!("/todos/{id}/move") class="auth-form">
@@ -1657,6 +1696,9 @@ fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
     let account = use_account();
     let account_for_project = account.clone();
     let parsed = id.parse::<momentum_domain::EntityId>().ok();
+    let today = project_service
+        .as_ref()
+        .map(|service| service.local_today());
 
     let project = AsyncDerived::new(move || {
         let service = project_service.clone();
@@ -1781,7 +1823,9 @@ fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
                                             by_id
                                                 .get(todo_id)
                                                 .cloned()
-                                                .map(|todo| view! { <TodoRow todo=todo/> }.into_any())
+                                                .map(|todo| {
+                                                    view! { <TodoRow todo=todo today=today/> }.into_any()
+                                                })
                                         }
                                     }
                                 })
@@ -1970,6 +2014,15 @@ fn ProjectDetailBody(project: ProjectSummary) -> impl IntoView {
                 <input type="date" name="date" aria-label="Project schedule date"/>
             </label>
             <button type="submit" class="button-secondary">"Apply schedule"</button>
+        </form>
+
+        <form method="post" action=format!("/projects/{id}/deadline") class="auth-form">
+            <input type="hidden" name="return_to" value=format!("/projects/{id}")/>
+            <label class="form-field">
+                <span>"Deadline"</span>
+                <input type="date" name="date" aria-label="Project deadline date"/>
+            </label>
+            <button type="submit" class="button-secondary">"Apply deadline"</button>
         </form>
 
         <div class="todo-actions">

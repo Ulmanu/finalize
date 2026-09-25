@@ -55,6 +55,7 @@ fn matches_scope(todo: &TodoSummary, scope: TodoScope, today: LocalDate) -> bool
         TodoScope::Someday => {
             todo.status == Status::Open && todo.schedule.state() == ScheduleState::Someday
         }
+        TodoScope::Deadlines => todo.status == Status::Open && todo.deadline.is_some(),
         TodoScope::Logbook => todo.status.is_terminal(),
         TodoScope::Trash => todo.status == Status::Deleted,
     }
@@ -79,6 +80,8 @@ impl TodoReadStore for MemoryTodoReadStore {
                     todo.created_at,
                 )
             }),
+            TodoScope::Deadlines => todos
+                .sort_by_key(|todo| (todo.deadline.map(|deadline| deadline.date), todo.created_at)),
             TodoScope::Today | TodoScope::Upcoming => todos.sort_by_key(|todo| {
                 (
                     todo.schedule.date(),

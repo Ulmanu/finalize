@@ -56,6 +56,10 @@ pub const PRIMARY_DESTINATIONS: &[NavDestination] = &[
         label: "Someday",
     },
     NavDestination {
+        href: "/deadlines",
+        label: "Deadlines",
+    },
+    NavDestination {
         href: "/logbook",
         label: "Logbook",
     },

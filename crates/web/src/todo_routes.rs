@@ -34,6 +34,7 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/move-down", post(move_down))
         .route("/todos/{todo_id}/schedule", post(schedule_todo))
         .route("/todos/{todo_id}/move", post(move_todo))
+        .route("/todos/{todo_id}/deadline", post(set_deadline))
         .route("/todos/{todo_id}/checklist", post(add_checklist_item))
         .route("/todos/{todo_id}/checklist/expand", post(expand_checklist))
         .route(
@@ -401,6 +402,42 @@ async fn move_todo(
     match service.move_to(account_id, id, context).await {
         Ok(_) => redirect(&target),
         Err(_) => redirect(&format!("{target}?error=move")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DeadlineForm {
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn set_deadline(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<DeadlineForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = todo_id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = form
+        .return_to
+        .clone()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| format!("/todos/{id}"));
+    let deadline = form
+        .date
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<momentum_domain::time::LocalDate>().ok());
+    match service.set_deadline(account_id, id, deadline).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=deadline")),
     }
 }
 

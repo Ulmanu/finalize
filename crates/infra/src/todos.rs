@@ -42,6 +42,7 @@ fn scope_filter(scope: TodoScope) -> &'static str {
         }
         TodoScope::Anytime => "e.status = 'open' and e.schedule_kind = 'anytime'",
         TodoScope::Someday => "e.status = 'open' and e.schedule_kind = 'someday'",
+        TodoScope::Deadlines => "e.status = 'open' and e.deadline is not null",
         TodoScope::Logbook => "e.status in ('completed', 'canceled')",
         TodoScope::Trash => "e.status = 'deleted'",
     }
@@ -108,6 +109,13 @@ impl TodoReadStore for PgTodoReadStore {
         scope: TodoScope,
         today: LocalDate,
     ) -> Result<Vec<TodoSummary>, CommandError> {
+        let order = match scope {
+            TodoScope::Deadlines => "e.deadline asc, e.created_at asc, e.id asc",
+            TodoScope::Today | TodoScope::Upcoming => {
+                "e.schedule_date asc, e.schedule_evening asc, e.created_at asc, e.id asc"
+            }
+            _ => "p.rank asc nulls last, e.created_at asc, e.id asc",
+        };
         let sql = format!(
             "select e.id, e.title, e.notes, e.status, e.schedule_kind, e.schedule_date, \
              e.schedule_evening, e.deadline, e.completed_at, e.created_at, e.version, \
@@ -115,7 +123,7 @@ impl TodoReadStore for PgTodoReadStore {
              from entities e \
              left join placements p on p.entity_id = e.id and p.scope = 'context' \
              where e.account_id = $1 and e.kind = 'todo' and {} \
-             order by p.rank asc nulls last, e.created_at asc, e.id asc",
+             order by {order}",
             scope_filter(scope)
         );
         let rows = sqlx::query(&sql)

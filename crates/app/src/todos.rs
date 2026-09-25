@@ -76,6 +76,17 @@ pub struct TodoSummary {
     pub inherited_tags: Vec<EntityId>,
 }
 
+impl TodoSummary {
+    /// Derives the deadline state relative to a local date.
+    #[must_use]
+    pub fn deadline_state(
+        &self,
+        today: LocalDate,
+    ) -> Option<momentum_domain::model::DeadlineState> {
+        self.deadline.map(|deadline| deadline.state(today))
+    }
+}
+
 /// Scope of a to-do listing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoScope {
@@ -91,6 +102,8 @@ pub enum TodoScope {
     Anytime,
     /// Open to-dos deferred to Someday.
     Someday,
+    /// Open to-dos carrying a deadline.
+    Deadlines,
     /// Completed and canceled to-dos.
     Logbook,
     /// Soft-deleted to-dos.
