@@ -18,6 +18,7 @@ use crate::session::use_account;
 use momentum_app::areas::{AreaService, AreaSummary};
 use momentum_app::logbook::{LogbookAgenda, LogbookEntry, LogbookService};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
+use momentum_app::recurring::{RecurrenceTemplateSummary, RecurringService};
 use momentum_app::tags::{TagService, TagSummary};
 use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::{DeadlineState, Status};
@@ -45,6 +46,9 @@ pub fn AppRoutes() -> impl IntoView {
                 <Route path=path!("/tags") view=TagsPage/>
                 <Route path=path!("/deadlines") view=DeadlinesPage/>
                 <Route path=path!("/trash") view=TrashPage/>
+                <Route path=path!("/tomorrow") view=TomorrowPage/>
+                <Route path=path!("/repeating") view=RecurringPage/>
+                <Route path=path!("/projects/logged") view=LoggedProjectsPage/>
                 <Route path=path!("/settings") view=SettingsPage/>
                 <Route path=path!("/areas/:area_id") view=AreaPage/>
                 <Route path=path!("/projects/:project_id") view=ProjectPage/>
@@ -282,6 +286,9 @@ fn TodayList() -> impl IntoView {
             <header class="list-header">
                 <h1 class="list-title">"Today"</h1>
                 <p class="list-description">"Everything scheduled for today."</p>
+                <p>
+                    <a href="/tomorrow" class="row-action">"Tomorrow"</a>
+                </p>
             </header>
             <Suspense fallback=|| view! { <Loading/> }>
                 {move || {
@@ -1543,6 +1550,200 @@ fn TagAssignments(todo_id: EntityId, tags: Vec<EntityId>) -> impl IntoView {
     }
 }
 
+/// Tomorrow special view.
+#[component]
+pub fn TomorrowPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || {
+                view! {
+                    <ProjectionList
+                        title="Tomorrow"
+                        description="What is scheduled for the next day."
+                        scope=TodoScope::Tomorrow
+                        slug="tomorrow"
+                    />
+                }
+            }}
+        </Protected>
+    }
+}
+
+/// Repeating special view: recurrence templates.
+#[component]
+pub fn RecurringPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <RecurringList/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn RecurringList() -> impl IntoView {
+    let service = use_context::<Option<Arc<RecurringService>>>().flatten();
+    let account = use_account();
+    let templates = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="repeating-page">
+            <header class="list-header">
+                <h1 class="list-title">"Repeating"</h1>
+                <p class="list-description">"Templates that generate future occurrences."</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    templates
+                        .get()
+                        .map(|templates| {
+                            if templates.is_empty() {
+                                view! {
+                                    <div class="list-empty" data-testid="repeating-empty">
+                                        <p>"No repeating items yet."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <ul class="task-list" data-testid="repeating-list">
+                                        {templates
+                                            .into_iter()
+                                            .map(|template| view! { <RecurrenceRow template=template/> })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn RecurrenceRow(template: RecurrenceTemplateSummary) -> impl IntoView {
+    let id = template.id;
+    let title = template.title.clone();
+    let next = template.next_occurrence.map_or_else(
+        || "Not scheduled".to_string(),
+        |date| format!("Next: {date}"),
+    );
+    view! {
+        <li class="task-row" data-testid="repeating-row">
+            <div class="task-row-body">
+                <a class="task-title" href=format!("/todos/{id}")>
+                    {title}
+                </a>
+                <span class="task-row-meta">
+                    <span class="row-badge">{next}</span>
+                </span>
+            </div>
+        </li>
+    }
+}
+
+/// Logged Projects special view.
+#[component]
+pub fn LoggedProjectsPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <LoggedProjectsList/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn LoggedProjectsList() -> impl IntoView {
+    let service = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let account = use_account();
+    let projects = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.logged(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="logged-projects-page">
+            <header class="list-header">
+                <h1 class="list-title">"Logged Projects"</h1>
+                <p class="list-description">"Completed and canceled projects."</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    projects
+                        .get()
+                        .map(|projects| {
+                            if projects.is_empty() {
+                                view! {
+                                    <div
+                                        class="list-empty"
+                                        data-testid="logged-projects-empty"
+                                    >
+                                        <p>"No logged projects yet."</p>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <ul class="task-list" data-testid="logged-projects-list">
+                                        {projects
+                                            .into_iter()
+                                            .map(|project| {
+                                                let id = project.id;
+                                                let title = project.title.clone();
+                                                let status = project.status.as_str().to_string();
+                                                view! {
+                                                    <li
+                                                        class="task-row"
+                                                        data-testid="logged-project-row"
+                                                    >
+                                                        <div class="task-row-body">
+                                                            <a
+                                                                class="task-title"
+                                                                href=format!("/projects/{id}")
+                                                            >
+                                                                {title}
+                                                            </a>
+                                                            <span class="task-row-meta">
+                                                                <span class="row-badge">
+                                                                    {status}
+                                                                </span>
+                                                            </span>
+                                                        </div>
+                                                    </li>
+                                                }
+                                            })
+                                            .collect_view()}
+                                    </ul>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
 /// Recoverable Trash with restore and permanent deletion.
 #[component]
 pub fn TrashPage() -> impl IntoView {
@@ -2427,6 +2628,9 @@ fn ProjectsList() -> impl IntoView {
             <header class="list-header">
                 <h1 class="list-title">"Projects"</h1>
                 <p class="list-description">"All open projects."</p>
+                <p>
+                    <a href="/projects/logged" class="row-action">"Logged projects"</a>
+                </p>
             </header>
             <form method="post" action="/projects" class="add-form" data-testid="add-project-form">
                 <input

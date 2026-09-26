@@ -12,6 +12,7 @@ pub mod commands;
 pub mod logbook;
 pub mod ordering;
 pub mod projects;
+pub mod recurring;
 pub mod session;
 pub mod tags;
 pub mod todos;

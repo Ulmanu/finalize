@@ -13,6 +13,7 @@ pub mod config;
 pub mod db;
 pub mod logbook;
 pub mod projects;
+pub mod recurring;
 pub mod tags;
 pub mod todos;
 
@@ -23,5 +24,6 @@ pub use config::{ConfigError, ServerConfig};
 pub use db::{Database, DbError, Migration, MigrationError, MIGRATIONS};
 pub use logbook::PgLoggingPolicyStore;
 pub use projects::PgProjectReadStore;
+pub use recurring::PgRecurrenceReadStore;
 pub use tags::PgTagReadStore;
 pub use todos::PgTodoReadStore;

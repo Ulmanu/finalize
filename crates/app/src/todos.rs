@@ -202,6 +202,8 @@ pub enum TodoScope {
     Today,
     /// Open to-dos scheduled on a future date.
     Upcoming,
+    /// Open to-dos scheduled for the next local calendar date.
+    Tomorrow,
     /// Open to-dos with an Anytime schedule.
     Anytime,
     /// Open to-dos deferred to Someday.

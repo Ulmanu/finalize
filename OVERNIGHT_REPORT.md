@@ -721,6 +721,28 @@ Agent: opencode (deepseek-v4.1-flash)
   version-guarded write.
 - Live integrations not verified: PostgreSQL purge cascades and deleted listings (no database).
 
+### 29 — `add-special-lists` — COMPLETE
+
+- Start: 2026-09-26 06:50 · End: 2026-09-26 07:45
+- Proposal validation: strict validation passed before archive.
+- Implementation: `TodoScope::Tomorrow` (open date schedules equal to today + 1, evening
+  included) in memory and PostgreSQL; `ProjectService::logged` lists terminal projects ordered
+  by logged/completed/canceled instants; new recurrence read port/service with memory and
+  PostgreSQL adapters reading the existing `recurrence_templates` table joined to entities; web
+  pages for `/tomorrow`, `/repeating`, and `/projects/logged` with links from Today and Projects
+  (no permanent sidebar membership); Deadlines view already existed from change 21.
+- Migrations: none.
+- Tests: 3 testkit tests (Tomorrow membership with exclusions, logged-project filtering,
+  account-scoped template reads) and 3 web tests (Tomorrow page, Logged Projects page plus
+  Projects link, Repeating list/empty states); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-special-lists`; canonical `features/special-lists` spec created.
+- Commit: `feat(29): add special lists`
+- Decisions: the Repeating view reads real template rows through a new port so it is functional
+  before the recurrence engine generates templates; special views are linked, not pinned.
+- Live integrations not verified: PostgreSQL Tomorrow filter and recurrence join (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -755,9 +777,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 26 | add-completion-and-cancellation | COMPLETE | `feat(26)` |
 | 27 | add-logbook | COMPLETE | `feat(27)` |
 | 28 | add-trash | COMPLETE | `feat(28)` |
+| 29 | add-special-lists | COMPLETE | `feat(29)` |
 
-- Completed proposal range: 01–28 (28 of 74).
-- Incomplete: 29–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–29 (29 of 74).
+- Incomplete: 30–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

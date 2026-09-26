@@ -142,6 +142,29 @@ impl ProjectService {
         self.reader.list_projects(account_id).await
     }
 
+    /// Lists logged/completed and canceled projects.
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn logged(&self, account_id: AccountId) -> Result<Vec<ProjectSummary>, CommandError> {
+        let mut projects: Vec<ProjectSummary> = self
+            .list(account_id)
+            .await?
+            .into_iter()
+            .filter(|project| project.status.is_terminal())
+            .collect();
+        projects.sort_by_key(|project| {
+            std::cmp::Reverse(
+                project
+                    .logged_at
+                    .or(project.completed_at)
+                    .or(project.canceled_at),
+            )
+        });
+        Ok(projects)
+    }
+
     /// Lists trashed projects.
     ///
     /// # Errors

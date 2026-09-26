@@ -8,12 +8,13 @@ use momentum_app::auth::AuthService;
 use momentum_app::commands::CommandDispatcher;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
+use momentum_app::recurring::RecurringService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::{
     Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgLoggingPolicyStore, PgProjectReadStore,
-    PgTagReadStore, PgTodoReadStore, PgUnitOfWorkFactory, RandomTokenGenerator, ServerConfig,
-    SystemClock,
+    PgRecurrenceReadStore, PgTagReadStore, PgTodoReadStore, PgUnitOfWorkFactory,
+    RandomTokenGenerator, ServerConfig, SystemClock,
 };
 use momentum_web::auth_routes::AuthContext;
 use momentum_web::server::{self, AppState};
@@ -32,8 +33,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ServerConfig::from_env()?;
     let database = connect_database(&config).await?;
 
-    let (session_resolver, auth, todos, areas, projects, tags, logbook): (
+    let (session_resolver, auth, todos, areas, projects, tags, logbook, recurring): (
         Arc<dyn SessionResolver>,
+        _,
         _,
         _,
         _,
@@ -77,6 +79,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 clock.clone(),
             ));
 
+            let recurring = Arc::new(RecurringService::new(Arc::new(PgRecurrenceReadStore::new(
+                database.pool().clone(),
+            ))));
+
             let policy_store = Arc::new(PgLoggingPolicyStore::new(database.pool().clone()));
             let logbook_service = Arc::new(LogbookService::new(
                 dispatcher.clone(),
@@ -97,10 +103,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(project_service),
                 Some(tag_service),
                 Some(logbook_service),
+                Some(recurring),
             )
         }
         None => (
             Arc::new(AnonymousSessionResolver),
+            None,
             None,
             None,
             None,
@@ -125,6 +133,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     let state = match logbook {
         Some(logbook) => state.with_logbook(logbook),
+        None => state,
+    };
+    let state = match recurring {
+        Some(recurring) => state.with_recurring(recurring),
         None => state,
     };
     let router = server::router_with_state(state);

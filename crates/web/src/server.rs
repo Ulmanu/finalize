@@ -15,6 +15,7 @@ use leptos_axum::{generate_route_list, LeptosRoutes};
 use momentum_app::areas::AreaService;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
+use momentum_app::recurring::RecurringService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::Database;
@@ -61,6 +62,8 @@ pub struct AppState {
     pub tags: Option<Arc<TagService>>,
     /// Logbook service, when persistence is configured.
     pub logbook: Option<Arc<LogbookService>>,
+    /// Recurrence reads for the Repeating special view.
+    pub recurring: Option<Arc<RecurringService>>,
 }
 
 impl AppState {
@@ -85,6 +88,7 @@ impl AppState {
             projects,
             tags: None,
             logbook: None,
+            recurring: None,
         }
     }
 
@@ -99,6 +103,13 @@ impl AppState {
     #[must_use]
     pub fn with_logbook(mut self, logbook: Arc<LogbookService>) -> Self {
         self.logbook = Some(logbook);
+        self
+    }
+
+    /// Adds the recurrence read service.
+    #[must_use]
+    pub fn with_recurring(mut self, recurring: Arc<RecurringService>) -> Self {
+        self.recurring = Some(recurring);
         self
     }
 
@@ -181,6 +192,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let project_service = state.projects.clone();
     let tag_service = state.tags.clone();
     let logbook_service = state.logbook.clone();
+    let recurring_service = state.recurring.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -203,6 +215,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(project_service.clone());
                 provide_context(tag_service.clone());
                 provide_context(logbook_service.clone());
+                provide_context(recurring_service.clone());
             },
             move || shell(shell_options.clone()),
         )
