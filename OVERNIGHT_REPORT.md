@@ -643,6 +643,31 @@ Agent: opencode (deepseek-v4.1-flash)
   aggregate; no context or schedule propagation happens during rendering.
 - Live integrations not verified: none specific to this change.
 
+### 26 — `add-completion-and-cancellation` — COMPLETE
+
+- Start: 2026-09-26 03:50 · End: 2026-09-26 04:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: distinct terminal semantics proven for to-dos and projects (dedicated
+  `completed_at`/`canceled_at`, each clearing the other); `ReopenTodo`/`ReopenProject` now reject
+  deleted items with validation and direct callers to restore; `RestoreTodo` clears stale
+  terminal timestamps; `CompleteProject` gathers direct project children plus children under the
+  project's headings, so reject cannot be bypassed and cascade completes every open child in one
+  unit of work; canceling a project leaves open children open and reachable; read models expose
+  the terminal instants (`TodoSummary.canceled_at`, `ProjectSummary.completed_at/canceled_at`)
+  with PostgreSQL selects updated.
+- Migrations: none (columns already existed).
+- Tests: 4 testkit tests (distinct timestamps + reopen clearing, reopen policy with deleted
+  rejection and restore cleanup, project reject/cascade including heading children, cancel
+  preserving children) and 2 web tests (cancel/reopen round trip, both project policies over
+  HTTP); full workspace suite green plus fmt, arch-check, clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-completion-and-cancellation`; canonical `features/completion` spec
+  created.
+- Commit: `feat(26): add completion and cancellation`
+- Decisions: heading children are loaded through the existing ordering scope; deleted items are
+  restored rather than reopened to keep trash semantics explicit.
+- Live integrations not verified: PostgreSQL terminal-timestamp selects (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -674,9 +699,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 23 | add-upcoming-projection | COMPLETE | `feat(23)` |
 | 24 | add-anytime-projection | COMPLETE | `feat(24)` |
 | 25 | add-someday-projection | COMPLETE | `feat(25)` |
+| 26 | add-completion-and-cancellation | COMPLETE | `feat(26)` |
 
-- Completed proposal range: 01–25 (25 of 74).
-- Incomplete: 26–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–26 (26 of 74).
+- Incomplete: 27–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

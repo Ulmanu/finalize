@@ -94,6 +94,8 @@ impl PgProjectReadStore {
             area: row
                 .get::<Option<uuid::Uuid>, _>("parent_id")
                 .map(EntityId::from_uuid),
+            completed_at: row.get("completed_at"),
+            canceled_at: row.get("canceled_at"),
             open_count,
             completed_count,
             headings,
@@ -176,7 +178,7 @@ impl PgProjectReadStore {
 }
 
 const PROJECT_SELECT: &str = "select e.id, e.title, e.notes, e.status, e.schedule_kind, \
-     e.schedule_date, e.schedule_evening, e.deadline, p.parent_id \
+     e.schedule_date, e.schedule_evening, e.deadline, e.completed_at, e.canceled_at, p.parent_id \
      from entities e \
      left join placements p on p.entity_id = e.id and p.scope = 'context' and p.parent_kind = 'area'";
 

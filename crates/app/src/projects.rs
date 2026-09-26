@@ -54,6 +54,10 @@ pub struct ProjectSummary {
     pub area: Option<EntityId>,
     /// Number of open direct to-dos.
     pub open_count: usize,
+    /// Completion instant, when completed.
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Cancellation instant, when canceled.
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Number of completed direct to-dos.
     pub completed_count: usize,
     /// Headings in the project, archived ones included.

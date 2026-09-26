@@ -1282,8 +1282,19 @@ impl CommandDispatcher {
                     .await?
                     .ok_or(CommandError::NotFound)?;
                 let children = unit.list_project_children(account_id, *id).await?;
+                let mut child_ids = children.todo_ids.clone();
+                for heading_id in &children.heading_ids {
+                    for (todo_id, _rank) in unit
+                        .load_context_order(account_id, ContextRef::Heading(*heading_id))
+                        .await?
+                    {
+                        if !child_ids.contains(&todo_id) {
+                            child_ids.push(todo_id);
+                        }
+                    }
+                }
                 let mut open_todos = Vec::new();
-                for todo_id in &children.todo_ids {
+                for todo_id in &child_ids {
                     if let Some(todo) = unit.load_todo(account_id, *todo_id).await? {
                         if todo.is_open() {
                             open_todos.push(todo);
@@ -1333,6 +1344,11 @@ impl CommandDispatcher {
                     .load_project(account_id, *id)
                     .await?
                     .ok_or(CommandError::NotFound)?;
+                if project.status == Status::Deleted {
+                    return Err(CommandError::Validation(
+                        "deleted projects are restored, not reopened".to_string(),
+                    ));
+                }
                 let expected = project.meta.version;
                 project.reopen(now);
                 unit.save_project(account_id, &project, Some(expected))
@@ -1987,6 +2003,11 @@ fn apply_to_todo(
             Ok(DomainEvent::TodoCanceled { id })
         }
         Command::ReopenTodo { .. } => {
+            if todo.status == Status::Deleted {
+                return Err(CommandError::Validation(
+                    "deleted to-dos are restored, not reopened".to_string(),
+                ));
+            }
             todo.reopen(now);
             Ok(DomainEvent::TodoReopened { id })
         }
@@ -2002,6 +2023,8 @@ fn apply_to_todo(
             if todo.status == Status::Deleted {
                 todo.status = Status::Open;
                 todo.meta.deleted_at = None;
+                todo.completed_at = None;
+                todo.canceled_at = None;
                 todo.meta.touch(now);
             }
             Ok(DomainEvent::TodoRestored { id })

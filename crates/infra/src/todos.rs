@@ -96,6 +96,7 @@ fn summary_from_row(row: &sqlx::postgres::PgRow) -> TodoSummary {
             .and_then(|value| serde_json::from_value::<Reminder>(value).ok()),
         context,
         completed_at: row.get("completed_at"),
+        canceled_at: row.get("canceled_at"),
         created_at: row.get("created_at"),
         version: row.get("version"),
         checklist: Vec::new(),
@@ -127,7 +128,7 @@ impl TodoReadStore for PgTodoReadStore {
         };
         let sql = format!(
             "select e.id, e.title, e.notes, e.status, e.schedule_kind, e.schedule_date, \
-             e.schedule_evening, e.deadline, e.completed_at, e.created_at, e.version, \
+             e.schedule_evening, e.deadline, e.completed_at, e.canceled_at, e.created_at, e.version, \
              e.reminder_rule, p.parent_kind, p.parent_id \
              from entities e \
              left join placements p on p.entity_id = e.id and p.scope = 'context' \

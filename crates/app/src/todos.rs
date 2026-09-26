@@ -64,6 +64,8 @@ pub struct TodoSummary {
     pub context: ContextRef,
     /// Completion instant.
     pub completed_at: Option<DateTime<Utc>>,
+    /// Cancellation instant.
+    pub canceled_at: Option<DateTime<Utc>>,
     /// Creation instant.
     pub created_at: DateTime<Utc>,
     /// Optimistic version.
