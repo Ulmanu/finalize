@@ -575,6 +575,30 @@ Agent: opencode (deepseek-v4.1-flash)
   without a rank keep creation order until first moved, so no bulk backfill is needed.
 - Live integrations not verified: PostgreSQL Today ordering/`CASE` join (no database).
 
+### 23 — `add-upcoming-projection` — COMPLETE
+
+- Start: 2026-09-26 01:20 · End: 2026-09-26 02:10
+- Proposal validation: strict validation passed before archive.
+- Implementation: `UpcomingAgenda { days, calendar }` with `UpcomingAgenda::from_todos`
+  grouping future items by local schedule date (ascending, canonical order preserved);
+  `TodoService::upcoming_agenda` composes the Upcoming scope read; `CalendarRow` has no entity
+  identity by construction, so task commands cannot address calendar projections; the Upcoming
+  page renders date-grouped sections with human-readable headings and per-row labeled
+  move-to-date forms reusing the schedule command; scheduling onto today moves the item into
+  Today.
+- Migrations: none.
+- Tests: 3 testkit tests (grouping/future-only/order, rescheduling across days including onto
+  today with metadata preserved, calendar read-only + non-entity mutation rejected) and 2 web
+  tests (day sections + moves + leave-Upcoming, empty state without calendar rows); full
+  workspace suite green plus fmt, arch-check, clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-upcoming-projection`; canonical `features/upcoming` spec created.
+- Commit: `feat(23): add Upcoming projection`
+- Decisions: external calendar rows are modeled as identity-free read models instead of
+  pseudo-entities, avoiding speculative provider schema; rescheduling reuses the schedule
+  command rather than a new mutation path.
+- Live integrations not verified: PostgreSQL Upcoming ordering (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -603,9 +627,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 20 | add-scheduling-model | COMPLETE | `feat(20)` |
 | 21 | add-deadlines | COMPLETE | `feat(21)` |
 | 22 | add-today-projection | COMPLETE | `feat(22)` |
+| 23 | add-upcoming-projection | COMPLETE | `feat(23)` |
 
-- Completed proposal range: 01–22 (22 of 74).
-- Incomplete: 23–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–23 (23 of 74).
+- Incomplete: 24–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

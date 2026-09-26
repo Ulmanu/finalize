@@ -87,6 +87,61 @@ impl TodoSummary {
     }
 }
 
+/// One date group of the Upcoming agenda.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpcomingDay {
+    /// Local calendar date shared by the group.
+    pub date: LocalDate,
+    /// Open items scheduled for that date, in canonical order.
+    pub todos: Vec<TodoSummary>,
+}
+
+/// A read-only row contributed by an external calendar projection.
+///
+/// Calendar rows carry no entity identity, so task mutations cannot target them; an integration
+/// that supports editing must introduce its own provider-neutral command path first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalendarRow {
+    /// Local calendar date of the event.
+    pub date: LocalDate,
+    /// Display title.
+    pub title: String,
+}
+
+/// The Upcoming agenda: date-grouped task rows plus read-only calendar rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UpcomingAgenda {
+    /// Future scheduled items grouped by local date, ascending.
+    pub days: Vec<UpcomingDay>,
+    /// External calendar rows; empty until a calendar integration exists.
+    pub calendar: Vec<CalendarRow>,
+}
+
+impl UpcomingAgenda {
+    /// Groups future-scheduled items by their local schedule date, preserving input order.
+    #[must_use]
+    pub fn from_todos(todos: Vec<TodoSummary>) -> Self {
+        let mut days: Vec<UpcomingDay> = Vec::new();
+        for todo in todos {
+            let Some(date) = todo.schedule.date() else {
+                continue;
+            };
+            match days.last_mut() {
+                Some(day) if day.date == date => day.todos.push(todo),
+                _ => days.push(UpcomingDay {
+                    date,
+                    todos: vec![todo],
+                }),
+            }
+        }
+        days.sort_by_key(|day| day.date);
+        Self {
+            days,
+            calendar: Vec::new(),
+        }
+    }
+}
+
 /// Scope of a to-do listing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoScope {
@@ -208,6 +263,20 @@ impl TodoService {
     ) -> Result<CommandOutcome, CommandError> {
         self.dispatch(account_id, Command::ReorderToday { id, direction })
             .await
+    }
+
+    /// Loads the Upcoming agenda: future items grouped by local date plus read-only
+    /// calendar rows (none until an external integration exists).
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn upcoming_agenda(
+        &self,
+        account_id: AccountId,
+    ) -> Result<UpcomingAgenda, CommandError> {
+        let todos = self.list(account_id, TodoScope::Upcoming).await?;
+        Ok(UpcomingAgenda::from_todos(todos))
     }
 
     /// Loads one to-do.

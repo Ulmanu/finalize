@@ -355,17 +355,127 @@ fn TodayList() -> impl IntoView {
 pub fn UpcomingPage() -> impl IntoView {
     view! {
         <Protected>
-            {move || {
-                view! {
-                    <ProjectionList
-                        title="Upcoming"
-                        description="What is scheduled for the days ahead."
-                        scope=TodoScope::Upcoming
-                        slug="upcoming"
-                    />
-                }
-            }}
+            {move || view! { <UpcomingAgendaView/> }}
         </Protected>
+    }
+}
+
+#[component]
+fn UpcomingAgendaView() -> impl IntoView {
+    let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let account = use_account();
+    let today = service.as_ref().map(|service| service.local_today());
+    let agenda = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .upcoming_agenda(account.account_id)
+                    .await
+                    .unwrap_or_default(),
+                _ => momentum_app::todos::UpcomingAgenda::default(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="upcoming-page">
+            <header class="list-header">
+                <h1 class="list-title">"Upcoming"</h1>
+                <p class="list-description">"What is scheduled for the days ahead."</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    agenda
+                        .get()
+                        .map(|agenda| {
+                            let is_empty = agenda.days.is_empty() && agenda.calendar.is_empty();
+                            view! {
+                                {if is_empty {
+                                    view! {
+                                        <div class="list-empty" data-testid="upcoming-empty">
+                                            <p>"Nothing scheduled ahead."</p>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    ().into_any()
+                                }}
+                                {agenda
+                                    .days
+                                    .into_iter()
+                                    .map(|day| {
+                                        let label = day
+                                            .date
+                                            .as_naive()
+                                            .format("%A, %-d %B %Y")
+                                            .to_string();
+                                        let iso = day.date.to_string();
+                                        view! {
+                                            <section
+                                                class="upcoming-day"
+                                                data-testid="upcoming-day"
+                                                data-date=iso
+                                            >
+                                                <h2 class="section-heading">{label}</h2>
+                                                <ul
+                                                    class="task-list"
+                                                    data-testid="upcoming-day-list"
+                                                >
+                                                    {day
+                                                        .todos
+                                                        .into_iter()
+                                                        .map(|todo| {
+                                                            view! {
+                                                                <TodoRow
+                                                                    todo=todo
+                                                                    today=today
+                                                                    show_date_move=true
+                                                                />
+                                                            }
+                                                        })
+                                                        .collect_view()}
+                                                </ul>
+                                            </section>
+                                        }
+                                    })
+                                    .collect_view()}
+                                {(!agenda.calendar.is_empty())
+                                    .then(|| {
+                                        view! {
+                                            <section data-testid="upcoming-calendar">
+                                                <h2 class="section-heading">"Calendar"</h2>
+                                                <ul class="task-list">
+                                                    {agenda
+                                                        .calendar
+                                                        .into_iter()
+                                                        .map(|row| {
+                                                            view! {
+                                                                <li
+                                                                    class="task-row task-row-readonly"
+                                                                    data-testid="calendar-row"
+                                                                >
+                                                                    <span class="task-title">
+                                                                        {row.title}
+                                                                    </span>
+                                                                    <span class="row-badge">
+                                                                        {row.date.to_string()}
+                                                                    </span>
+                                                                </li>
+                                                            }
+                                                        })
+                                                        .collect_view()}
+                                                </ul>
+                                            </section>
+                                        }
+                                    })}
+                            }
+                                .into_any()
+                        })
+                }}
+            </Suspense>
+        </section>
     }
 }
 
@@ -800,6 +910,7 @@ fn TodoRow(
     todo: TodoSummary,
     #[prop(default = None)] today: Option<LocalDate>,
     #[prop(default = false)] today_order: bool,
+    #[prop(default = false)] show_date_move: bool,
 ) -> impl IntoView {
     let id = todo.id;
     let title = todo.title.clone();
@@ -872,7 +983,7 @@ fn TodoRow(
                     <input type="hidden" name="return_to" value="/inbox"/>
                     <button type="submit" class="row-action" aria-label="Move down">"↓"</button>
                 </form>
-                <form method="post" action=schedule_target class="row-schedule">
+                <form method="post" action=schedule_target.clone() class="row-schedule">
                     <input type="hidden" name="return_to" value="/inbox"/>
                     <select name="when" aria-label="Schedule">
                         <option value="today">"Today"</option>
@@ -884,6 +995,19 @@ fn TodoRow(
                         "When"
                     </button>
                 </form>
+                {show_date_move
+                    .then(|| {
+                        view! {
+                            <form method="post" action=schedule_target class="row-schedule">
+                                <input type="hidden" name="when" value="date"/>
+                                <input type="hidden" name="return_to" value="/upcoming"/>
+                                <input type="date" name="date" aria-label="Move to date"/>
+                                <button type="submit" class="row-action" aria-label="Move to date">
+                                    "Move"
+                                </button>
+                            </form>
+                        }
+                    })}
                 <form method="post" action=toggle_target>
                     <button type="submit" class="row-action" aria-label="Complete to-do">
                         "Complete"

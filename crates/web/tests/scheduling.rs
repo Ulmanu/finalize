@@ -145,7 +145,7 @@ async fn scheduling_moves_items_between_projection_pages() {
     assert_eq!(status, StatusCode::SEE_OTHER);
     let (_, upcoming) = request(&h, "GET", "/upcoming", None).await;
     assert!(
-        upcoming.contains("data-testid=\"upcoming-list\""),
+        upcoming.contains("data-testid=\"upcoming-day-list\""),
         "{upcoming}"
     );
     assert!(upcoming.contains("Move me"), "{upcoming}");
