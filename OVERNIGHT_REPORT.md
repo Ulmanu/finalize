@@ -807,7 +807,8 @@ Agent: opencode (deepseek-v4.1-flash)
 - Completed proposal range: 01–30 (30 of 74).
 - Incomplete: 31–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
+- Total commits on `agent/things-web-overnight`: 47 through change 30 (bootstrap, 30 numbered
+  changes, spec/report commits; HEAD `c83d736` at the time of this note).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -873,14 +874,18 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Change 14 (`add-projects`) and the rest of the roadmap, strictly in order; the workspace,
-   command layer, and read-store patterns are in place to make each one mechanical.
+1. Changes 31–74, strictly in order; the workspace, command layer, projection scopes, read-store
+   patterns, and test harnesses are in place to make each one mechanical. Next: 31
+   (`add-move-engine`).
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
 4. Configure email delivery for verification/reset tokens.
 5. Localization (change 65) must replace the documented UTC fallback used for "today".
 6. Visual/behavior parity harnesses (changes 71/72) remain the main unverified parity gap.
+7. Disk hygiene: the workspace Cargo profile disables debug info and incremental caches; still
+   run `cargo clean` if the volume crosses ~85% before large builds (see Build environment
+   notes).
 
 ### Environment notes
 
@@ -889,5 +894,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
+- Current state at HEAD `c83d736` (change 30): all quality gates green
+  (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
+  --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
+  30/30 passing; `git status` clean.
 
 
