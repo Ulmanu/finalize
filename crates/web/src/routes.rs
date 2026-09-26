@@ -646,17 +646,140 @@ pub fn DeadlinesPage() -> impl IntoView {
 pub fn SomedayPage() -> impl IntoView {
     view! {
         <Protected>
-            {move || {
-                view! {
-                    <ProjectionList
-                        title="Someday"
-                        description="Deferred items kept out of the way."
-                        scope=TodoScope::Someday
-                        slug="someday"
-                    />
-                }
-            }}
+            {move || view! { <SomedayList/> }}
         </Protected>
+    }
+}
+
+#[component]
+fn SomedayList() -> impl IntoView {
+    let todos_service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let projects_service = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let account = use_account();
+    let account_for_projects = account.clone();
+    let today = todos_service.as_ref().map(|service| service.local_today());
+    let todos = AsyncDerived::new(move || {
+        let service = todos_service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, TodoScope::Someday)
+                    .await
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        }
+    });
+    let projects = AsyncDerived::new(move || {
+        let service = projects_service.clone();
+        let account = account_for_projects.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .someday(account.account_id)
+                    .await
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="someday-page">
+            <header class="list-header">
+                <h1 class="list-title">"Someday"</h1>
+                <p class="list-description">"Deferred items kept out of the way."</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let todos = todos.get().unwrap_or_default();
+                    let projects = projects.get().unwrap_or_default();
+                    if todos.is_empty() && projects.is_empty() {
+                        return view! {
+                            <div class="list-empty" data-testid="someday-empty">
+                                <p>"Nothing deferred right now."</p>
+                            </div>
+                        }
+                            .into_any();
+                    }
+                    view! {
+                        <h2 class="section-heading">"To-Dos"</h2>
+                        {if todos.is_empty() {
+                            view! {
+                                <div class="list-empty" data-testid="someday-todos-empty">
+                                    <p>"No deferred to-dos."</p>
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            view! {
+                                <ul class="task-list" data-testid="someday-todos">
+                                    {todos
+                                        .into_iter()
+                                        .map(|todo| view! { <TodoRow todo=todo today=today/> })
+                                        .collect_view()}
+                                </ul>
+                            }
+                                .into_any()
+                        }}
+                        <h2 class="section-heading">"Projects"</h2>
+                        {if projects.is_empty() {
+                            view! {
+                                <div class="list-empty" data-testid="someday-projects-empty">
+                                    <p>"No deferred projects."</p>
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            view! {
+                                <ul class="task-list" data-testid="someday-projects">
+                                    {projects
+                                        .into_iter()
+                                        .map(|project| view! { <SomedayProjectRow project=project/> })
+                                        .collect_view()}
+                                </ul>
+                            }
+                                .into_any()
+                        }}
+                    }
+                        .into_any()
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn SomedayProjectRow(project: ProjectSummary) -> impl IntoView {
+    let id = project.id;
+    let title = project.title.clone();
+    let activate_target = format!("/projects/{id}/schedule");
+    let open_target = format!("/projects/{id}");
+
+    view! {
+        <li class="task-row" data-testid="someday-project-row">
+            <div class="task-row-body">
+                <a class="task-title" href=open_target>{title}</a>
+                <span class="task-row-meta">
+                    <span class="row-badge">"Someday"</span>
+                </span>
+            </div>
+            <div class="task-row-actions">
+                <form method="post" action=activate_target class="row-schedule">
+                    <input type="hidden" name="return_to" value="/someday"/>
+                    <select name="when" aria-label="Reactivate project">
+                        <option value="anytime">"Anytime"</option>
+                        <option value="today">"Today"</option>
+                        <option value="tomorrow">"Tomorrow"</option>
+                    </select>
+                    <button type="submit" class="row-action" aria-label="Reactivate project">
+                        "Activate"
+                    </button>
+                </form>
+                <a href=format!("/projects/{id}") class="row-action" aria-label="Open project">"Edit"</a>
+            </div>
+        </li>
     }
 }
 list_route_page!(LogbookPage, "Logbook", "Completed and canceled items.");

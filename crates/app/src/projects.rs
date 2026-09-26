@@ -130,6 +130,23 @@ impl ProjectService {
         self.reader.list_projects(account_id).await
     }
 
+    /// Lists open projects deferred to the Someday schedule state.
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn someday(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Vec<ProjectSummary>, CommandError> {
+        Ok(self
+            .list(account_id)
+            .await?
+            .into_iter()
+            .filter(|project| project.status == Status::Open && project.schedule.is_someday())
+            .collect())
+    }
+
     /// Returns the service's current local date (UTC until localization).
     #[must_use]
     pub fn local_today(&self) -> LocalDate {

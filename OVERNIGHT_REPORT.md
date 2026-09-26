@@ -622,6 +622,27 @@ Agent: opencode (deepseek-v4.1-flash)
   grouping is a pure read-model transform with no context side effects.
 - Live integrations not verified: PostgreSQL Anytime predicate (no database).
 
+### 25 — `add-someday-projection` — COMPLETE
+
+- Start: 2026-09-26 03:10 · End: 2026-09-26 03:45
+- Proposal validation: strict validation passed before archive.
+- Implementation: Someday to-do membership stays a pure schedule state; `ProjectService::someday`
+  lists open, Someday-scheduled projects; the Someday page renders To-Dos and Projects sections
+  with project reactivation controls that post through the existing schedule command; empty
+  states for the whole view and each section; explicit rescheduling moves items into
+  Anytime/Today/date projections, and an active parent never reactivates a Someday child.
+- Migrations: none.
+- Tests: 3 testkit tests (membership + reactivation transitions, project membership/reactivation,
+  parent/child independence with context stability) and 2 web tests (deferred todos and projects
+  with reactivation flows, empty state); full workspace suite green plus fmt, arch-check, clippy,
+  WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-someday-projection`; canonical `features/someday` spec created.
+- Commit: `feat(25): add Someday projection`
+- Decisions: projects appear as their own section because project schedules are a separate
+  aggregate; no context or schedule propagation happens during rendering.
+- Live integrations not verified: none specific to this change.
+
 ## Run summary
 
 ### Completed changes
@@ -652,9 +673,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 22 | add-today-projection | COMPLETE | `feat(22)` |
 | 23 | add-upcoming-projection | COMPLETE | `feat(23)` |
 | 24 | add-anytime-projection | COMPLETE | `feat(24)` |
+| 25 | add-someday-projection | COMPLETE | `feat(25)` |
 
-- Completed proposal range: 01–24 (24 of 74).
-- Incomplete: 25–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–25 (25 of 74).
+- Incomplete: 26–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`
