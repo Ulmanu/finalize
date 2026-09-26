@@ -80,6 +80,51 @@ pub struct TodoSummary {
     pub inherited_tags: Vec<EntityId>,
 }
 
+/// Derived progress for a set of completable items.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    /// Completed eligible items.
+    pub completed: usize,
+    /// Total eligible items (open + completed; canceled and deleted excluded).
+    pub total: usize,
+}
+
+impl Progress {
+    /// Creates progress from counts.
+    #[must_use]
+    pub const fn new(completed: usize, total: usize) -> Self {
+        Self { completed, total }
+    }
+
+    /// Whether there is anything to measure (neutral state when false).
+    #[must_use]
+    pub const fn is_neutral(&self) -> bool {
+        self.total == 0
+    }
+
+    /// Completion ratio in `0.0..=1.0`, or `None` in the neutral state.
+    #[must_use]
+    pub fn ratio(&self) -> Option<f32> {
+        if self.total == 0 {
+            None
+        } else {
+            #[allow(clippy::cast_precision_loss)]
+            Some(self.completed as f32 / self.total as f32)
+        }
+    }
+
+    /// Rounded completion percentage for display, or `None` in the neutral state.
+    #[must_use]
+    pub fn percent(&self) -> Option<u32> {
+        self.ratio().map(|ratio| {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            {
+                (ratio * 100.0).round() as u32
+            }
+        })
+    }
+}
+
 impl TodoSummary {
     /// Derives the deadline state relative to a local date.
     #[must_use]
@@ -204,6 +249,8 @@ pub enum TodoScope {
     Upcoming,
     /// Open to-dos scheduled for the next local calendar date.
     Tomorrow,
+    /// Open and completed to-dos scheduled on or before the local today (progress reads).
+    TodayAll,
     /// Open to-dos with an Anytime schedule.
     Anytime,
     /// Open to-dos deferred to Someday.
@@ -354,6 +401,22 @@ impl TodoService {
     ) -> Result<UpcomingAgenda, CommandError> {
         let todos = self.list(account_id, TodoScope::Upcoming).await?;
         Ok(UpcomingAgenda::from_todos(todos))
+    }
+
+    /// Derives Today completion progress over completable items (open and completed to-dos
+    /// scheduled on or before the local today; canceled and deleted rows are excluded).
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn today_progress(&self, account_id: AccountId) -> Result<Progress, CommandError> {
+        let todos = self.list(account_id, TodoScope::TodayAll).await?;
+        let total = todos.len();
+        let completed = todos
+            .iter()
+            .filter(|todo| todo.status == momentum_domain::model::Status::Completed)
+            .count();
+        Ok(Progress::new(completed, total))
     }
 
     /// Loads the Anytime projection grouped by existing context.

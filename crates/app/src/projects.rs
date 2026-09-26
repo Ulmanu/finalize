@@ -69,10 +69,16 @@ pub struct ProjectSummary {
 }
 
 impl ProjectSummary {
-    /// Derived completion ratio in `0.0..=1.0`, when the project has children.
+    /// Eligible children (open + completed; canceled and deleted excluded).
+    #[must_use]
+    pub const fn eligible_count(&self) -> usize {
+        self.open_count + self.completed_count
+    }
+
+    /// Derived completion ratio in `0.0..=1.0`, when the project has eligible children.
     #[must_use]
     pub fn progress(&self) -> Option<f32> {
-        let total = self.open_count + self.completed_count;
+        let total = self.eligible_count();
         if total == 0 {
             None
         } else {

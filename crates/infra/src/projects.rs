@@ -40,7 +40,7 @@ impl PgProjectReadStore {
         let completed: i64 = sqlx::query_scalar(
             "select count(*) from entities e \
              join placements p on p.entity_id = e.id and p.scope = 'context' \
-             where e.account_id = $1 and e.kind = 'todo' and e.status in ('completed', 'canceled') \
+             where e.account_id = $1 and e.kind = 'todo' and e.status = 'completed' \
              and p.parent_kind = 'project' and p.parent_id = $2",
         )
         .bind(account_id.as_uuid())

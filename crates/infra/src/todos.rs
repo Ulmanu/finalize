@@ -44,6 +44,10 @@ fn scope_filter(scope: TodoScope) -> &'static str {
             "e.status = 'open' and e.schedule_kind = 'date' \
              and e.schedule_date = ($2::date + 1)"
         }
+        TodoScope::TodayAll => {
+            "e.status in ('open', 'completed') and e.schedule_kind = 'date' \
+             and e.schedule_date <= $2"
+        }
         TodoScope::Anytime => {
             "e.status = 'open' and (e.schedule_kind = 'anytime' \
              or (e.schedule_kind = 'date' and e.schedule_date <= $2))"
@@ -131,7 +135,7 @@ impl TodoReadStore for PgTodoReadStore {
                  and rp.scope = case when e.schedule_evening then 'today_evening' else 'today' end",
                 "e.schedule_evening asc, rp.rank asc nulls last, e.created_at asc, e.id asc",
             ),
-            TodoScope::Tomorrow | TodoScope::Upcoming => (
+            TodoScope::Tomorrow | TodoScope::Upcoming | TodoScope::TodayAll => (
                 "",
                 "e.schedule_date asc, e.schedule_evening asc, e.created_at asc, e.id asc",
             ),

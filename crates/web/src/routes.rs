@@ -20,7 +20,7 @@ use momentum_app::logbook::{LogbookAgenda, LogbookEntry, LogbookService};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::recurring::{RecurrenceTemplateSummary, RecurringService};
 use momentum_app::tags::{TagService, TagSummary};
-use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
+use momentum_app::todos::{Progress, TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::{DeadlineState, Status};
 use momentum_domain::time::LocalDate;
 use momentum_domain::EntityId;
@@ -266,6 +266,8 @@ pub fn TodayPage() -> impl IntoView {
 fn TodayList() -> impl IntoView {
     let service = use_context::<Option<Arc<TodoService>>>().flatten();
     let account = use_account();
+    let account_for_progress = account.clone();
+    let service_for_progress = service.clone();
     let today = service.as_ref().map(|service| service.local_today());
     let todos = AsyncDerived::new(move || {
         let service = service.clone();
@@ -280,6 +282,18 @@ fn TodayList() -> impl IntoView {
             }
         }
     });
+    let progress = AsyncDerived::new(move || {
+        let service = service_for_progress.clone();
+        let account = account_for_progress.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.today_progress(account.account_id).await.ok()
+                }
+                _ => None,
+            }
+        }
+    });
 
     view! {
         <section class="list-page" data-testid="today-page">
@@ -289,6 +303,43 @@ fn TodayList() -> impl IntoView {
                 <p>
                     <a href="/tomorrow" class="row-action">"Tomorrow"</a>
                 </p>
+                {move || {
+                    progress
+                        .get()
+                        .flatten()
+                        .map(|progress| {
+                            if progress.is_neutral() {
+                                view! {
+                                    <p class="todo-meta" data-testid="today-progress-neutral">
+                                        "Nothing to complete today."
+                                    </p>
+                                }
+                                    .into_any()
+                            } else {
+                                let percent = progress.percent().unwrap_or(0);
+                                view! {
+                                    <p class="todo-meta" data-testid="today-progress">
+                                        <progress
+                                            value=progress.completed.to_string()
+                                            max=progress.total.to_string()
+                                            aria-label=format!(
+                                                "{} of {} Today items completed",
+                                                progress.completed,
+                                                progress.total,
+                                            )
+                                        ></progress>
+                                        <span>
+                                            {format!(
+                                                "{} of {} completed ({percent}%)",
+                                                progress.completed, progress.total,
+                                            )}
+                                        </span>
+                                    </p>
+                                }
+                                    .into_any()
+                            }
+                        })
+                }}
             </header>
             <Suspense fallback=|| view! { <Loading/> }>
                 {move || {
@@ -2682,6 +2733,7 @@ fn ProjectListRow(project: ProjectSummary) -> impl IntoView {
         project.open_count, project.completed_count
     );
     let open_target = format!("/projects/{id}");
+    let progress = project_progress(project.eligible_count(), project.completed_count);
 
     view! {
         <li class="task-row" data-testid="project-row">
@@ -2689,6 +2741,7 @@ fn ProjectListRow(project: ProjectSummary) -> impl IntoView {
                 <a class="task-title" href=open_target>{title}</a>
                 <span class="task-row-meta">
                     <span class="row-badge">{counts}</span>
+                    {progress}
                     {project
                         .schedule
                         .date()
@@ -2701,6 +2754,30 @@ fn ProjectListRow(project: ProjectSummary) -> impl IntoView {
             </div>
         </li>
     }
+}
+
+fn project_progress(total: usize, completed: usize) -> AnyView {
+    if total == 0 {
+        return view! {
+            <span class="row-badge progress-neutral" data-testid="project-progress-neutral">
+                "No items"
+            </span>
+        }
+        .into_any();
+    }
+    let ratio = Progress::new(completed, total);
+    let percent = ratio.percent().unwrap_or(0);
+    view! {
+        <span class="row-badge progress-badge" data-testid="project-progress-value">
+            <progress
+                value=completed.to_string()
+                max=total.to_string()
+                aria-label=format!("{completed} of {total} completed")
+            ></progress>
+            <span>{format!("{percent}%")}</span>
+        </span>
+    }
+    .into_any()
 }
 
 /// Project detail with notes, lifecycle controls, and direct to-dos.
@@ -2997,6 +3074,12 @@ fn ProjectDetailBody(project: ProjectSummary) -> impl IntoView {
                 " · "
                 <span data-testid="project-counts">{counts}</span>
             </p>
+            <div class="project-progress" data-testid="project-progress">
+                {project_progress(
+                    project.eligible_count(),
+                    project.completed_count,
+                )}
+            </div>
         </header>
 
         <form method="post" action=rename_target class="auth-form">

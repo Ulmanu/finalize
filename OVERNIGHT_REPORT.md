@@ -743,6 +743,30 @@ Agent: opencode (deepseek-v4.1-flash)
   before the recurrence engine generates templates; special views are linked, not pinned.
 - Live integrations not verified: PostgreSQL Tomorrow filter and recurrence join (no database).
 
+### 30 — `add-project-progress` — COMPLETE
+
+- Start: 2026-09-26 07:50 · End: 2026-09-26 08:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: `Progress { completed, total }` with `ratio`/`percent`/`is_neutral`; project
+  progress counts only eligible direct children (open + completed) with canceled/deleted
+  children excluded from both sides and a neutral state for zero items (read-store count
+  semantics corrected accordingly in memory and PostgreSQL); `TodoScope::TodayAll` plus
+  `TodoService::today_progress` derive Today completion over completable items (open +
+  completed, scheduled on/before local today; canceled/deleted/future/Someday excluded); web
+  surfaces render native accessible `<progress>` elements with text and explicit neutral states
+  on project rows, project detail, and the Today header.
+- Migrations: none.
+- Tests: 3 testkit tests (derived project ratio with canceled/deleted exclusion and zero-item
+  neutrality, Today progress transitions including reopen, neutral Today) and 3 web tests
+  (project detail/list indicators plus neutral, Today indicator updates, neutral Today); full
+  workspace suite green plus fmt, arch-check, clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-project-progress`; canonical `features/progress` spec created.
+- Commit: `feat(30): add project progress`
+- Decisions: canceled work is excluded from progress rather than counted as done; progress is
+  always derived on read with no stored percentage.
+- Live integrations not verified: PostgreSQL count semantics (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -778,9 +802,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 27 | add-logbook | COMPLETE | `feat(27)` |
 | 28 | add-trash | COMPLETE | `feat(28)` |
 | 29 | add-special-lists | COMPLETE | `feat(29)` |
+| 30 | add-project-progress | COMPLETE | `feat(30)` |
 
-- Completed proposal range: 01–29 (29 of 74).
-- Incomplete: 30–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–30 (30 of 74).
+- Incomplete: 31–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

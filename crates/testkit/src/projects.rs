@@ -42,7 +42,7 @@ impl MemoryProjectReadStore {
             .into_iter()
             .filter(|todo| {
                 todo.context == momentum_domain::model::ContextRef::Project(id)
-                    && todo.status.is_terminal()
+                    && todo.status == Status::Completed
             })
             .count();
         let mut headings: Vec<HeadingSummary> = self
