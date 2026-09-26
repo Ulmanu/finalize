@@ -142,6 +142,51 @@ impl UpcomingAgenda {
     }
 }
 
+/// One context group of the Anytime projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnytimeGroup {
+    /// Existing contextual parent shared by the group (Inbox, area, or project).
+    pub context: ContextRef,
+    /// Actionable items in canonical order.
+    pub todos: Vec<TodoSummary>,
+}
+
+/// The Anytime projection grouped by existing context.
+///
+/// Grouping reflects contexts that already exist; rendering never creates parent relationships.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AnytimeAgenda {
+    /// Groups ordered Inbox first, then areas, then projects, deterministically by identity.
+    pub groups: Vec<AnytimeGroup>,
+}
+
+impl AnytimeAgenda {
+    /// Groups actionable items by their existing context, preserving input order within groups.
+    #[must_use]
+    pub fn from_todos(todos: Vec<TodoSummary>) -> Self {
+        let mut groups: Vec<AnytimeGroup> = Vec::new();
+        for todo in todos {
+            match groups
+                .iter_mut()
+                .find(|group| group.context == todo.context)
+            {
+                Some(group) => group.todos.push(todo),
+                None => groups.push(AnytimeGroup {
+                    context: todo.context,
+                    todos: vec![todo],
+                }),
+            }
+        }
+        groups.sort_by_key(|group| match group.context {
+            ContextRef::Inbox => (0, None),
+            ContextRef::Area(id) => (1, Some(id)),
+            ContextRef::Project(id) => (2, Some(id)),
+            ContextRef::Heading(id) => (3, Some(id)),
+        });
+        Self { groups }
+    }
+}
+
 /// Scope of a to-do listing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoScope {
@@ -277,6 +322,19 @@ impl TodoService {
     ) -> Result<UpcomingAgenda, CommandError> {
         let todos = self.list(account_id, TodoScope::Upcoming).await?;
         Ok(UpcomingAgenda::from_todos(todos))
+    }
+
+    /// Loads the Anytime projection grouped by existing context.
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn anytime_agenda(
+        &self,
+        account_id: AccountId,
+    ) -> Result<AnytimeAgenda, CommandError> {
+        let todos = self.list(account_id, TodoScope::Anytime).await?;
+        Ok(AnytimeAgenda::from_todos(todos))
     }
 
     /// Loads one to-do.

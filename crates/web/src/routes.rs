@@ -483,17 +483,144 @@ fn UpcomingAgendaView() -> impl IntoView {
 pub fn AnytimePage() -> impl IntoView {
     view! {
         <Protected>
-            {move || {
-                view! {
-                    <ProjectionList
-                        title="Anytime"
-                        description="Actionable items without a future start date."
-                        scope=TodoScope::Anytime
-                        slug="anytime"
-                    />
-                }
-            }}
+            {move || view! { <AnytimeAgendaView/> }}
         </Protected>
+    }
+}
+
+#[component]
+fn AnytimeAgendaView() -> impl IntoView {
+    let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let area_service = use_context::<Option<Arc<AreaService>>>().flatten();
+    let project_service = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let account = use_account();
+    let account_for_labels = account.clone();
+    let today = service.as_ref().map(|service| service.local_today());
+    let agenda = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .anytime_agenda(account.account_id)
+                    .await
+                    .unwrap_or_default(),
+                _ => momentum_app::todos::AnytimeAgenda::default(),
+            }
+        }
+    });
+    let labels = AsyncDerived::new(move || {
+        let areas = area_service.clone();
+        let projects = project_service.clone();
+        let account = account_for_labels.clone();
+        async move {
+            let Some(account) = account else {
+                return std::collections::HashMap::new();
+            };
+            let mut labels: std::collections::HashMap<EntityId, String> =
+                std::collections::HashMap::new();
+            if let Some(areas) = areas {
+                for area in areas.list(account.account_id).await.unwrap_or_default() {
+                    labels.insert(area.id, area.title);
+                }
+            }
+            if let Some(projects) = projects {
+                for project in projects.list(account.account_id).await.unwrap_or_default() {
+                    labels.insert(project.id, project.title);
+                }
+            }
+            labels
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="anytime-page">
+            <header class="list-header">
+                <h1 class="list-title">"Anytime"</h1>
+                <p class="list-description">"Actionable items without a future start date."</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let labels = labels.get().unwrap_or_default();
+                    agenda
+                        .get()
+                        .map(|agenda| {
+                            if agenda.groups.is_empty() {
+                                return view! {
+                                    <div class="list-empty" data-testid="anytime-empty">
+                                        <p>"Nothing actionable right now."</p>
+                                    </div>
+                                }
+                                    .into_any();
+                            }
+                            view! {
+                                {agenda
+                                    .groups
+                                    .into_iter()
+                                    .map(|group| {
+                                        let label = match group.context {
+                                            momentum_domain::model::ContextRef::Inbox => {
+                                                "Inbox".to_string()
+                                            }
+                                            momentum_domain::model::ContextRef::Area(id) => {
+                                                labels
+                                                    .get(&id)
+                                                    .cloned()
+                                                    .unwrap_or_else(|| "Area".to_string())
+                                            }
+                                            momentum_domain::model::ContextRef::Project(id) => {
+                                                labels
+                                                    .get(&id)
+                                                    .cloned()
+                                                    .unwrap_or_else(|| "Project".to_string())
+                                            }
+                                            momentum_domain::model::ContextRef::Heading(_) => {
+                                                "Project heading".to_string()
+                                            }
+                                        };
+                                        let context_label = match group.context {
+                                            momentum_domain::model::ContextRef::Inbox => {
+                                                "inbox".to_string()
+                                            }
+                                            momentum_domain::model::ContextRef::Area(id) => {
+                                                format!("area:{id}")
+                                            }
+                                            momentum_domain::model::ContextRef::Project(id) => {
+                                                format!("project:{id}")
+                                            }
+                                            momentum_domain::model::ContextRef::Heading(id) => {
+                                                format!("heading:{id}")
+                                            }
+                                        };
+                                        view! {
+                                            <section
+                                                class="anytime-group"
+                                                data-testid="anytime-group"
+                                                data-context=context_label
+                                            >
+                                                <h2 class="section-heading">{label}</h2>
+                                                <ul
+                                                    class="task-list"
+                                                    data-testid="anytime-group-list"
+                                                >
+                                                    {group
+                                                        .todos
+                                                        .into_iter()
+                                                        .map(|todo| {
+                                                            view! { <TodoRow todo=todo today=today/> }
+                                                        })
+                                                        .collect_view()}
+                                                </ul>
+                                            </section>
+                                        }
+                                    })
+                                    .collect_view()}
+                            }
+                                .into_any()
+                        })
+                }}
+            </Suspense>
+        </section>
     }
 }
 

@@ -50,9 +50,7 @@ fn matches_scope(todo: &TodoSummary, scope: TodoScope, today: LocalDate) -> bool
                     _ => false,
                 }
         }
-        TodoScope::Anytime => {
-            todo.status == Status::Open && todo.schedule.state() == ScheduleState::Anytime
-        }
+        TodoScope::Anytime => todo.status == Status::Open && todo.schedule.is_actionable(today),
         TodoScope::Someday => {
             todo.status == Status::Open && todo.schedule.state() == ScheduleState::Someday
         }

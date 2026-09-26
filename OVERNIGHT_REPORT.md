@@ -599,6 +599,29 @@ Agent: opencode (deepseek-v4.1-flash)
   command rather than a new mutation path.
 - Live integrations not verified: PostgreSQL Upcoming ordering (no database).
 
+### 24 — `add-anytime-projection` — COMPLETE
+
+- Start: 2026-09-26 02:20 · End: 2026-09-26 03:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: Anytime membership refined to `status = open && Schedule::is_actionable(today)`
+  in the memory and PostgreSQL read stores (Anytime schedules plus date schedules on or before
+  the local today; overdue and This Evening included; future and Someday excluded); `AnytimeAgenda`
+  groups actionable items by existing context (Inbox, area, project, heading) without writing
+  context changes; the Anytime page renders labeled group sections resolved from existing
+  area/project titles plus an empty state.
+- Migrations: none.
+- Tests: 2 testkit tests (actionable membership with completed/canceled/deleted/future/Someday
+  exclusions; grouping with context-stability checks using a real area) and 2 web tests (grouped
+  rendering with titles and exclusions, empty state); the scheduling web test and testkit scope
+  expectations were updated to the refined actionable semantics (part of this capability's
+  canonical behavior).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-anytime-projection`; canonical `features/anytime` spec created.
+- Commit: `feat(24): add Anytime projection`
+- Decisions: reuse the domain `is_actionable` predicate rather than duplicating date logic;
+  grouping is a pure read-model transform with no context side effects.
+- Live integrations not verified: PostgreSQL Anytime predicate (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -628,9 +651,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 21 | add-deadlines | COMPLETE | `feat(21)` |
 | 22 | add-today-projection | COMPLETE | `feat(22)` |
 | 23 | add-upcoming-projection | COMPLETE | `feat(23)` |
+| 24 | add-anytime-projection | COMPLETE | `feat(24)` |
 
-- Completed proposal range: 01–23 (23 of 74).
-- Incomplete: 24–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–24 (24 of 74).
+- Incomplete: 25–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

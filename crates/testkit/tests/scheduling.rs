@@ -167,7 +167,12 @@ async fn schedule_states_define_projection_membership() {
         .into_iter()
         .map(|todo| todo.id)
         .collect();
-    assert_eq!(anytime_ids, vec![anytime]);
+    assert!(anytime_ids.contains(&anytime));
+    assert!(anytime_ids.contains(&scheduled_today));
+    assert!(anytime_ids.contains(&overdue), "overdue stays actionable");
+    assert!(anytime_ids.contains(&evening));
+    assert!(!anytime_ids.contains(&future));
+    assert!(!anytime_ids.contains(&someday));
 
     let someday_ids: Vec<_> = h
         .todos

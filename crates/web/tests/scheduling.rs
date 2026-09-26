@@ -117,7 +117,7 @@ async fn scheduling_moves_items_between_projection_pages() {
 
     let (_, anytime) = request(&h, "GET", "/anytime", None).await;
     assert!(
-        anytime.contains("data-testid=\"anytime-list\""),
+        anytime.contains("data-testid=\"anytime-group-list\""),
         "{anytime}"
     );
     assert!(anytime.contains("Move me"), "{anytime}");
@@ -130,7 +130,10 @@ async fn scheduling_moves_items_between_projection_pages() {
     assert!(today.contains("data-testid=\"today-page\""), "{today}");
     assert!(today.contains("Move me"), "{today}");
     let (_, anytime) = request(&h, "GET", "/anytime", None).await;
-    assert!(!anytime.contains("Move me"), "{anytime}");
+    assert!(
+        anytime.contains("Move me"),
+        "items actionable today remain in Anytime: {anytime}"
+    );
 
     let body = format!("when=someday&return_to=%2Ftodos%2F{id}");
     let (status, _) = request(&h, "POST", &format!("/todos/{id}/schedule"), Some(&body)).await;
@@ -139,6 +142,11 @@ async fn scheduling_moves_items_between_projection_pages() {
     assert!(someday.contains("Move me"), "{someday}");
     let (_, today) = request(&h, "GET", "/today", None).await;
     assert!(!today.contains("Move me"), "{today}");
+    let (_, anytime) = request(&h, "GET", "/anytime", None).await;
+    assert!(
+        !anytime.contains("Move me"),
+        "Someday is not actionable: {anytime}"
+    );
 
     let body = format!("when=date&date=2026-06-05&return_to=%2Ftodos%2F{id}");
     let (status, _) = request(&h, "POST", &format!("/todos/{id}/schedule"), Some(&body)).await;
@@ -149,4 +157,9 @@ async fn scheduling_moves_items_between_projection_pages() {
         "{upcoming}"
     );
     assert!(upcoming.contains("Move me"), "{upcoming}");
+    let (_, anytime) = request(&h, "GET", "/anytime", None).await;
+    assert!(
+        !anytime.contains("Move me"),
+        "future items are not actionable: {anytime}"
+    );
 }
