@@ -58,6 +58,8 @@ pub struct ProjectSummary {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Cancellation instant, when canceled.
     pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Logging instant, when explicitly logged.
+    pub logged_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Number of completed direct to-dos.
     pub completed_count: usize,
     /// Headings in the project, archived ones included.

@@ -9,6 +9,7 @@ pub mod areas;
 pub mod auth;
 pub mod commands;
 pub mod fixtures;
+pub mod logbook;
 pub mod projects;
 pub mod tags;
 pub mod todos;

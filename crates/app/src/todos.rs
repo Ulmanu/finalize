@@ -66,6 +66,8 @@ pub struct TodoSummary {
     pub completed_at: Option<DateTime<Utc>>,
     /// Cancellation instant.
     pub canceled_at: Option<DateTime<Utc>>,
+    /// Logging instant, when explicitly logged.
+    pub logged_at: Option<DateTime<Utc>>,
     /// Creation instant.
     pub created_at: DateTime<Utc>,
     /// Optimistic version.
@@ -206,8 +208,12 @@ pub enum TodoScope {
     Someday,
     /// Open to-dos carrying a deadline.
     Deadlines,
-    /// Completed and canceled to-dos.
-    Logbook,
+    /// Completed and canceled to-dos; under the manual logging policy only already-logged
+    /// entries are included.
+    Logbook {
+        /// Whether to include only explicitly logged entries.
+        logged_only: bool,
+    },
     /// Soft-deleted to-dos.
     Trash,
 }

@@ -55,7 +55,9 @@ fn matches_scope(todo: &TodoSummary, scope: TodoScope, today: LocalDate) -> bool
             todo.status == Status::Open && todo.schedule.state() == ScheduleState::Someday
         }
         TodoScope::Deadlines => todo.status == Status::Open && todo.deadline.is_some(),
-        TodoScope::Logbook => todo.status.is_terminal(),
+        TodoScope::Logbook { logged_only } => {
+            todo.status.is_terminal() && (!logged_only || todo.logged_at.is_some())
+        }
         TodoScope::Trash => todo.status == Status::Deleted,
     }
 }
@@ -124,6 +126,7 @@ impl TodoReadStore for MemoryTodoReadStore {
             context: todo.context,
             completed_at: todo.completed_at,
             canceled_at: todo.canceled_at,
+            logged_at: todo.logged_at,
             created_at: todo.meta.created_at,
             version: todo.meta.version,
             checklist: todo

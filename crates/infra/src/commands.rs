@@ -1300,6 +1300,8 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::TodoReminderChanged { .. } => "todo_reminder_changed",
                 DomainEvent::ChecklistChanged { .. } => "checklist_changed",
                 DomainEvent::TodayReordered { .. } => "today_reordered",
+                DomainEvent::TodoLogged { .. } => "todo_logged",
+                DomainEvent::ProjectLogged { .. } => "project_logged",
                 DomainEvent::TagCreated { .. } => "tag_created",
                 DomainEvent::TagChanged { .. } => "tag_changed",
                 DomainEvent::TagDeleted { .. } => "tag_deleted",

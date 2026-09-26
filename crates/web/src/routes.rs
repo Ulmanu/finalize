@@ -16,6 +16,7 @@ use crate::design::CheckControl;
 use crate::layouts::{Protected, PublicLayout};
 use crate::session::use_account;
 use momentum_app::areas::{AreaService, AreaSummary};
+use momentum_app::logbook::{LogbookAgenda, LogbookEntry, LogbookService};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::tags::{TagService, TagSummary};
 use momentum_app::todos::{TodoScope, TodoService, TodoSummary};
@@ -782,7 +783,6 @@ fn SomedayProjectRow(project: ProjectSummary) -> impl IntoView {
         </li>
     }
 }
-list_route_page!(LogbookPage, "Logbook", "Completed and canceled items.");
 list_route_page!(
     SettingsPage,
     "Settings",
@@ -1539,6 +1539,186 @@ fn TagAssignments(todo_id: EntityId, tags: Vec<EntityId>) -> impl IntoView {
                 }}
             </Suspense>
         </section>
+    }
+}
+
+/// Logbook history with logging policy and explicit logging.
+#[component]
+pub fn LogbookPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <LogbookView/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn LogbookView() -> impl IntoView {
+    let service = use_context::<Option<Arc<LogbookService>>>().flatten();
+    let account = use_account();
+    let agenda = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service.agenda(account.account_id).await.ok(),
+                _ => None,
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="logbook-page">
+            <header class="list-header">
+                <h1 class="list-title">"Logbook"</h1>
+                <p class="list-description">"Completed and canceled items."</p>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    agenda
+                        .get()
+                        .map(|agenda| {
+                            agenda.map_or_else(
+                                || view! { <div></div> }.into_any(),
+                                |agenda| view! { <LogbookBody agenda=agenda/> }.into_any(),
+                            )
+                        })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+#[component]
+fn LogbookBody(agenda: LogbookAgenda) -> impl IntoView {
+    let policy = agenda.policy;
+    let is_manual = policy == momentum_domain::model::LoggingPolicy::Manual;
+    let is_empty = agenda.days.is_empty() && agenda.pending.is_empty();
+
+    view! {
+        <form
+            method="post"
+            action="/logbook/policy"
+            class="row-schedule"
+            data-testid="logging-policy-form"
+        >
+            <input type="hidden" name="return_to" value="/logbook"/>
+            <select name="policy" aria-label="Logging policy">
+                <option value="automatic">"Automatic"</option>
+                <option value="manual">"Manual"</option>
+            </select>
+            <button type="submit" class="button-secondary">"Apply policy"</button>
+        </form>
+        <p class="todo-meta" data-testid="logging-policy">
+            {format!("Logging policy: {}", policy.as_str())}
+        </p>
+        {(!agenda.pending.is_empty())
+            .then(|| {
+                view! {
+                    <section data-testid="logbook-pending">
+                        <h2 class="section-heading">"Pending logging"</h2>
+                        <ul class="task-list" data-testid="logbook-pending-list">
+                            {agenda
+                                .pending
+                                .into_iter()
+                                .map(|entry| {
+                                    view! { <LogbookEntryRow entry=entry manual=is_manual/> }
+                                })
+                                .collect_view()}
+                        </ul>
+                    </section>
+                }
+            })}
+        {if is_empty {
+            view! {
+                <div class="list-empty" data-testid="logbook-empty">
+                    <p>"Nothing logged yet."</p>
+                </div>
+            }
+                .into_any()
+        } else {
+            view! {
+                {agenda
+                    .days
+                    .into_iter()
+                    .map(|day| {
+                        let label = day.date.as_naive().format("%A, %-d %B %Y").to_string();
+                        let iso = day.date.to_string();
+                        view! {
+                            <section
+                                class="logbook-day"
+                                data-testid="logbook-day"
+                                data-date=iso
+                            >
+                                <h2 class="section-heading">{label}</h2>
+                                <ul class="task-list" data-testid="logbook-day-list">
+                                    {day
+                                        .entries
+                                        .into_iter()
+                                        .map(|entry| {
+                                            view! { <LogbookEntryRow entry=entry manual=is_manual/> }
+                                        })
+                                        .collect_view()}
+                                </ul>
+                            </section>
+                        }
+                    })
+                    .collect_view()}
+            }
+                .into_any()
+        }}
+    }
+}
+
+#[component]
+fn LogbookEntryRow(entry: LogbookEntry, manual: bool) -> impl IntoView {
+    match entry {
+        LogbookEntry::Todo(todo) => view! { <TodoRow todo=todo/> }.into_any(),
+        LogbookEntry::Project(project) => {
+            let id = project.id;
+            let title = project.title.clone();
+            let status = project.status.as_str().to_string();
+            let mut instants = Vec::new();
+            if let Some(completed) = project.completed_at {
+                instants.push(format!("Completed {}", completed.format("%Y-%m-%d %H:%M")));
+            }
+            if let Some(canceled) = project.canceled_at {
+                instants.push(format!("Canceled {}", canceled.format("%Y-%m-%d %H:%M")));
+            }
+            if let Some(logged) = project.logged_at {
+                instants.push(format!("Logged {}", logged.format("%Y-%m-%d %H:%M")));
+            }
+            let log_target = format!("/projects/{id}/log");
+            let open_target = format!("/projects/{id}");
+            view! {
+                <li class="task-row" data-testid="logbook-project-row">
+                    <div class="task-row-body">
+                        <a class="task-title" href=open_target>
+                            {title}
+                        </a>
+                        <span class="task-row-meta">
+                            <span class="row-badge">{status}</span>
+                            {instants
+                                .into_iter()
+                                .map(|instant| view! { <span class="row-badge">{instant}</span> })
+                                .collect_view()}
+                        </span>
+                    </div>
+                    <div class="task-row-actions">
+                        {(manual && project.logged_at.is_none())
+                            .then(|| {
+                                view! {
+                                    <form method="post" action=log_target>
+                                        <input type="hidden" name="return_to" value="/logbook"/>
+                                        <button type="submit" class="button-secondary">"Log"</button>
+                                    </form>
+                                }
+                            })}
+                    </div>
+                </li>
+            }
+                .into_any()
+        }
     }
 }
 

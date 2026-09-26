@@ -132,6 +132,7 @@ impl MemoryProjectReadStore {
             deadline: project.deadline,
             completed_at: project.completed_at,
             canceled_at: project.canceled_at,
+            logged_at: project.logged_at,
             area: self.database.project_area(account_id, id),
             open_count,
             completed_count,

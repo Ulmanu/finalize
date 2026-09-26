@@ -668,6 +668,32 @@ Agent: opencode (deepseek-v4.1-flash)
   restored rather than reopened to keep trash semantics explicit.
 - Live integrations not verified: PostgreSQL terminal-timestamp selects (no database).
 
+### 27 — `add-logbook` — COMPLETE
+
+- Start: 2026-09-26 04:35 · End: 2026-09-26 05:40
+- Proposal validation: strict validation passed before archive.
+- Implementation: `LoggingPolicy { Automatic, Manual }` stored per account in the existing
+  `preferences` table through a `LoggingPolicyStore` port (memory + PostgreSQL adapters);
+  `TodoScope::Logbook { logged_only }` plus terminal-status filtering drive membership;
+  `LogTodo`/`LogProject` commands set `logged_at` once for terminal items and reject open ones;
+  `LogbookAgenda` groups entries by history date descending (`logged → completed → canceled →
+  created`) with unlogged terminal entries surfacing as `pending` under the manual policy;
+  read models expose `logged_at` for to-dos and projects; the Logbook page renders a policy
+  form, pending logging with Log buttons, and date-grouped history including project rows with
+  their completion/cancellation/logging timestamps.
+- Migrations: none (`preferences` and `logged_at` already existed).
+- Tests: 3 testkit tests (automatic history + timestamps, manual pending/log transitions with
+  validation, policy switching preserving completion) and 2 web tests (date-grouped automatic
+  history, manual pending → logged flow); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-logbook`; canonical `features/logbook` spec created.
+- Commit: `feat(27): add Logbook`
+- Decisions: unlogged terminal items appear as `pending` under manual policy so completed work
+  is never unreachable; the policy is an account preference (not an entity change-log record).
+- Live integrations not verified: PostgreSQL preference upsert and logbook ordering (no
+  database).
+
 ## Run summary
 
 ### Completed changes
@@ -700,9 +726,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 24 | add-anytime-projection | COMPLETE | `feat(24)` |
 | 25 | add-someday-projection | COMPLETE | `feat(25)` |
 | 26 | add-completion-and-cancellation | COMPLETE | `feat(26)` |
+| 27 | add-logbook | COMPLETE | `feat(27)` |
 
-- Completed proposal range: 01–26 (26 of 74).
-- Incomplete: 27–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–27 (27 of 74).
+- Incomplete: 28–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`

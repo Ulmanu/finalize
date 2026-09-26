@@ -46,7 +46,13 @@ fn scope_filter(scope: TodoScope) -> &'static str {
         }
         TodoScope::Someday => "e.status = 'open' and e.schedule_kind = 'someday'",
         TodoScope::Deadlines => "e.status = 'open' and e.deadline is not null",
-        TodoScope::Logbook => "e.status in ('completed', 'canceled')",
+        TodoScope::Logbook { logged_only } => {
+            if logged_only {
+                "e.status in ('completed', 'canceled') and e.logged_at is not null"
+            } else {
+                "e.status in ('completed', 'canceled')"
+            }
+        }
         TodoScope::Trash => "e.status = 'deleted'",
     }
 }
@@ -97,6 +103,7 @@ fn summary_from_row(row: &sqlx::postgres::PgRow) -> TodoSummary {
         context,
         completed_at: row.get("completed_at"),
         canceled_at: row.get("canceled_at"),
+        logged_at: row.get("logged_at"),
         created_at: row.get("created_at"),
         version: row.get("version"),
         checklist: Vec::new(),

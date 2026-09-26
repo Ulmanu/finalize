@@ -301,6 +301,16 @@ pub enum Command {
         /// Tag to remove.
         tag: EntityId,
     },
+    /// Logs a completed or canceled to-do into the Logbook.
+    LogTodo {
+        /// Entity to log.
+        id: EntityId,
+    },
+    /// Logs a completed or canceled project into the Logbook.
+    LogProject {
+        /// Entity to log.
+        id: EntityId,
+    },
     /// Adds a checklist item to a to-do.
     AddChecklistItem {
         /// Parent to-do.
@@ -401,6 +411,8 @@ impl Command {
             | Self::MoveProject { id, .. }
             | Self::DeleteProject { id, .. }
             | Self::ReorderToday { id, .. }
+            | Self::LogTodo { id }
+            | Self::LogProject { id }
             | Self::RenameHeading { id, .. }
             | Self::ReorderHeading { id, .. }
             | Self::ArchiveHeading { id }
@@ -441,6 +453,8 @@ impl Command {
             Self::CreateProject { .. } => "create_project",
             Self::CreateHeading { .. } => "create_heading",
             Self::ReorderToday { .. } => "reorder_today",
+            Self::LogTodo { .. } => "log_todo",
+            Self::LogProject { .. } => "log_project",
             Self::CreateTag { .. } => "create_tag",
             Self::RenameTag { .. } => "rename_tag",
             Self::MoveTag { .. } => "move_tag",
@@ -563,6 +577,16 @@ pub enum DomainEvent {
     },
     /// A project was deleted.
     ProjectDeleted {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A to-do was logged into the Logbook.
+    TodoLogged {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A project was logged into the Logbook.
+    ProjectLogged {
         /// Entity identity.
         id: EntityId,
     },
@@ -728,6 +752,8 @@ impl DomainEvent {
             | Self::AreaRenamed { id }
             | Self::AreaDeleted { id }
             | Self::TodayReordered { id }
+            | Self::TodoLogged { id }
+            | Self::ProjectLogged { id }
             | Self::TagCreated { id }
             | Self::TagChanged { id }
             | Self::TagDeleted { id }
@@ -1572,6 +1598,43 @@ impl CommandDispatcher {
                 }
                 Ok((Some(*id), vec![DomainEvent::HeadingRestored { id: *id }]))
             }
+            Command::LogTodo { id } => {
+                let mut todo = unit
+                    .load_todo(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if !todo.status.is_terminal() {
+                    return Err(CommandError::Validation(
+                        "only completed or canceled to-dos can be logged".to_string(),
+                    ));
+                }
+                if todo.logged_at.is_none() {
+                    let expected = todo.meta.version;
+                    todo.logged_at = Some(now);
+                    todo.meta.touch(now);
+                    unit.save_todo(account_id, &todo, Some(expected)).await?;
+                }
+                Ok((Some(*id), vec![DomainEvent::TodoLogged { id: *id }]))
+            }
+            Command::LogProject { id } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if !project.status.is_terminal() {
+                    return Err(CommandError::Validation(
+                        "only completed or canceled projects can be logged".to_string(),
+                    ));
+                }
+                if project.logged_at.is_none() {
+                    let expected = project.meta.version;
+                    project.logged_at = Some(now);
+                    project.meta.touch(now);
+                    unit.save_project(account_id, &project, Some(expected))
+                        .await?;
+                }
+                Ok((Some(*id), vec![DomainEvent::ProjectLogged { id: *id }]))
+            }
             Command::CreateTag { title, parent } => {
                 if let Some(parent_id) = parent {
                     if unit.load_tag(account_id, *parent_id).await?.is_none() {
@@ -1971,6 +2034,8 @@ fn apply_to_todo(
         | Command::ArchiveHeading { .. }
         | Command::RestoreHeading { .. }
         | Command::ReorderToday { .. }
+        | Command::LogTodo { .. }
+        | Command::LogProject { .. }
         | Command::CreateTag { .. }
         | Command::RenameTag { .. }
         | Command::MoveTag { .. }
@@ -2161,6 +2226,8 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
             Projection::Logbook,
         ],
         DomainEvent::TodayReordered { .. } => vec![Projection::Today],
+        DomainEvent::TodoLogged { .. } => vec![Projection::Logbook],
+        DomainEvent::ProjectLogged { .. } => vec![Projection::Logbook, Projection::AllProjects],
         DomainEvent::TagCreated { .. }
         | DomainEvent::TagChanged { .. }
         | DomainEvent::TagDeleted { .. }

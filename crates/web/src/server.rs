@@ -13,6 +13,7 @@ use leptos::config::LeptosOptions;
 use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use momentum_app::areas::AreaService;
+use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
@@ -22,6 +23,7 @@ use serde::Serialize;
 use crate::app::{shell, App};
 use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
+use crate::logbook_routes;
 use crate::notes_routes;
 use crate::project_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
@@ -57,6 +59,8 @@ pub struct AppState {
     pub projects: Option<Arc<ProjectService>>,
     /// Tag service, when persistence is configured.
     pub tags: Option<Arc<TagService>>,
+    /// Logbook service, when persistence is configured.
+    pub logbook: Option<Arc<LogbookService>>,
 }
 
 impl AppState {
@@ -80,6 +84,7 @@ impl AppState {
             areas,
             projects,
             tags: None,
+            logbook: None,
         }
     }
 
@@ -87,6 +92,13 @@ impl AppState {
     #[must_use]
     pub fn with_tags(mut self, tags: Arc<TagService>) -> Self {
         self.tags = Some(tags);
+        self
+    }
+
+    /// Adds the logbook service.
+    #[must_use]
+    pub fn with_logbook(mut self, logbook: Arc<LogbookService>) -> Self {
+        self.logbook = Some(logbook);
         self
     }
 
@@ -168,6 +180,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let area_service = state.areas.clone();
     let project_service = state.projects.clone();
     let tag_service = state.tags.clone();
+    let logbook_service = state.logbook.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -180,6 +193,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(project_routes::routes())
         .merge(tag_routes::routes())
         .merge(notes_routes::routes())
+        .merge(logbook_routes::routes())
         .leptos_routes_with_context(
             &state,
             paths,
@@ -188,6 +202,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(area_service.clone());
                 provide_context(project_service.clone());
                 provide_context(tag_service.clone());
+                provide_context(logbook_service.clone());
             },
             move || shell(shell_options.clone()),
         )

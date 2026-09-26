@@ -368,6 +368,37 @@ impl Deadline {
     }
 }
 
+/// How terminal items enter the Logbook.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoggingPolicy {
+    /// Completed/canceled items are logged automatically.
+    #[default]
+    Automatic,
+    /// Terminal items stay pending until the user logs them explicitly.
+    Manual,
+}
+
+impl LoggingPolicy {
+    /// Stable storage label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Automatic => "automatic",
+            Self::Manual => "manual",
+        }
+    }
+
+    /// Parses the storage label, defaulting to automatic for unknown values.
+    #[must_use]
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "manual" => Self::Manual,
+            _ => Self::Automatic,
+        }
+    }
+}
+
 /// Delivery state of a reminder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]

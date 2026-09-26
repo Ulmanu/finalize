@@ -314,6 +314,7 @@ impl MemoryDatabase {
                 context: todo.context,
                 completed_at: todo.completed_at,
                 canceled_at: todo.canceled_at,
+                logged_at: todo.logged_at,
                 created_at: todo.meta.created_at,
                 version: todo.meta.version,
                 checklist: todo
