@@ -196,6 +196,33 @@ pub enum Command {
         /// What happens to contained projects and to-dos.
         policy: AreaDeletionPolicy,
     },
+    /// Restores a project from Trash.
+    RestoreProject {
+        /// Entity to restore.
+        id: EntityId,
+    },
+    /// Restores an area from Trash.
+    RestoreArea {
+        /// Entity to restore.
+        id: EntityId,
+    },
+    /// Permanently deletes a trashed to-do.
+    PurgeTodo {
+        /// Entity to purge.
+        id: EntityId,
+    },
+    /// Permanently deletes a trashed project.
+    PurgeProject {
+        /// Entity to purge.
+        id: EntityId,
+    },
+    /// Permanently deletes a trashed area.
+    PurgeArea {
+        /// Entity to purge.
+        id: EntityId,
+    },
+    /// Permanently deletes every trashed entity for the account.
+    EmptyTrash,
     /// Moves a to-do one position up or down within its contextual scope.
     ReorderTodo {
         /// Entity to move.
@@ -398,9 +425,15 @@ impl Command {
             | Self::CreateArea { .. }
             | Self::CreateProject { .. }
             | Self::CreateHeading { .. }
-            | Self::CreateTag { .. } => None,
+            | Self::CreateTag { .. }
+            | Self::EmptyTrash => None,
             Self::RenameArea { id, .. }
             | Self::DeleteArea { id, .. }
+            | Self::RestoreProject { id }
+            | Self::RestoreArea { id }
+            | Self::PurgeTodo { id }
+            | Self::PurgeProject { id }
+            | Self::PurgeArea { id }
             | Self::RenameProject { id, .. }
             | Self::SetProjectNotes { id, .. }
             | Self::ScheduleProject { id, .. }
@@ -479,6 +512,12 @@ impl Command {
             Self::DeleteArea { .. } => "delete_area",
             Self::DuplicateTodo { .. } => "duplicate_todo",
             Self::ReorderTodo { .. } => "reorder_todo",
+            Self::RestoreProject { .. } => "restore_project",
+            Self::RestoreArea { .. } => "restore_area",
+            Self::PurgeTodo { .. } => "purge_todo",
+            Self::PurgeProject { .. } => "purge_project",
+            Self::PurgeArea { .. } => "purge_area",
+            Self::EmptyTrash => "empty_trash",
             Self::SetTodoTitle { .. } => "set_todo_title",
             Self::SetTodoNotes { .. } => "set_todo_notes",
             Self::CompleteTodo { .. } => "complete_todo",
@@ -577,6 +616,31 @@ pub enum DomainEvent {
     },
     /// A project was deleted.
     ProjectDeleted {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A project was restored from Trash.
+    ProjectRestored {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// An area was restored from Trash.
+    AreaRestored {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A to-do was permanently deleted.
+    TodoPurged {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// A project was permanently deleted.
+    ProjectPurged {
+        /// Entity identity.
+        id: EntityId,
+    },
+    /// An area was permanently deleted.
+    AreaPurged {
         /// Entity identity.
         id: EntityId,
     },
@@ -754,6 +818,11 @@ impl DomainEvent {
             | Self::TodayReordered { id }
             | Self::TodoLogged { id }
             | Self::ProjectLogged { id }
+            | Self::ProjectRestored { id }
+            | Self::AreaRestored { id }
+            | Self::TodoPurged { id }
+            | Self::ProjectPurged { id }
+            | Self::AreaPurged { id }
             | Self::TagCreated { id }
             | Self::TagChanged { id }
             | Self::TagDeleted { id }
@@ -1041,6 +1110,24 @@ pub trait UnitOfWork: Send {
         account_id: AccountId,
         entity_id: EntityId,
     ) -> Result<(), CommandError>;
+
+    /// Permanently removes a to-do and its dependent rows.
+    async fn purge_todo(&mut self, account_id: AccountId, id: EntityId)
+        -> Result<(), CommandError>;
+
+    /// Permanently removes a project row.
+    async fn purge_project(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError>;
+
+    /// Permanently removes an area row.
+    async fn purge_area(&mut self, account_id: AccountId, id: EntityId)
+        -> Result<(), CommandError>;
+
+    /// Permanently removes every trashed entity for the account.
+    async fn empty_trash(&mut self, account_id: AccountId) -> Result<(), CommandError>;
 
     /// Looks up a change record by operation id (idempotency check).
     async fn change_by_operation(
@@ -1635,6 +1722,90 @@ impl CommandDispatcher {
                 }
                 Ok((Some(*id), vec![DomainEvent::ProjectLogged { id: *id }]))
             }
+            Command::RestoreProject { id } => {
+                let mut project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if project.status != Status::Deleted {
+                    return Err(CommandError::Validation(
+                        "only trashed projects can be restored".to_string(),
+                    ));
+                }
+                let expected = project.meta.version;
+                project.status = Status::Open;
+                project.meta.deleted_at = None;
+                project.completed_at = None;
+                project.canceled_at = None;
+                project.meta.touch(now);
+                unit.save_project(account_id, &project, Some(expected))
+                    .await?;
+                if let Some(Some(area_id)) = unit.project_area(account_id, *id).await? {
+                    if unit.load_area(account_id, area_id).await?.is_none() {
+                        unit.set_project_area(account_id, *id, None).await?;
+                    }
+                }
+                Ok((Some(*id), vec![DomainEvent::ProjectRestored { id: *id }]))
+            }
+            Command::RestoreArea { id } => {
+                let mut area = unit
+                    .load_area(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if area.meta.deleted_at.is_none() {
+                    return Err(CommandError::Validation(
+                        "only trashed areas can be restored".to_string(),
+                    ));
+                }
+                let expected = area.meta.version;
+                area.meta.deleted_at = None;
+                area.meta.touch(now);
+                unit.save_area(account_id, &area, Some(expected)).await?;
+                Ok((Some(*id), vec![DomainEvent::AreaRestored { id: *id }]))
+            }
+            Command::PurgeTodo { id } => {
+                let todo = unit
+                    .load_todo(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if todo.status != Status::Deleted {
+                    return Err(CommandError::Validation(
+                        "only trashed to-dos can be permanently deleted".to_string(),
+                    ));
+                }
+                unit.purge_todo(account_id, *id).await?;
+                Ok((Some(*id), vec![DomainEvent::TodoPurged { id: *id }]))
+            }
+            Command::PurgeProject { id } => {
+                let project = unit
+                    .load_project(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if project.status != Status::Deleted {
+                    return Err(CommandError::Validation(
+                        "only trashed projects can be permanently deleted".to_string(),
+                    ));
+                }
+                unit.purge_project(account_id, *id).await?;
+                Ok((Some(*id), vec![DomainEvent::ProjectPurged { id: *id }]))
+            }
+            Command::PurgeArea { id } => {
+                let area = unit
+                    .load_area(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                if area.meta.deleted_at.is_none() {
+                    return Err(CommandError::Validation(
+                        "only trashed areas can be permanently deleted".to_string(),
+                    ));
+                }
+                unit.purge_area(account_id, *id).await?;
+                Ok((Some(*id), vec![DomainEvent::AreaPurged { id: *id }]))
+            }
+            Command::EmptyTrash => {
+                unit.empty_trash(account_id).await?;
+                Ok((None, Vec::new()))
+            }
             Command::CreateTag { title, parent } => {
                 if let Some(parent_id) = parent {
                     if unit.load_tag(account_id, *parent_id).await?.is_none() {
@@ -1921,6 +2092,30 @@ impl CommandDispatcher {
                     .ok_or(CommandError::NotFound)?;
                 let expected_version = todo.meta.version;
                 let event = apply_to_todo(&mut todo, command, now)?;
+                if matches!(command, Command::RestoreTodo { .. }) {
+                    let context_valid = match todo.context {
+                        ContextRef::Inbox => true,
+                        ContextRef::Area(area_id) => {
+                            unit.load_area(account_id, area_id).await?.is_some()
+                        }
+                        ContextRef::Project(project_id) => unit
+                            .load_project(account_id, project_id)
+                            .await?
+                            .is_some_and(|project| project.status != Status::Deleted),
+                        ContextRef::Heading(heading_id) => {
+                            match unit.load_heading(account_id, heading_id).await? {
+                                Some(heading) => unit
+                                    .load_project(account_id, heading.project)
+                                    .await?
+                                    .is_some_and(|project| project.status != Status::Deleted),
+                                None => false,
+                            }
+                        }
+                    };
+                    if !context_valid {
+                        todo.move_to(ContextRef::Inbox, now);
+                    }
+                }
                 unit.save_todo(account_id, &todo, Some(expected_version))
                     .await?;
                 if matches!(
@@ -2036,6 +2231,12 @@ fn apply_to_todo(
         | Command::ReorderToday { .. }
         | Command::LogTodo { .. }
         | Command::LogProject { .. }
+        | Command::RestoreProject { .. }
+        | Command::RestoreArea { .. }
+        | Command::PurgeTodo { .. }
+        | Command::PurgeProject { .. }
+        | Command::PurgeArea { .. }
+        | Command::EmptyTrash
         | Command::CreateTag { .. }
         | Command::RenameTag { .. }
         | Command::MoveTag { .. }
@@ -2227,6 +2428,29 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
         ],
         DomainEvent::TodayReordered { .. } => vec![Projection::Today],
         DomainEvent::TodoLogged { .. } => vec![Projection::Logbook],
+        DomainEvent::ProjectRestored { .. } => {
+            vec![
+                Projection::Trash,
+                Projection::AllProjects,
+                Projection::Anytime,
+            ]
+        }
+        DomainEvent::AreaRestored { .. } => {
+            vec![
+                Projection::Trash,
+                Projection::AllProjects,
+                Projection::Anytime,
+            ]
+        }
+        DomainEvent::TodoPurged { .. } => vec![Projection::Trash, Projection::Logbook],
+        DomainEvent::ProjectPurged { .. } => {
+            vec![
+                Projection::Trash,
+                Projection::AllProjects,
+                Projection::LoggedProjects,
+            ]
+        }
+        DomainEvent::AreaPurged { .. } => vec![Projection::Trash, Projection::AllProjects],
         DomainEvent::ProjectLogged { .. } => vec![Projection::Logbook, Projection::AllProjects],
         DomainEvent::TagCreated { .. }
         | DomainEvent::TagChanged { .. }

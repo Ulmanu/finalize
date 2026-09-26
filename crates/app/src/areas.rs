@@ -32,6 +32,12 @@ pub trait AreaReadStore: Send + Sync {
     /// Lists non-deleted areas with their child counts.
     async fn list_areas(&self, account_id: AccountId) -> Result<Vec<AreaSummary>, CommandError>;
 
+    /// Lists trashed areas.
+    async fn list_deleted_areas(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Vec<AreaSummary>, CommandError>;
+
     /// Loads one area with its child counts.
     async fn get_area(
         &self,
@@ -128,6 +134,41 @@ impl AreaService {
             },
         )
         .await
+    }
+
+    /// Lists trashed areas.
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn trash(&self, account_id: AccountId) -> Result<Vec<AreaSummary>, CommandError> {
+        self.reader.list_deleted_areas(account_id).await
+    }
+
+    /// Restores a trashed area.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn restore(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::RestoreArea { id }).await
+    }
+
+    /// Permanently deletes a trashed area.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn purge(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::PurgeArea { id }).await
     }
 
     /// Deletes an area under an explicit contents policy.

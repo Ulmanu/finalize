@@ -751,6 +751,92 @@ impl UnitOfWork for MemoryUnitOfWork {
         Ok(())
     }
 
+    async fn purge_todo(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        state.todos.remove(&(account_id, id));
+        state.context_ranks.remove(&(account_id, id));
+        state
+            .projection_ranks
+            .remove(&(account_id, ProjectionScope::Today, id));
+        state
+            .projection_ranks
+            .remove(&(account_id, ProjectionScope::ThisEvening, id));
+        Ok(())
+    }
+
+    async fn purge_project(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        state.projects.remove(&(account_id, id));
+        state.project_areas.remove(&(account_id, id));
+        Ok(())
+    }
+
+    async fn purge_area(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        self.database
+            .state
+            .lock()
+            .expect("memory state lock")
+            .areas
+            .remove(&(account_id, id));
+        Ok(())
+    }
+
+    async fn empty_trash(&mut self, account_id: AccountId) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        let todo_ids: Vec<EntityId> = state
+            .todos
+            .iter()
+            .filter(|((account, _), todo)| {
+                *account == account_id && todo.status == momentum_domain::model::Status::Deleted
+            })
+            .map(|((_, id), _)| *id)
+            .collect();
+        for id in todo_ids {
+            state.todos.remove(&(account_id, id));
+            state.context_ranks.remove(&(account_id, id));
+            state
+                .projection_ranks
+                .remove(&(account_id, ProjectionScope::Today, id));
+            state
+                .projection_ranks
+                .remove(&(account_id, ProjectionScope::ThisEvening, id));
+        }
+        let project_ids: Vec<EntityId> = state
+            .projects
+            .iter()
+            .filter(|((account, _), project)| {
+                *account == account_id && project.status == momentum_domain::model::Status::Deleted
+            })
+            .map(|((_, id), _)| *id)
+            .collect();
+        for id in project_ids {
+            state.projects.remove(&(account_id, id));
+            state.project_areas.remove(&(account_id, id));
+        }
+        let area_ids: Vec<EntityId> = state
+            .areas
+            .iter()
+            .filter(|((account, _), area)| *account == account_id && area.meta.deleted_at.is_some())
+            .map(|((_, id), _)| *id)
+            .collect();
+        for id in area_ids {
+            state.areas.remove(&(account_id, id));
+        }
+        Ok(())
+    }
+
     async fn change_by_operation(
         &mut self,
         account_id: AccountId,

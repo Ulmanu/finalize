@@ -53,6 +53,23 @@ impl PgUnitOfWork {
             .as_mut()
             .ok_or_else(|| CommandError::Storage("transaction already finished".to_string()))
     }
+
+    async fn purge_entity(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+        kind: &str,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        sqlx::query("delete from entities where account_id = $1 and id = $2 and kind = $3")
+            .bind(account_id.as_uuid())
+            .bind(id.as_uuid())
+            .bind(kind)
+            .execute(&mut **tx)
+            .await
+            .map_err(storage)?;
+        Ok(())
+    }
 }
 
 fn status_from_str(value: &str) -> Status {
@@ -1221,6 +1238,44 @@ impl UnitOfWork for PgUnitOfWork {
         Ok(())
     }
 
+    async fn purge_todo(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        self.purge_entity(account_id, id, "todo").await
+    }
+
+    async fn purge_project(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        self.purge_entity(account_id, id, "project").await
+    }
+
+    async fn purge_area(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<(), CommandError> {
+        self.purge_entity(account_id, id, "area").await
+    }
+
+    async fn empty_trash(&mut self, account_id: AccountId) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        sqlx::query(
+            "delete from entities \
+             where account_id = $1 and ((kind in ('todo', 'project') and status = 'deleted') \
+             or (kind = 'area' and deleted_at is not null))",
+        )
+        .bind(account_id.as_uuid())
+        .execute(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(())
+    }
+
     async fn change_by_operation(
         &mut self,
         account_id: AccountId,
@@ -1301,6 +1356,11 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::ChecklistChanged { .. } => "checklist_changed",
                 DomainEvent::TodayReordered { .. } => "today_reordered",
                 DomainEvent::TodoLogged { .. } => "todo_logged",
+                DomainEvent::ProjectRestored { .. } => "project_restored",
+                DomainEvent::AreaRestored { .. } => "area_restored",
+                DomainEvent::TodoPurged { .. } => "todo_purged",
+                DomainEvent::ProjectPurged { .. } => "project_purged",
+                DomainEvent::AreaPurged { .. } => "area_purged",
                 DomainEvent::ProjectLogged { .. } => "project_logged",
                 DomainEvent::TagCreated { .. } => "tag_created",
                 DomainEvent::TagChanged { .. } => "tag_changed",

@@ -91,6 +91,12 @@ pub trait ProjectReadStore: Send + Sync {
         account_id: AccountId,
     ) -> Result<Vec<ProjectSummary>, CommandError>;
 
+    /// Lists trashed (soft-deleted) projects.
+    async fn list_deleted_projects(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Vec<ProjectSummary>, CommandError>;
+
     /// Loads one project.
     async fn get_project(
         &self,
@@ -134,6 +140,43 @@ impl ProjectService {
     /// Propagates storage failures.
     pub async fn list(&self, account_id: AccountId) -> Result<Vec<ProjectSummary>, CommandError> {
         self.reader.list_projects(account_id).await
+    }
+
+    /// Lists trashed projects.
+    ///
+    /// # Errors
+    ///
+    /// Propagates storage failures.
+    pub async fn trash(&self, account_id: AccountId) -> Result<Vec<ProjectSummary>, CommandError> {
+        self.reader.list_deleted_projects(account_id).await
+    }
+
+    /// Restores a trashed project.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn restore(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::RestoreProject { id })
+            .await
+    }
+
+    /// Permanently deletes a trashed project.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn purge(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::PurgeProject { id })
+            .await
     }
 
     /// Lists open projects deferred to the Someday schedule state.

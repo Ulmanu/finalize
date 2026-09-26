@@ -29,6 +29,8 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/reopen", post(reopen_todo))
         .route("/todos/{todo_id}/delete", post(delete_todo))
         .route("/todos/{todo_id}/restore", post(restore_todo))
+        .route("/todos/{todo_id}/purge", post(purge_todo))
+        .route("/trash/empty", post(empty_trash))
         .route("/todos/{todo_id}/duplicate", post(duplicate_todo))
         .route("/todos/{todo_id}/move-up", post(move_up))
         .route("/todos/{todo_id}/move-down", post(move_down))
@@ -684,6 +686,40 @@ async fn reorder_checklist_item(
     {
         Ok(_) => redirect(&target),
         Err(_) => redirect(&format!("{target}?error=checklist")),
+    }
+}
+
+async fn purge_todo(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<RedirectForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = todo_id.parse::<EntityId>() else {
+        return redirect("/trash?error=notfound");
+    };
+    let target = back(&form);
+    match service.purge(account_id, id).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=purge")),
+    }
+}
+
+async fn empty_trash(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Form(form): Form<RedirectForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let target = back(&form);
+    match service.empty_trash(account_id).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=purge")),
     }
 }
 

@@ -207,6 +207,26 @@ impl ProjectReadStore for PgProjectReadStore {
         Ok(projects)
     }
 
+    async fn list_deleted_projects(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Vec<ProjectSummary>, CommandError> {
+        let rows = sqlx::query(&format!(
+            "{PROJECT_SELECT} \
+             where e.account_id = $1 and e.kind = 'project' and e.status = 'deleted' \
+             order by e.deleted_at desc nulls last, e.id desc"
+        ))
+        .bind(account_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| CommandError::Storage(error.to_string()))?;
+        let mut projects = Vec::with_capacity(rows.len());
+        for row in rows {
+            projects.push(self.summarize(account_id, &row).await?);
+        }
+        Ok(projects)
+    }
+
     async fn get_project(
         &self,
         account_id: AccountId,

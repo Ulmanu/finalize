@@ -31,6 +31,8 @@ pub fn routes() -> Router<AppState> {
             post(set_project_deadline),
         )
         .route("/projects/{project_id}/delete", post(delete_project))
+        .route("/projects/{project_id}/restore", post(restore_project))
+        .route("/projects/{project_id}/purge", post(purge_project))
         .route("/headings", post(create_heading))
         .route("/headings/{heading_id}/rename", post(rename_heading))
         .route("/headings/{heading_id}/move_up", post(move_heading_up))
@@ -433,6 +435,52 @@ async fn heading_lifecycle(
     match result {
         Ok(_) => redirect(&target),
         Err(_) => redirect(&format!("{target}?error=heading")),
+    }
+}
+
+async fn restore_project(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(project_id): Path<String>,
+    Form(form): Form<HeadingForm>,
+) -> Response {
+    project_trash_action(&state, &session, &project_id, form, true).await
+}
+
+async fn purge_project(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(project_id): Path<String>,
+    Form(form): Form<HeadingForm>,
+) -> Response {
+    project_trash_action(&state, &session, &project_id, form, false).await
+}
+
+async fn project_trash_action(
+    state: &AppState,
+    session: &SessionState,
+    raw_id: &str,
+    form: HeadingForm,
+    restore: bool,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = raw_id.parse::<EntityId>() else {
+        return redirect("/trash?error=notfound");
+    };
+    let target = form
+        .return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/trash".to_string());
+    let result = if restore {
+        service.restore(account_id, id).await
+    } else {
+        service.purge(account_id, id).await
+    };
+    match result {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=trash")),
     }
 }
 

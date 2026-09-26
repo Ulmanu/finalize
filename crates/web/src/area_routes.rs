@@ -21,6 +21,8 @@ pub fn routes() -> Router<AppState> {
         .route("/areas", post(create_area))
         .route("/areas/{area_id}/rename", post(rename_area))
         .route("/areas/{area_id}/delete", post(delete_area))
+        .route("/areas/{area_id}/restore", post(restore_area))
+        .route("/areas/{area_id}/purge", post(purge_area))
 }
 
 fn redirect(to: &str) -> Response {
@@ -107,5 +109,57 @@ async fn delete_area(
     match service.delete(account_id, id, policy).await {
         Ok(_) => redirect("/areas"),
         Err(_) => redirect(&format!("/areas/{id}?error=delete")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AreaTrashForm {
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn restore_area(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(area_id): Path<String>,
+    Form(form): Form<AreaTrashForm>,
+) -> Response {
+    area_trash_action(&state, &session, &area_id, form, true).await
+}
+
+async fn purge_area(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(area_id): Path<String>,
+    Form(form): Form<AreaTrashForm>,
+) -> Response {
+    area_trash_action(&state, &session, &area_id, form, false).await
+}
+
+async fn area_trash_action(
+    state: &AppState,
+    session: &SessionState,
+    raw_id: &str,
+    form: AreaTrashForm,
+    restore: bool,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = raw_id.parse::<EntityId>() else {
+        return redirect("/trash?error=notfound");
+    };
+    let target = form
+        .return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/trash".to_string());
+    let result = if restore {
+        service.restore(account_id, id).await
+    } else {
+        service.purge(account_id, id).await
+    };
+    match result {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=trash")),
     }
 }

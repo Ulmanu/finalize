@@ -157,6 +157,19 @@ impl ProjectReadStore for MemoryProjectReadStore {
             .collect())
     }
 
+    async fn list_deleted_projects(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Vec<ProjectSummary>, CommandError> {
+        Ok(self
+            .database
+            .projects_for(account_id)
+            .into_iter()
+            .filter(|project| project.status == Status::Deleted)
+            .map(|project| self.summarize(account_id, project))
+            .collect())
+    }
+
     async fn get_project(
         &self,
         account_id: AccountId,

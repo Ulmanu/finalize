@@ -303,6 +303,28 @@ impl TodoService {
         LocalDate::today_in_timezone(self.clock.now(), "UTC")
     }
 
+    /// Permanently deletes a trashed to-do.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn purge(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::PurgeTodo { id }).await
+    }
+
+    /// Permanently deletes every trashed entity for the account.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn empty_trash(&self, account_id: AccountId) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::EmptyTrash).await
+    }
+
     /// Moves a Today item within its Today/This Evening ordering bucket.
     ///
     /// # Errors

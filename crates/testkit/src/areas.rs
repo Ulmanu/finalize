@@ -43,6 +43,19 @@ impl AreaReadStore for MemoryAreaReadStore {
             .collect())
     }
 
+    async fn list_deleted_areas(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Vec<AreaSummary>, CommandError> {
+        Ok(self
+            .database
+            .areas_for(account_id)
+            .into_iter()
+            .filter(|area| area.meta.deleted_at.is_some())
+            .map(|area| self.summarize(account_id, area.id(), area.title.as_str().to_string()))
+            .collect())
+    }
+
     async fn get_area(
         &self,
         account_id: AccountId,

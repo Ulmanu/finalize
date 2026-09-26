@@ -76,6 +76,10 @@ pub const SECONDARY_DESTINATIONS: &[NavDestination] = &[
         label: "Areas",
     },
     NavDestination {
+        href: "/trash",
+        label: "Trash",
+    },
+    NavDestination {
         href: "/settings",
         label: "Settings",
     },

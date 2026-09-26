@@ -44,6 +44,7 @@ pub fn AppRoutes() -> impl IntoView {
                 <Route path=path!("/areas") view=AreasPage/>
                 <Route path=path!("/tags") view=TagsPage/>
                 <Route path=path!("/deadlines") view=DeadlinesPage/>
+                <Route path=path!("/trash") view=TrashPage/>
                 <Route path=path!("/settings") view=SettingsPage/>
                 <Route path=path!("/areas/:area_id") view=AreaPage/>
                 <Route path=path!("/projects/:project_id") view=ProjectPage/>
@@ -1539,6 +1540,175 @@ fn TagAssignments(todo_id: EntityId, tags: Vec<EntityId>) -> impl IntoView {
                 }}
             </Suspense>
         </section>
+    }
+}
+
+/// Recoverable Trash with restore and permanent deletion.
+#[component]
+pub fn TrashPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <TrashView/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn TrashView() -> impl IntoView {
+    let todo_service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let project_service = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let area_service = use_context::<Option<Arc<AreaService>>>().flatten();
+    let account = use_account();
+    let account_for_projects = account.clone();
+    let account_for_areas = account.clone();
+    let todos = AsyncDerived::new(move || {
+        let service = todo_service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, TodoScope::Trash)
+                    .await
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        }
+    });
+    let projects = AsyncDerived::new(move || {
+        let service = project_service.clone();
+        let account = account_for_projects.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.trash(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+    let areas = AsyncDerived::new(move || {
+        let service = area_service.clone();
+        let account = account_for_areas.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.trash(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+
+    view! {
+        <section class="list-page" data-testid="trash-page">
+            <header class="list-header">
+                <h1 class="list-title">"Trash"</h1>
+                <p class="list-description">"Deleted items stay recoverable until you empty them."</p>
+            </header>
+            <form method="post" action="/trash/empty" data-testid="empty-trash-form">
+                <input type="hidden" name="return_to" value="/trash"/>
+                <button type="submit" class="button-secondary">"Empty Trash"</button>
+            </form>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let todos = todos.get().unwrap_or_default();
+                    let projects = projects.get().unwrap_or_default();
+                    let areas = areas.get().unwrap_or_default();
+                    if todos.is_empty() && projects.is_empty() && areas.is_empty() {
+                        return view! {
+                            <div class="list-empty" data-testid="trash-empty">
+                                <p>"Trash is empty."</p>
+                            </div>
+                        }
+                            .into_any();
+                    }
+                    view! {
+                        <h2 class="section-heading">"To-Dos"</h2>
+                        {trash_list(
+                            "trash-todos",
+                            todos
+                                .into_iter()
+                                .map(|todo| {
+                                    let title = todo.title.clone();
+                                    view! {
+                                        <TrashRow
+                                            title=title
+                                            restore_action=format!("/todos/{}/restore", todo.id)
+                                            purge_action=format!("/todos/{}/purge", todo.id)
+                                        />
+                                    }
+                                })
+                                .collect_view(),
+                        )}
+                        <h2 class="section-heading">"Projects"</h2>
+                        {trash_list(
+                            "trash-projects",
+                            projects
+                                .into_iter()
+                                .map(|project| {
+                                    let title = project.title.clone();
+                                    view! {
+                                        <TrashRow
+                                            title=title
+                                            restore_action=format!("/projects/{}/restore", project.id)
+                                            purge_action=format!("/projects/{}/purge", project.id)
+                                        />
+                                    }
+                                })
+                                .collect_view(),
+                        )}
+                        <h2 class="section-heading">"Areas"</h2>
+                        {trash_list(
+                            "trash-areas",
+                            areas
+                                .into_iter()
+                                .map(|area| {
+                                    let title = area.title.clone();
+                                    view! {
+                                        <TrashRow
+                                            title=title
+                                            restore_action=format!("/areas/{}/restore", area.id)
+                                            purge_action=format!("/areas/{}/purge", area.id)
+                                        />
+                                    }
+                                })
+                                .collect_view(),
+                        )}
+                    }
+                        .into_any()
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+fn trash_list(testid: &str, rows: impl IntoView + 'static) -> AnyView {
+    let testid = testid.to_string();
+    view! { <ul class="task-list" data-testid=testid>{rows}</ul> }.into_any()
+}
+
+#[component]
+fn TrashRow(
+    #[prop(into)] title: String,
+    #[prop(into)] restore_action: String,
+    #[prop(into)] purge_action: String,
+) -> impl IntoView {
+    view! {
+        <li class="task-row" data-testid="trash-row">
+            <div class="task-row-body">
+                <span class="task-title">{title}</span>
+            </div>
+            <div class="task-row-actions">
+                <form method="post" action=restore_action>
+                    <input type="hidden" name="return_to" value="/trash"/>
+                    <button type="submit" class="button-secondary">"Restore"</button>
+                </form>
+                <form method="post" action=purge_action>
+                    <input type="hidden" name="return_to" value="/trash"/>
+                    <button type="submit" class="button-secondary">"Delete permanently"</button>
+                </form>
+            </div>
+        </li>
     }
 }
 

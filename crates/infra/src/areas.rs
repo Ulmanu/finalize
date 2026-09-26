@@ -80,6 +80,28 @@ impl AreaReadStore for PgAreaReadStore {
         Ok(areas)
     }
 
+    async fn list_deleted_areas(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Vec<AreaSummary>, CommandError> {
+        let rows = sqlx::query(
+            "select id, title from entities \
+             where account_id = $1 and kind = 'area' and deleted_at is not null \
+             order by deleted_at desc, id desc",
+        )
+        .bind(account_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| CommandError::Storage(error.to_string()))?;
+        let mut areas = Vec::with_capacity(rows.len());
+        for row in rows {
+            let id = EntityId::from_uuid(row.get("id"));
+            let title = row.get("title");
+            areas.push(self.summarize(account_id, id, title).await?);
+        }
+        Ok(areas)
+    }
+
     async fn get_area(
         &self,
         account_id: AccountId,

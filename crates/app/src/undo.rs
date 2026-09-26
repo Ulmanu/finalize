@@ -212,6 +212,12 @@ pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Comm
         | Command::ReorderToday { .. }
         | Command::LogTodo { .. }
         | Command::LogProject { .. }
+        | Command::RestoreProject { .. }
+        | Command::RestoreArea { .. }
+        | Command::PurgeTodo { .. }
+        | Command::PurgeProject { .. }
+        | Command::PurgeArea { .. }
+        | Command::EmptyTrash
         | Command::CreateTag { .. }
         | Command::RenameTag { .. }
         | Command::MoveTag { .. }

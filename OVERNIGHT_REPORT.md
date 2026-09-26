@@ -694,6 +694,33 @@ Agent: opencode (deepseek-v4.1-flash)
 - Live integrations not verified: PostgreSQL preference upsert and logbook ordering (no
   database).
 
+### 28 — `add-trash` — COMPLETE
+
+- Start: 2026-09-26 05:45 · End: 2026-09-26 06:45
+- Proposal validation: strict validation passed before archive.
+- Implementation: soft deletion across to-dos, projects, and areas feeds one Trash view;
+  `RestoreTodo`/`RestoreProject`/`RestoreArea` validate trashed state, clear terminal metadata,
+  and restore to-dos whose previous context is gone to Inbox deterministically (checked inside
+  the same unit of work so each restore performs exactly one optimistic-version save; restored
+  projects drop assignments to deleted areas); `PurgeTodo`/`PurgeProject`/`PurgeArea` permanently
+  delete rows only from Trash and `EmptyTrash` purges every trashed entity; PostgreSQL hard
+  deletes cascade placements/checklist/tag assignments and memory adapters clean maps and ranks;
+  read stores expose deleted project/area listings; the Trash page renders per-kind sections
+  with Restore and Delete permanently actions, an explicit Empty Trash form, and a Trash
+  navigation entry.
+- Migrations: none.
+- Tests: 3 testkit tests (soft deletion across kinds, restore fallback when the parent was
+  purged, guarded purge/empty-trash invariants) and 2 web tests (trash listing + restore round
+  trip, purge guard + empty trash); full workspace suite green plus fmt, arch-check, clippy,
+  WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-26-add-trash`; canonical `features/trash` spec created.
+- Commit: `feat(28): add Trash`
+- Decisions: purge removes rows immediately and leaves change-log records as sync history
+  (retention belongs to the later sync capability); restore fallback runs pre-save to keep one
+  version-guarded write.
+- Live integrations not verified: PostgreSQL purge cascades and deleted listings (no database).
+
 ## Run summary
 
 ### Completed changes
@@ -727,9 +754,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 25 | add-someday-projection | COMPLETE | `feat(25)` |
 | 26 | add-completion-and-cancellation | COMPLETE | `feat(26)` |
 | 27 | add-logbook | COMPLETE | `feat(27)` |
+| 28 | add-trash | COMPLETE | `feat(28)` |
 
-- Completed proposal range: 01–27 (27 of 74).
-- Incomplete: 28–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–28 (28 of 74).
+- Incomplete: 29–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 15 (bootstrap + 13 changes + this report).
 - Branch: `agent/things-web-overnight`
