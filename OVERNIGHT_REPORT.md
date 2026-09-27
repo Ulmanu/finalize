@@ -930,6 +930,32 @@ Agent: opencode (deepseek-v4.1-flash)
   quick destinations reuse the schedule route; reminder clearing never gated.
 - Live integrations not verified: browser-native picker widgets; reminder delivery.
 
+### 37 — `add-natural-language-dates` — COMPLETE
+
+- Start: 2026-09-27 15:10 · End: 2026-09-27 16:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_domain::natural_date` provides `parse_natural_date(expression, base,
+  Option<Locale>)` with relative keywords (today/tomorrow/tonight/next week), offsets (`in N
+  days/weeks/months`, `N days from now`), upcoming vs. following-week weekdays, named month/day
+  forms with ordinal stripping and year roll-forward, locale-resolved numeric dates
+  (`Locale::EnUs`/`EnGb`), reminder time extraction (`9:30am`, `21:00`, `tonight` → 19:00), and a
+  typed error set including `Ambiguous { candidates }` when no locale is supplied; the schedule
+  route accepts `when=natural&text=...` and the row editor renders a labeled Natural date input.
+- Migrations: none.
+- Tests: 6 domain unit tests (keywords/offsets, weekdays, named months, locale + ambiguity,
+  reminder times, recoverable errors) and 1 web test (input markup, `tomorrow` and `jun 20`
+  commits, unknown-expression rejection preserving schedule); full workspace suite green.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live-browser gap: inline suggestion chips for parsed dates belong to the hydrated client;
+  the input and parser are fully deterministic without script.
+- Archive: `2026-09-27-add-natural-language-dates`; canonical `features/natural-language-dates`
+  spec created.
+- Commit: `feat(37): add natural language dates`
+- Decisions: en-US locale default at the call site until account preferences exist; only the date
+  part schedules (parsed reminder times are exposed for later consumption); past explicit dates
+  roll forward to the next year.
+- Live integrations not verified: none beyond the documented hydration gap.
+
 ## Run summary
 
 ### Completed changes
@@ -972,12 +998,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 34 | add-magic-plus | COMPLETE | `feat(34)` |
 | 35 | add-expanded-item-editor | COMPLETE | `feat(35)` |
 | 36 | add-date-pickers | COMPLETE | `feat(36)` |
+| 37 | add-natural-language-dates | COMPLETE | `feat(37)` |
 
-- Completed proposal range: 01–36 (36 of 74).
-- Incomplete: 37–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–37 (37 of 74).
+- Incomplete: 38–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 56 through change 36 (bootstrap, 36 numbered
-  changes, spec/report docs commits; HEAD will be the change-36 commit).
+- Total commits on `agent/things-web-overnight`: 57 through change 37 (bootstrap, 37 numbered
+  changes, spec/report docs commits; HEAD will be the change-37 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1043,10 +1070,10 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 37–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 38–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
-   composition, inline editor and picker composition, read-store patterns, and test harnesses are
-   in place to make each one mechanical. Next: 37.
+   composition, inline editor/picker/natural-date composition, read-store patterns, and test
+   harnesses are in place to make each one mechanical. Next: 38.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1064,9 +1091,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 36): all quality gates green
+- Current state at HEAD (change 37): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  36/36 passing; `git status` clean.
+  37/37 passing; `git status` clean.
 
 

@@ -1770,6 +1770,24 @@ fn TodoRow(
                                         />
                                         <button type="submit" class="row-action">"When date"</button>
                                     </form>
+                                    <form method="post" action=schedule_target.clone() class="inline-form">
+                                        <input
+                                            type="hidden"
+                                            name="return_to"
+                                            value=editor.return_to.clone()
+                                        />
+                                        <input type="hidden" name="when" value="natural"/>
+                                        <input
+                                            type="text"
+                                            name="text"
+                                            aria-label="Natural date"
+                                            placeholder="tomorrow, friday, jun 20"
+                                            data-testid="editor-natural-date"
+                                        />
+                                        <button type="submit" class="row-action">
+                                            "Parse date"
+                                        </button>
+                                    </form>
                                     <span class="editor-meta-label">"Deadline"</span>
                                     <form method="post" action=deadline_target.clone() class="inline-form">
                                         <input

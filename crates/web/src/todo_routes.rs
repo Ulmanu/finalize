@@ -15,6 +15,7 @@ use momentum_app::commands::{ReminderInput, ScheduleInput};
 use momentum_app::movement::Destination;
 use momentum_app::session::SessionState;
 use momentum_app::todos::{QuickSchedule, TodoService};
+use momentum_domain::natural_date::{parse_natural_date, Locale};
 use momentum_domain::time::{local_datetime_to_utc, parse_local_datetime, LocalDate};
 use momentum_domain::AccountId;
 use momentum_domain::EntityId;
@@ -523,6 +524,8 @@ struct ScheduleForm {
     #[serde(default)]
     date: Option<String>,
     #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
     return_to: Option<String>,
 }
 
@@ -568,6 +571,17 @@ async fn schedule_todo(
             service
                 .schedule_quick(account_id, id, QuickSchedule::Anytime, today)
                 .await
+        }
+        "natural" => {
+            let expression = form.text.as_deref().unwrap_or_default();
+            match parse_natural_date(expression, service.local_today(), Some(Locale::EnUs)) {
+                Ok(parsed) => {
+                    service
+                        .schedule(account_id, id, ScheduleInput::On(parsed.date))
+                        .await
+                }
+                Err(_) => return redirect(&format!("{target}?error=schedule")),
+            }
         }
         "date" => {
             let parsed = form

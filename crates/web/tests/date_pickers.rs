@@ -213,6 +213,73 @@ async fn when_deadline_and_reminder_commit_independently() {
 }
 
 #[tokio::test]
+async fn natural_date_expression_schedules_and_rejects_unknown_input() {
+    let h = harness().await;
+    let id = create(&h, "Alpha").await;
+
+    let (_, body) = request(&h, "GET", "/inbox", None).await;
+    assert!(
+        body.contains("data-testid=\"editor-natural-date\""),
+        "{body}"
+    );
+    assert!(body.contains("Parse date"), "{body}");
+
+    let (status, _) = request(
+        &h,
+        "POST",
+        &format!("/todos/{id}/schedule"),
+        Some("when=natural&text=tomorrow&return_to=%2Finbox"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        h.todos
+            .get(h.account_id, id)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(h.todos.local_today().next_day())
+    );
+
+    let (status, _) = request(
+        &h,
+        "POST",
+        &format!("/todos/{id}/schedule"),
+        Some("when=natural&text=jun+20&return_to=%2Finbox"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        h.todos
+            .get(h.account_id, id)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(date(20))
+    );
+
+    let (status, _) = request(
+        &h,
+        "POST",
+        &format!("/todos/{id}/schedule"),
+        Some("when=natural&text=whenever&return_to=%2Finbox"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        h.todos
+            .get(h.account_id, id)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(date(20))
+    );
+}
+
+#[tokio::test]
 async fn reminder_requires_schedule_and_valid_inputs() {
     let h = harness().await;
     let unscheduled = create(&h, "Unscheduled").await;
