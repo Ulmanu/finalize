@@ -886,7 +886,7 @@ impl TodoService {
         .await
     }
 
-    async fn dispatch(
+    pub(crate) async fn dispatch(
         &self,
         account_id: AccountId,
         command: Command,

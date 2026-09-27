@@ -821,6 +821,36 @@ Agent: opencode (deepseek-v4.1-flash)
   untouched.
 - Live integrations not verified: browser pointer gesture layer (no browser harness yet).
 
+### 33 — `add-multi-selection` — COMPLETE
+
+- Start: 2026-09-27 11:10 · End: 2026-09-27 12:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::selection::Selection` implements single, toggle, anchored
+  range over the visible order, select-all, clear, and `retain_visible` pruning (selection is
+  presentation state and never persists); `momentum_app::bulk::{BulkService, BulkAction,
+  BulkOutcome}` applies complete, cancel, delete, schedule, deadline, move, and tag assignment
+  to each selected ID through the same version-guarded commands and records explicit per-item
+  successes/failures; the Inbox list renders a labeled checkbox per row, a project-aware bulk
+  form posting to `POST /todos/bulk` (action select, date, destination, tag), with
+  `?error=selection` for empty selections and `?error=bulk` on partial failure or incomplete
+  parameters; `form_urlencoded` parses repeated `ids` fields that the serde form extractor
+  cannot collect.
+- Migrations: none.
+- Tests: 5 app unit tests (toggle/anchor, range replacement, hidden IDs, select-all/clear,
+  pruning), 3 testkit tests (mixed per-item results with canonical preservation, schedule +
+  deadline + move, tag assignment + delete), 3 web tests (checkbox/form markup, bulk complete
+  with failures, bulk schedule/delete); full workspace suite green plus fmt, arch-check, clippy,
+  WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live-browser gap: interactive multi-select (shift-range, select-all shortcut) attaches to
+  the same `Selection` machine from the hydrated client; the server-rendered checkbox form and
+  the pure state machine are both tested, matching changes 32/71/72.
+- Archive: `2026-09-27-add-multi-selection`; canonical `features/multi-selection` spec created.
+- Commit: `feat(33): add multi selection`
+- Decisions: bulk operations reuse single-item commands for undo/version parity; repeated form
+  keys are parsed manually; selection is client/browser state, not synchronized domain data.
+- Live integrations not verified: browser shift-range/keyboard selection gesture layer.
+
 ## Run summary
 
 ### Completed changes
@@ -859,12 +889,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 30 | add-project-progress | COMPLETE | `feat(30)` |
 | 31 | add-move-engine | COMPLETE | `feat(31)` |
 | 32 | add-drag-and-drop | COMPLETE | `feat(32)` |
+| 33 | add-multi-selection | COMPLETE | `feat(33)` |
 
-- Completed proposal range: 01–32 (32 of 74).
-- Incomplete: 33–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–33 (33 of 74).
+- Incomplete: 34–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 51 through change 32 (bootstrap, 32 numbered
-  changes, spec/report docs commits; HEAD `ad9f5ce` at the time of this note).
+- Total commits on `agent/things-web-overnight`: 53 through change 33 (bootstrap, 33 numbered
+  changes, spec/report docs commits; HEAD will be the change-33 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -930,9 +961,9 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 33–74, strictly in order; the workspace, command layer, projection scopes,
-   move engine, drag/drop drop-target operations, read-store patterns, and test harnesses are in
-   place to make each one mechanical. Next: 33 (`add-multi-selection`).
+1. Changes 34–74, strictly in order; the workspace, command layer, projection scopes,
+   move engine, drag/drop drop-target operations, selection/bulk layer, read-store patterns, and
+   test harnesses are in place to make each one mechanical. Next: 34.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -950,9 +981,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD `ad9f5ce` (change 32): all quality gates green
+- Current state at HEAD (change 33): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  32/32 passing; `git status` clean.
+  33/33 passing; `git status` clean.
 
 

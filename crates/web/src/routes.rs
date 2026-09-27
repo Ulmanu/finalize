@@ -1056,8 +1056,10 @@ pub fn InboxPage() -> impl IntoView {
 fn InboxList() -> impl IntoView {
     let service = use_context::<Option<Arc<TodoService>>>().flatten();
     let tag_service = use_context::<Option<Arc<TagService>>>().flatten();
+    let project_service = use_context::<Option<Arc<ProjectService>>>().flatten();
     let account = use_account();
     let account_for_tags = account.clone();
+    let account_for_projects = account.clone();
     let today = service.as_ref().map(|service| service.local_today());
     let query = use_query_map();
     let todos = AsyncDerived::new(move || {
@@ -1076,6 +1078,18 @@ fn InboxList() -> impl IntoView {
     let tags = AsyncDerived::new(move || {
         let service = tag_service.clone();
         let account = account_for_tags.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+    let projects = AsyncDerived::new(move || {
+        let service = project_service.clone();
+        let account = account_for_projects.clone();
         async move {
             match (service, account) {
                 (Some(service), Some(account)) => {
@@ -1200,28 +1214,93 @@ fn InboxList() -> impl IntoView {
                                 }
                                     .into_any()
                             } else {
+                                let rows = todos
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(index, todo)| {
+                                        let position = format!("/todos/{}/position", todo.id);
+                                        view! {
+                                            <TodoRow
+                                                todo=todo
+                                                today=today
+                                                drag_index=Some(index)
+                                                position_action=Some(position)
+                                                position_return_to="/inbox"
+                                                selectable=true
+                                            />
+                                        }
+                                    })
+                                    .collect_view();
+                                let tag_options = tags
+                                    .get()
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .map(|tag| {
+                                        view! {
+                                            <option value=tag.id.to_string()>{tag.title}</option>
+                                        }
+                                    })
+                                    .collect_view();
+                                let project_options = projects
+                                    .get()
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .map(|project| {
+                                        let value = format!("project:{}", project.id);
+                                        view! { <option value=value>{project.title}</option> }
+                                    })
+                                    .collect_view();
                                 view! {
-                                    <ul class="task-list" data-testid="task-list">
-                                        {todos
-                                            .into_iter()
-                                            .enumerate()
-                                            .map(|(index, todo)| {
-                                                let position = format!(
-                                                    "/todos/{}/position",
-                                                    todo.id,
-                                                );
-                                                view! {
-                                                    <TodoRow
-                                                        todo=todo
-                                                        today=today
-                                                        drag_index=Some(index)
-                                                        position_action=Some(position)
-                                                        position_return_to="/inbox"
-                                                    />
-                                                }
-                                            })
-                                            .collect_view()}
-                                    </ul>
+                                    <form
+                                        id="bulk-form"
+                                        method="post"
+                                        action="/todos/bulk"
+                                        class="bulk-form"
+                                        data-testid="bulk-form"
+                                    >
+                                        <input type="hidden" name="return_to" value="/inbox"/>
+                                        <ul class="task-list" data-testid="task-list">
+                                            {rows}
+                                        </ul>
+                                        <div class="bulk-actions" data-testid="bulk-actions">
+                                            <select name="action" aria-label="Bulk action">
+                                                <option value="complete">"Complete"</option>
+                                                <option value="cancel">"Cancel"</option>
+                                                <option value="delete">"Delete"</option>
+                                                <option value="schedule_today">"Schedule today"</option>
+                                                <option value="schedule_evening">
+                                                    "Schedule this evening"
+                                                </option>
+                                                <option value="schedule_tomorrow">
+                                                    "Schedule tomorrow"
+                                                </option>
+                                                <option value="schedule_someday">"Someday"</option>
+                                                <option value="schedule_anytime">"Anytime"</option>
+                                                <option value="deadline_on">"Deadline on"</option>
+                                                <option value="deadline_none">"Clear deadline"</option>
+                                                <option value="move">"Move to"</option>
+                                                <option value="tag">"Add tag"</option>
+                                            </select>
+                                            <input
+                                                type="date"
+                                                name="date"
+                                                aria-label="Bulk date"
+                                                class="bulk-date"
+                                            />
+                                            <select name="destination" aria-label="Bulk destination">
+                                                <option value="">"Destination"</option>
+                                                <option value="inbox">"Inbox"</option>
+                                                {project_options}
+                                            </select>
+                                            <select name="tag" aria-label="Bulk tag">
+                                                <option value="">"Tag"</option>
+                                                {tag_options}
+                                            </select>
+                                            <button type="submit" class="button-primary">
+                                                "Apply to selected"
+                                            </button>
+                                        </div>
+                                    </form>
                                 }
                                     .into_any()
                             }
@@ -1241,6 +1320,7 @@ fn TodoRow(
     #[prop(default = None)] position_action: Option<String>,
     #[prop(default = None)] drag_index: Option<usize>,
     #[prop(into, default = String::new())] position_return_to: String,
+    #[prop(default = false)] selectable: bool,
 ) -> impl IntoView {
     let id = todo.id;
     let title = todo.title.clone();
@@ -1285,6 +1365,19 @@ fn TodoRow(
             data-drag-index=drag_index.map(|index| index.to_string())
             data-drop-position=drag_index.map(|index| (index + 1).to_string())
         >
+            {selectable
+                .then(|| {
+                    view! {
+                        <input
+                            type="checkbox"
+                            name="ids"
+                            value=id.to_string()
+                            class="bulk-select"
+                            aria-label=format!("Select {title}")
+                            data-testid="bulk-select"
+                        />
+                    }
+                })}
             <CheckControl checked=completed label=title.clone()/>
             <div class="task-row-body">
                 <a class="task-title" href=open_target.clone()>

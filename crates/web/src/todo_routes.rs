@@ -10,9 +10,12 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Extension, Form, Router};
+use momentum_app::bulk::{BulkAction, BulkService};
 use momentum_app::commands::ScheduleInput;
+use momentum_app::movement::Destination;
 use momentum_app::session::SessionState;
 use momentum_app::todos::{QuickSchedule, TodoService};
+use momentum_domain::time::LocalDate;
 use momentum_domain::AccountId;
 use momentum_domain::EntityId;
 use serde::Deserialize;
@@ -35,6 +38,7 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/move-up", post(move_up))
         .route("/todos/{todo_id}/move-down", post(move_down))
         .route("/todos/{todo_id}/position", post(move_to_position))
+        .route("/todos/bulk", post(bulk_action))
         .route(
             "/todos/{todo_id}/today-position",
             post(move_today_to_position),
@@ -267,6 +271,78 @@ struct PositionForm {
     position: String,
     #[serde(default)]
     return_to: Option<String>,
+}
+
+fn form_pairs(body: &str) -> Vec<(String, String)> {
+    form_urlencoded::parse(body.as_bytes())
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect()
+}
+
+async fn bulk_action(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    body: String,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let pairs = form_pairs(&body);
+    let field = |name: &str| {
+        pairs
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.clone())
+    };
+    let target = field("return_to")
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/inbox".to_string());
+    let ids: Vec<EntityId> = pairs
+        .iter()
+        .filter(|(key, _)| key == "ids")
+        .filter_map(|(_, value)| value.parse::<EntityId>().ok())
+        .collect();
+    if ids.is_empty() {
+        return redirect(&format!("{target}?error=selection"));
+    }
+    let today = service.local_today();
+    let date = || field("date").and_then(|value| value.parse::<LocalDate>().ok());
+    let action = match field("action").as_deref() {
+        Some("complete") => Some(BulkAction::Complete),
+        Some("cancel") => Some(BulkAction::Cancel),
+        Some("delete") => Some(BulkAction::Delete),
+        Some("schedule_today") => Some(BulkAction::Schedule(ScheduleInput::On(today))),
+        Some("schedule_evening") => Some(BulkAction::Schedule(ScheduleInput::ThisEvening(today))),
+        Some("schedule_tomorrow") => {
+            Some(BulkAction::Schedule(ScheduleInput::On(today.next_day())))
+        }
+        Some("schedule_someday") => Some(BulkAction::Schedule(ScheduleInput::Someday)),
+        Some("schedule_anytime") => Some(BulkAction::Schedule(ScheduleInput::Anytime)),
+        Some("deadline_on") => date().map(|date| BulkAction::SetDeadline(Some(date))),
+        Some("deadline_none") => Some(BulkAction::SetDeadline(None)),
+        Some("move") => match field("destination").as_deref() {
+            Some("inbox") => Some(BulkAction::Move(Destination::Inbox)),
+            Some(destination) => destination
+                .strip_prefix("project:")
+                .and_then(|raw| raw.parse::<EntityId>().ok())
+                .map(|project| BulkAction::Move(Destination::Project(project))),
+            None => None,
+        },
+        Some("tag") => field("tag")
+            .and_then(|value| value.parse::<EntityId>().ok())
+            .map(BulkAction::AssignTag),
+        _ => None,
+    };
+    let Some(action) = action else {
+        return redirect(&format!("{target}?error=bulk"));
+    };
+    let bulk = BulkService::new(service, state.tags.clone());
+    let outcome = bulk.apply(account_id, &ids, &action).await;
+    if outcome.is_full_success() {
+        redirect(&target)
+    } else {
+        redirect(&format!("{target}?error=bulk"))
+    }
 }
 
 async fn move_to_position(
