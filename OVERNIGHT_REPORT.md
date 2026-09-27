@@ -792,6 +792,35 @@ Agent: opencode (deepseek-v4.1-flash)
   not-found rather than validation errors.
 - Live integrations not verified: none specific to this change.
 
+### 32 — `add-drag-and-drop` — COMPLETE
+
+- Start: 2026-09-27 10:20 · End: 2026-09-27 11:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: `MoveTodoToPosition`/`MoveTodayToPosition` add explicit insertion-position
+  reordering (zero-based index clamped to bounds) via the ordering engine, updating only the
+  moved item's rank and any rebalanced neighbors; cross-context drops call the move engine and
+  Upcoming day drops call the schedule command; rows emit `draggable`, `data-drag-index`, and
+  `data-drop-position` (Upcoming day sections emit `data-drop-date`) and every row carries a
+  labeled 1-based position form ("Move here") for keyboard parity; routes `/todos/{id}/position`
+  and `/todos/{id}/today-position` were added.
+- Migrations: none.
+- Tests: 3 testkit tests (positional context reorder with clamping/no-op and data preservation,
+  independent Today-bucket ordering with context stability and non-today rejection, day-drop
+  rescheduling plus cross-context drop via the engine) and 2 web tests (drop hooks in SSR markup
+  and the position form reordering Inbox, Today positional drop plus Upcoming day targets);
+  full workspace suite green plus fmt, arch-check, clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live-browser gap: the pointer/touch gesture layer attaches to the rendered drop hooks
+  from the hydrated Rust/WASM client, which is built but not yet wired to hand-written-free
+  bootstrap glue; the drop operations, insertion semantics, and accessible equivalents are all
+  server-rendered and tested. This matches the documented hydration-parity gap (changes 71/72).
+- Archive: `2026-09-27-add-drag-and-drop`; canonical `features/drag-and-drop` spec created.
+- Commit: `feat(32): add drag and drop`
+- Decisions: drops are modeled as insertion positions and destinations rather than pointer
+  events so the authoritative behavior is server-testable; failed drops leave ordering
+  untouched.
+- Live integrations not verified: browser pointer gesture layer (no browser harness yet).
+
 ## Run summary
 
 ### Completed changes
@@ -829,9 +858,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 29 | add-special-lists | COMPLETE | `feat(29)` |
 | 30 | add-project-progress | COMPLETE | `feat(30)` |
 | 31 | add-move-engine | COMPLETE | `feat(31)` |
+| 32 | add-drag-and-drop | COMPLETE | `feat(32)` |
 
-- Completed proposal range: 01–31 (31 of 74).
-- Incomplete: 32–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–32 (32 of 74).
+- Incomplete: 33–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 49 through change 31 (bootstrap, 31 numbered
   changes, spec/report docs commits; HEAD `30d87c7` at the time of this note).

@@ -476,7 +476,8 @@ fn UpcomingAgendaView() -> impl IntoView {
                                             <section
                                                 class="upcoming-day"
                                                 data-testid="upcoming-day"
-                                                data-date=iso
+                                                data-date=iso.clone()
+                                                data-drop-date=iso
                                             >
                                                 <h2 class="section-heading">{label}</h2>
                                                 <ul
@@ -486,12 +487,14 @@ fn UpcomingAgendaView() -> impl IntoView {
                                                     {day
                                                         .todos
                                                         .into_iter()
-                                                        .map(|todo| {
+                                                        .enumerate()
+                                                        .map(|(index, todo)| {
                                                             view! {
                                                                 <TodoRow
                                                                     todo=todo
                                                                     today=today
                                                                     show_date_move=true
+                                                                    drag_index=Some(index)
                                                                 />
                                                             }
                                                         })
@@ -1201,7 +1204,22 @@ fn InboxList() -> impl IntoView {
                                     <ul class="task-list" data-testid="task-list">
                                         {todos
                                             .into_iter()
-                                            .map(|todo| view! { <TodoRow todo=todo today=today/> })
+                                            .enumerate()
+                                            .map(|(index, todo)| {
+                                                let position = format!(
+                                                    "/todos/{}/position",
+                                                    todo.id,
+                                                );
+                                                view! {
+                                                    <TodoRow
+                                                        todo=todo
+                                                        today=today
+                                                        drag_index=Some(index)
+                                                        position_action=Some(position)
+                                                        position_return_to="/inbox"
+                                                    />
+                                                }
+                                            })
                                             .collect_view()}
                                     </ul>
                                 }
@@ -1220,6 +1238,9 @@ fn TodoRow(
     #[prop(default = None)] today: Option<LocalDate>,
     #[prop(default = false)] today_order: bool,
     #[prop(default = false)] show_date_move: bool,
+    #[prop(default = None)] position_action: Option<String>,
+    #[prop(default = None)] drag_index: Option<usize>,
+    #[prop(into, default = String::new())] position_return_to: String,
 ) -> impl IntoView {
     let id = todo.id;
     let title = todo.title.clone();
@@ -1256,7 +1277,14 @@ fn TodoRow(
     let note = (!todo.notes.is_empty()).then(|| todo.notes.clone());
 
     view! {
-        <li class=row_class data-testid="task-row" data-todo-id=id.to_string()>
+        <li
+            class=row_class
+            data-testid="task-row"
+            data-todo-id=id.to_string()
+            draggable=drag_index.map(|_| "true")
+            data-drag-index=drag_index.map(|index| index.to_string())
+            data-drop-position=drag_index.map(|index| (index + 1).to_string())
+        >
             <CheckControl checked=completed label=title.clone()/>
             <div class="task-row-body">
                 <a class="task-title" href=open_target.clone()>
@@ -1325,6 +1353,30 @@ fn TodoRow(
                 <form method="post" action=delete_target>
                     <button type="submit" class="row-action" aria-label="Delete to-do">"Delete"</button>
                 </form>
+                {position_action
+                    .map(|action| {
+                        let return_to = position_return_to.clone();
+                        view! {
+                            <form method="post" action=action class="row-schedule">
+                                <input type="hidden" name="return_to" value=return_to/>
+                                <input
+                                    type="number"
+                                    name="position"
+                                    min="1"
+                                    value="1"
+                                    aria-label="Drop position"
+                                    class="position-input"
+                                />
+                                <button
+                                    type="submit"
+                                    class="row-action"
+                                    aria-label="Move to position"
+                                >
+                                    "Move here"
+                                </button>
+                            </form>
+                        }
+                    })}
                 <a class="row-action" href=open_target aria-label="Open to-do">"Edit"</a>
             </div>
         </li>

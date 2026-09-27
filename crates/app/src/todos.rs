@@ -374,6 +374,36 @@ impl TodoService {
         self.dispatch(account_id, Command::EmptyTrash).await
     }
 
+    /// Moves a to-do to an explicit insertion position within its contextual scope.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn move_to_position(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        position: usize,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::MoveTodoToPosition { id, position })
+            .await
+    }
+
+    /// Moves a Today item to an explicit insertion position within its Today/Evening bucket.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn move_today_to_position(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        position: usize,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::MoveTodayToPosition { id, position })
+            .await
+    }
+
     /// Moves a Today item within its Today/This Evening ordering bucket.
     ///
     /// # Errors

@@ -34,6 +34,11 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/duplicate", post(duplicate_todo))
         .route("/todos/{todo_id}/move-up", post(move_up))
         .route("/todos/{todo_id}/move-down", post(move_down))
+        .route("/todos/{todo_id}/position", post(move_to_position))
+        .route(
+            "/todos/{todo_id}/today-position",
+            post(move_today_to_position),
+        )
         .route("/todos/{todo_id}/today-up", post(move_today_up))
         .route("/todos/{todo_id}/today-down", post(move_today_down))
         .route("/todos/{todo_id}/schedule", post(schedule_todo))
@@ -255,6 +260,66 @@ async fn move_down(
     Form(form): Form<RedirectForm>,
 ) -> Response {
     reorder(&state, &session, &id, false, &back(&form)).await
+}
+
+#[derive(Debug, Deserialize)]
+struct PositionForm {
+    position: String,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn move_to_position(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<PositionForm>,
+) -> Response {
+    position_request(&state, &session, &todo_id, form, false).await
+}
+
+async fn move_today_to_position(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<PositionForm>,
+) -> Response {
+    position_request(&state, &session, &todo_id, form, true).await
+}
+
+async fn position_request(
+    state: &AppState,
+    session: &SessionState,
+    raw_id: &str,
+    form: PositionForm,
+    today_scope: bool,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = raw_id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = form
+        .return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/inbox".to_string());
+    // Drop positions are 1-based in the UI; commands use zero-based indices.
+    let Ok(display_position) = form.position.trim().parse::<usize>() else {
+        return redirect(&format!("{target}?error=position"));
+    };
+    let position = display_position.saturating_sub(1);
+    let result = if today_scope {
+        service
+            .move_today_to_position(account_id, id, position)
+            .await
+    } else {
+        service.move_to_position(account_id, id, position).await
+    };
+    match result {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=position")),
+    }
 }
 
 async fn move_today_up(

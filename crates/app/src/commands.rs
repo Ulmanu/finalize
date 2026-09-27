@@ -302,6 +302,20 @@ pub enum Command {
         /// Destination parent, or `None` for top level.
         parent: Option<EntityId>,
     },
+    /// Moves a to-do to an explicit insertion position within its contextual scope.
+    MoveTodoToPosition {
+        /// Entity to move.
+        id: EntityId,
+        /// Zero-based insertion position, clamped to the scope bounds.
+        position: usize,
+    },
+    /// Moves a Today item to an explicit insertion position within its Today/Evening bucket.
+    MoveTodayToPosition {
+        /// Entity to move.
+        id: EntityId,
+        /// Zero-based insertion position, clamped to the bucket bounds.
+        position: usize,
+    },
     /// Moves a Today item one position up or down within its Today/Evening bucket.
     ReorderToday {
         /// Entity to move.
@@ -451,6 +465,7 @@ impl Command {
             | Self::MoveProject { id, .. }
             | Self::DeleteProject { id, .. }
             | Self::ReorderToday { id, .. }
+            | Self::MoveTodayToPosition { id, .. }
             | Self::LogTodo { id }
             | Self::LogProject { id }
             | Self::RenameHeading { id, .. }
@@ -464,6 +479,7 @@ impl Command {
             | Self::DeleteTag { id } => Some(*id),
             Self::AssignTag { entity, .. } | Self::UnassignTag { entity, .. } => Some(*entity),
             Self::DuplicateTodo { id }
+            | Self::MoveTodoToPosition { id, .. }
             | Self::ReorderTodo { id, .. }
             | Self::SetTodoTitle { id, .. }
             | Self::SetTodoNotes { id, .. }
@@ -521,6 +537,8 @@ impl Command {
             Self::DeleteArea { .. } => "delete_area",
             Self::DuplicateTodo { .. } => "duplicate_todo",
             Self::ReorderTodo { .. } => "reorder_todo",
+            Self::MoveTodoToPosition { .. } => "move_todo_to_position",
+            Self::MoveTodayToPosition { .. } => "move_today_to_position",
             Self::RestoreProject { .. } => "restore_project",
             Self::RestoreArea { .. } => "restore_area",
             Self::PurgeTodo { .. } => "purge_todo",
@@ -1302,6 +1320,84 @@ impl CommandDispatcher {
                     Some(todo.id()),
                     vec![DomainEvent::TodoCreated { id: todo.id() }],
                 ))
+            }
+            Command::MoveTodoToPosition { id, position } => {
+                let todo = unit
+                    .load_todo(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let context = todo.context;
+                let items = unit.load_context_order(account_id, context).await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Context(context),
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                let current = order.position_of(*id).ok_or(CommandError::NotFound)?;
+                let target = (*position).min(order.items().len().saturating_sub(1));
+                if current != target {
+                    let change = order
+                        .move_item(*id, target)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    unit.set_context_rank(account_id, *id, change.rank).await?;
+                    for item in change.rebalanced {
+                        unit.set_context_rank(account_id, item.entity_id, item.rank)
+                            .await?;
+                    }
+                }
+                Ok((Some(*id), vec![DomainEvent::TodoReordered { id: *id }]))
+            }
+            Command::MoveTodayToPosition { id, position } => {
+                let todo = unit
+                    .load_todo(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let today = LocalDate::today_in_timezone(now, "UTC");
+                if !todo.is_open() || !todo.schedule.is_actionable(today) {
+                    return Err(CommandError::Validation(
+                        "only open Today items can be repositioned in Today".to_string(),
+                    ));
+                }
+                let scope = if todo.schedule.is_evening() {
+                    crate::ordering::ProjectionScope::ThisEvening
+                } else {
+                    crate::ordering::ProjectionScope::Today
+                };
+                let items = unit.load_projection_order(account_id, scope).await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Today,
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                if order.position_of(*id).is_none() {
+                    let change = order
+                        .append(*id)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    unit.set_projection_rank(account_id, scope, *id, change.rank)
+                        .await?;
+                    for item in change.rebalanced {
+                        unit.set_projection_rank(account_id, scope, item.entity_id, item.rank)
+                            .await?;
+                    }
+                }
+                let current = order.position_of(*id).ok_or(CommandError::NotFound)?;
+                let target = (*position).min(order.items().len().saturating_sub(1));
+                if current != target {
+                    let change = order
+                        .move_item(*id, target)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    unit.set_projection_rank(account_id, scope, *id, change.rank)
+                        .await?;
+                    for item in change.rebalanced {
+                        unit.set_projection_rank(account_id, scope, item.entity_id, item.rank)
+                            .await?;
+                    }
+                }
+                Ok((Some(*id), vec![DomainEvent::TodayReordered { id: *id }]))
             }
             Command::ReorderTodo { id, direction } => {
                 let todo = unit
@@ -2264,6 +2360,8 @@ fn apply_to_todo(
         | Command::ArchiveHeading { .. }
         | Command::RestoreHeading { .. }
         | Command::ReorderToday { .. }
+        | Command::MoveTodoToPosition { .. }
+        | Command::MoveTodayToPosition { .. }
         | Command::LogTodo { .. }
         | Command::LogProject { .. }
         | Command::RestoreProject { .. }

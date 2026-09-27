@@ -211,6 +211,8 @@ pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Comm
         | Command::ReorderChecklistItem { .. }
         | Command::ExpandChecklist { .. }
         | Command::ReorderToday { .. }
+        | Command::MoveTodoToPosition { .. }
+        | Command::MoveTodayToPosition { .. }
         | Command::LogTodo { .. }
         | Command::LogProject { .. }
         | Command::RestoreProject { .. }
