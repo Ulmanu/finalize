@@ -1455,6 +1455,9 @@ fn TodoRow(
         (label, matches!(state, Some(DeadlineState::Overdue)))
     });
     let note = (!todo.notes.is_empty()).then(|| todo.notes.clone());
+    let reminder = todo
+        .reminder
+        .map(|reminder| format!("Reminder: {}", reminder.at.format("%Y-%m-%d %H:%M UTC")));
     let editor_title = title.clone();
 
     view! {
@@ -1528,6 +1531,7 @@ fn TodoRow(
                             </form>
                         </details>
                     }
+                    .into_any()
                 })}
             {selectable
                 .then(|| {
@@ -1565,6 +1569,14 @@ fn TodoRow(
                                 "row-badge date-badge date-badge-deadline"
                             };
                             view! { <span class=class data-testid="deadline-badge">{label}</span> }
+                        })}
+                    {reminder
+                        .map(|label| {
+                            view! {
+                                <span class="row-badge date-badge" data-testid="reminder-badge">
+                                    {label}
+                                </span>
+                            }
                         })}
                 </span>
             </div>
@@ -1722,7 +1734,11 @@ fn TodoRow(
                                 <div class="editor-meta" data-testid="editor-meta">
                                     <span class="editor-meta-label">"Schedule"</span>
                                     {quick_forms}
-                                    <form method="post" action=deadline_target class="inline-form">
+                                    <form
+                                        method="post"
+                                        action=deadline_target.clone()
+                                        class="inline-form"
+                                    >
                                         <input
                                             type="hidden"
                                             name="return_to"
@@ -1738,6 +1754,77 @@ fn TodoRow(
                                             "Set deadline"
                                         </button>
                                     </form>
+                                    <span class="editor-meta-label">"When"</span>
+                                    <form method="post" action=schedule_target.clone() class="inline-form">
+                                        <input
+                                            type="hidden"
+                                            name="return_to"
+                                            value=editor.return_to.clone()
+                                        />
+                                        <input type="hidden" name="when" value="date"/>
+                                        <input
+                                            type="date"
+                                            name="date"
+                                            aria-label="Schedule date"
+                                            data-testid="editor-schedule-date"
+                                        />
+                                        <button type="submit" class="row-action">"When date"</button>
+                                    </form>
+                                    <span class="editor-meta-label">"Deadline"</span>
+                                    <form method="post" action=deadline_target.clone() class="inline-form">
+                                        <input
+                                            type="hidden"
+                                            name="return_to"
+                                            value=editor.return_to.clone()
+                                        />
+                                        <input type="hidden" name="date" value=""/>
+                                        <button type="submit" class="row-action">
+                                            "Clear deadline"
+                                        </button>
+                                    </form>
+                                    <span class="editor-meta-label">"Reminder"</span>
+                                    <form
+                                        method="post"
+                                        action=format!("/todos/{id}/reminder")
+                                        class="inline-form"
+                                    >
+                                        <input
+                                            type="hidden"
+                                            name="return_to"
+                                            value=editor.return_to.clone()
+                                        />
+                                        <input
+                                            type="datetime-local"
+                                            name="at"
+                                            aria-label="Reminder time"
+                                            data-testid="editor-reminder"
+                                        />
+                                        <input
+                                            type="text"
+                                            name="timezone"
+                                            value="UTC"
+                                            aria-label="Reminder timezone"
+                                            class="timezone-input"
+                                        />
+                                        <button type="submit" class="row-action">
+                                            "Set reminder"
+                                        </button>
+                                    </form>
+                                    <form
+                                        method="post"
+                                        action=format!("/todos/{id}/reminder")
+                                        class="inline-form"
+                                    >
+                                        <input
+                                            type="hidden"
+                                            name="return_to"
+                                            value=editor.return_to.clone()
+                                        />
+                                        <input type="hidden" name="at" value=""/>
+                                        <button type="submit" class="row-action">
+                                            "Clear reminder"
+                                        </button>
+                                    </form>
                                     <span class="editor-meta-label">"Tags"</span>
                                     {tag_forms}
                                     <a href=detail_target class="row-action">
@@ -1747,6 +1834,7 @@ fn TodoRow(
                             </div>
                         </details>
                     }
+                    .into_any()
                 })}
         </li>
     }

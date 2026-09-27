@@ -2441,6 +2441,11 @@ fn apply_to_todo(
             Ok(DomainEvent::TodoDeadlineChanged { id })
         }
         Command::SetTodoReminder { reminder, .. } => {
+            if reminder.is_some() && todo.schedule.date().is_none() {
+                return Err(CommandError::Validation(
+                    "reminders require a scheduled date".to_string(),
+                ));
+            }
             let reminder = reminder
                 .clone()
                 .map(|reminder| Reminder::scheduled(reminder.at, reminder.timezone));

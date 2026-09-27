@@ -11,11 +11,11 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Extension, Form, Router};
 use momentum_app::bulk::{BulkAction, BulkService};
-use momentum_app::commands::ScheduleInput;
+use momentum_app::commands::{ReminderInput, ScheduleInput};
 use momentum_app::movement::Destination;
 use momentum_app::session::SessionState;
 use momentum_app::todos::{QuickSchedule, TodoService};
-use momentum_domain::time::LocalDate;
+use momentum_domain::time::{local_datetime_to_utc, parse_local_datetime, LocalDate};
 use momentum_domain::AccountId;
 use momentum_domain::EntityId;
 use serde::Deserialize;
@@ -48,6 +48,7 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/schedule", post(schedule_todo))
         .route("/todos/{todo_id}/move", post(move_todo))
         .route("/todos/{todo_id}/deadline", post(set_deadline))
+        .route("/todos/{todo_id}/reminder", post(set_reminder))
         .route("/todos/{todo_id}/checklist", post(add_checklist_item))
         .route("/todos/{todo_id}/checklist/expand", post(expand_checklist))
         .route(
@@ -641,6 +642,60 @@ async fn move_todo(
     match service.move_to(account_id, id, context).await {
         Ok(_) => redirect(&target),
         Err(_) => redirect(&format!("{target}?error=move")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ReminderForm {
+    #[serde(default)]
+    at: Option<String>,
+    #[serde(default)]
+    timezone: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn set_reminder(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<ReminderForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = todo_id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = form
+        .return_to
+        .as_deref()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or("/inbox")
+        .to_string();
+    let reminder = match form
+        .at
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(text) => {
+            let timezone = form
+                .timezone
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "UTC".to_string());
+            match parse_local_datetime(text)
+                .and_then(|local| local_datetime_to_utc(local, &timezone))
+            {
+                Ok(at) => Some(ReminderInput { at, timezone }),
+                Err(_) => return redirect(&format!("{target}?error=reminder")),
+            }
+        }
+        None => None,
+    };
+    match service.set_reminder(account_id, id, reminder).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=reminder")),
     }
 }
 

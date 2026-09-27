@@ -902,6 +902,34 @@ Agent: opencode (deepseek-v4.1-flash)
   command routes rather than introducing editor-specific endpoints.
 - Live integrations not verified: browser expansion animation.
 
+### 36 — `add-date-pickers` — COMPLETE
+
+- Start: 2026-09-27 14:10 · End: 2026-09-27 15:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: domain gained `parse_local_datetime` and `local_datetime_to_utc` (chrono-tz;
+  typed errors for invalid zones and daylight-saving gaps, ambiguous times resolve to the earliest
+  instant); `SetTodoReminder` now rejects attaching a reminder without a date-based schedule
+  (clearing stays allowed); new `POST /todos/{id}/reminder` maps local time + IANA timezone to a
+  UTC `ReminderInput` with `?error=reminder` continuation; the expanded row editor gained a When
+  date picker, deadline set/clear, reminder set/clear (labeled datetime-local + timezone inputs),
+  and rows show a reminder badge with the stored UTC instant.
+- Migrations: none.
+- Tests: 2 domain unit tests (conversion, DST gap/invalid zone/format), 2 testkit tests
+  (schedule-gated reminder attach/clear with timezone round-trip; deadline independence), 3 web
+  tests (picker markup, independent schedule/deadline/reminder commits with UTC conversion and
+  badge, schedule-gate plus invalid-zone rejection); full workspace suite green.
+- Fix: expanded-editor view depth exceeded test-thread stacks once the pickers landed; boxing the
+  editor and Magic Plus views with `.into_any()` restores safe SSR stack usage (relevant to
+  production 2 MB worker stacks too).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live-browser gap: native browser date/time pickers attach to these labeled inputs in the
+  hydrated client; the server-rendered inputs are fully functional without script.
+- Archive: `2026-09-27-add-date-pickers`; canonical `features/date-pickers` spec created.
+- Commit: `feat(36): add date pickers`
+- Decisions: explicit timezone carried by the form (preferences arrive with localization);
+  quick destinations reuse the schedule route; reminder clearing never gated.
+- Live integrations not verified: browser-native picker widgets; reminder delivery.
+
 ## Run summary
 
 ### Completed changes
@@ -943,12 +971,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 33 | add-multi-selection | COMPLETE | `feat(33)` |
 | 34 | add-magic-plus | COMPLETE | `feat(34)` |
 | 35 | add-expanded-item-editor | COMPLETE | `feat(35)` |
+| 36 | add-date-pickers | COMPLETE | `feat(36)` |
 
-- Completed proposal range: 01–35 (35 of 74).
-- Incomplete: 36–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–36 (36 of 74).
+- Incomplete: 37–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 55 through change 35 (bootstrap, 35 numbered
-  changes, spec/report docs commits; HEAD will be the change-35 commit).
+- Total commits on `agent/things-web-overnight`: 56 through change 36 (bootstrap, 36 numbered
+  changes, spec/report docs commits; HEAD will be the change-36 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1014,10 +1043,10 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 36–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 37–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
-   composition, inline editor composition, read-store patterns, and test harnesses are in place
-   to make each one mechanical. Next: 36.
+   composition, inline editor and picker composition, read-store patterns, and test harnesses are
+   in place to make each one mechanical. Next: 37.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1035,9 +1064,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 35): all quality gates green
+- Current state at HEAD (change 36): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  35/35 passing; `git status` clean.
+  36/36 passing; `git status` clean.
 
 

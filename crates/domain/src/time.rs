@@ -7,7 +7,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
@@ -23,6 +23,45 @@ pub enum TimeError {
     /// The UTC offset is outside the supported range.
     #[error("UTC offset in minutes is out of range")]
     InvalidOffset,
+    /// The timezone name is not a resolvable IANA zone.
+    #[error("invalid IANA timezone")]
+    InvalidTimezone,
+    /// The local time does not exist in the timezone (daylight-saving gap).
+    #[error("local time does not exist in the timezone")]
+    InvalidLocalTime,
+}
+
+/// Parses a `YYYY-MM-DDTHH:MM[:SS]` wall-clock local datetime.
+///
+/// # Errors
+///
+/// Returns [`TimeError::InvalidFormat`] when the text does not match.
+pub fn parse_local_datetime(text: &str) -> Result<NaiveDateTime, TimeError> {
+    NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M")
+        .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S"))
+        .map_err(|_| TimeError::InvalidFormat)
+}
+
+/// Converts a wall-clock local datetime in an IANA timezone to UTC.
+///
+/// Ambiguous local times (daylight-saving overlaps) resolve to the earliest instant.
+///
+/// # Errors
+///
+/// Returns [`TimeError::InvalidTimezone`] for unresolvable zone names and
+/// [`TimeError::InvalidLocalTime`] for local times that do not exist.
+pub fn local_datetime_to_utc(
+    local: NaiveDateTime,
+    timezone: &str,
+) -> Result<DateTime<Utc>, TimeError> {
+    let zone = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| TimeError::InvalidTimezone)?;
+    match zone.from_local_datetime(&local) {
+        chrono::LocalResult::Single(instant) => Ok(instant.with_timezone(&Utc)),
+        chrono::LocalResult::Ambiguous(first, _) => Ok(first.with_timezone(&Utc)),
+        chrono::LocalResult::None => Err(TimeError::InvalidLocalTime),
+    }
 }
 
 /// A local calendar date without a time component.
@@ -186,6 +225,31 @@ pub fn utc_midnight(date: LocalDate) -> DateTime<Utc> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn converts_local_datetime_in_named_timezone_to_utc() {
+        let local = parse_local_datetime("2026-06-20T09:00").expect("parse");
+        let at = local_datetime_to_utc(local, "Europe/Berlin").expect("convert");
+        assert_eq!(at, Utc.with_ymd_and_hms(2026, 6, 20, 7, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn rejects_invalid_timezone_and_nonexistent_local_time() {
+        let local = parse_local_datetime("2026-06-20T09:00").expect("parse");
+        assert_eq!(
+            local_datetime_to_utc(local, "Mars/Olympus"),
+            Err(TimeError::InvalidTimezone)
+        );
+        let gap = parse_local_datetime("2026-03-29T02:30").expect("parse");
+        assert_eq!(
+            local_datetime_to_utc(gap, "Europe/Berlin"),
+            Err(TimeError::InvalidLocalTime)
+        );
+        assert_eq!(
+            parse_local_datetime("not a time"),
+            Err(TimeError::InvalidFormat)
+        );
+    }
 
     #[test]
     fn derives_local_date_from_offset() {
