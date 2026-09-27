@@ -1262,6 +1262,12 @@ fn InboxList() -> impl IntoView {
                                 }
                                     .into_any()
                             } else {
+                                let tag_choices: Vec<(EntityId, String)> = tags
+                                    .get()
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .map(|tag| (tag.id, tag.title))
+                                    .collect();
                                 let rows = todos
                                     .into_iter()
                                     .enumerate()
@@ -1276,6 +1282,10 @@ fn InboxList() -> impl IntoView {
                                             schedule_kind: None,
                                             label: todo.title.clone(),
                                         };
+                                        let expand = RowEditorContext {
+                                            return_to: "/inbox".to_string(),
+                                            tags: tag_choices.clone(),
+                                        };
                                         view! {
                                             <TodoRow
                                                 todo=todo
@@ -1285,6 +1295,7 @@ fn InboxList() -> impl IntoView {
                                                 position_return_to="/inbox"
                                                 selectable=true
                                                 magic_plus=Some(magic_plus)
+                                                expand=Some(expand)
                                             />
                                         }
                                     })
@@ -1369,6 +1380,15 @@ fn InboxList() -> impl IntoView {
     }
 }
 
+/// Inline expanded editor configuration for a task row.
+#[derive(Clone, PartialEq)]
+pub struct RowEditorContext {
+    /// Page to return to after editor commits or cancels.
+    pub return_to: String,
+    /// Assignable tags as (identity, title) pairs shown as progressive metadata.
+    pub tags: Vec<(EntityId, String)>,
+}
+
 /// Where a Magic Plus insertion control creates its item.
 #[derive(Clone, PartialEq)]
 pub struct MagicPlusTarget {
@@ -1399,8 +1419,10 @@ fn TodoRow(
     #[prop(into, default = String::new())] position_return_to: String,
     #[prop(default = false)] selectable: bool,
     #[prop(default = None)] magic_plus: Option<MagicPlusTarget>,
+    #[prop(default = None)] expand: Option<RowEditorContext>,
 ) -> impl IntoView {
     let id = todo.id;
+    let selected_tags = todo.tags.clone();
     let title = todo.title.clone();
     let completed = todo.status == Status::Completed;
     let row_class = if completed {
@@ -1433,6 +1455,7 @@ fn TodoRow(
         (label, matches!(state, Some(DeadlineState::Overdue)))
     });
     let note = (!todo.notes.is_empty()).then(|| todo.notes.clone());
+    let editor_title = title.clone();
 
     view! {
         <li
@@ -1611,8 +1634,120 @@ fn TodoRow(
                             </form>
                         }
                     })}
-                <a class="row-action" href=open_target aria-label="Open to-do">"Edit"</a>
+                <a class="row-action" href=open_target.clone() aria-label="Open to-do">"Edit"</a>
             </div>
+            {expand
+                .map(|editor| {
+                    let title_value = editor_title.clone();
+                    let notes_value = todo.notes.clone();
+                    let save_target = format!("/todos/{id}");
+                    let deadline_target = format!("/todos/{id}/deadline");
+                    let schedule_target = format!("/todos/{id}/schedule");
+                    let detail_target = format!("/todos/{id}");
+                    let cancel_target = editor.return_to.clone();
+                    let quick = [
+                        ("today", "Today"),
+                        ("evening", "This Evening"),
+                        ("tomorrow", "Tomorrow"),
+                        ("someday", "Someday"),
+                        ("anytime", "Anytime"),
+                    ];
+                    let quick_forms = quick
+                        .into_iter()
+                        .map(|(when, label)| {
+                            let return_to = editor.return_to.clone();
+                            let target = schedule_target.clone();
+                            view! {
+                                <form method="post" action=target class="inline-form">
+                                    <input type="hidden" name="when" value=when/>
+                                    <input type="hidden" name="return_to" value=return_to/>
+                                    <button type="submit" class="row-action">{label}</button>
+                                </form>
+                            }
+                        })
+                        .collect_view();
+                    let tag_forms = editor
+                        .tags
+                        .into_iter()
+                        .map(|(tag_id, tag_title)| {
+                            let assigned = selected_tags.contains(&tag_id);
+                            let action = if assigned {
+                                format!("/entities/{id}/tags/{tag_id}/unassign")
+                            } else {
+                                format!("/entities/{id}/tags/{tag_id}/assign")
+                            };
+                            let label = if assigned {
+                                format!("Remove {tag_title}")
+                            } else {
+                                format!("Tag {tag_title}")
+                            };
+                            let return_to = editor.return_to.clone();
+                            view! {
+                                <form method="post" action=action class="inline-form">
+                                    <input type="hidden" name="return_to" value=return_to/>
+                                    <button type="submit" class="row-action">{label}</button>
+                                </form>
+                            }
+                        })
+                        .collect_view();
+                    view! {
+                        <details class="row-editor" data-testid="row-editor">
+                            <summary aria-label=format!("Edit {title_value}")>"Edit"</summary>
+                            <div class="editor-body">
+                                <form
+                                    method="post"
+                                    action=save_target
+                                    class="editor-form"
+                                    data-testid="editor-form"
+                                >
+                                    <input
+                                        type="hidden"
+                                        name="return_to"
+                                        value=editor.return_to.clone()
+                                    />
+                                    <input
+                                        type="text"
+                                        name="title"
+                                        value=title_value
+                                        aria-label="Title"
+                                        autocomplete="off"
+                                        required=true
+                                    />
+                                    <textarea name="notes" aria-label="Notes" rows="3">
+                                        {notes_value}
+                                    </textarea>
+                                    <button type="submit" class="button-primary">"Save"</button>
+                                    <a href=cancel_target class="row-action">"Cancel"</a>
+                                </form>
+                                <div class="editor-meta" data-testid="editor-meta">
+                                    <span class="editor-meta-label">"Schedule"</span>
+                                    {quick_forms}
+                                    <form method="post" action=deadline_target class="inline-form">
+                                        <input
+                                            type="hidden"
+                                            name="return_to"
+                                            value=editor.return_to.clone()
+                                        />
+                                        <input
+                                            type="date"
+                                            name="date"
+                                            aria-label="Deadline"
+                                            data-testid="editor-deadline"
+                                        />
+                                        <button type="submit" class="row-action">
+                                            "Set deadline"
+                                        </button>
+                                    </form>
+                                    <span class="editor-meta-label">"Tags"</span>
+                                    {tag_forms}
+                                    <a href=detail_target class="row-action">
+                                        "Checklist & recurrence"
+                                    </a>
+                                </div>
+                            </div>
+                        </details>
+                    }
+                })}
         </li>
     }
 }

@@ -213,6 +213,8 @@ struct UpdateTodoForm {
     title: String,
     #[serde(default)]
     notes: String,
+    #[serde(default)]
+    return_to: Option<String>,
 }
 
 async fn update_todo(
@@ -242,7 +244,11 @@ async fn update_todo(
     {
         return redirect(&format!("/todos/{id}?error=update"));
     }
-    redirect(&format!("/todos/{id}?saved=1"))
+    let target = form
+        .return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| format!("/todos/{id}"));
+    redirect(&format!("{target}?saved=1"))
 }
 
 async fn complete_todo(

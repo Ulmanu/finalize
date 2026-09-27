@@ -879,6 +879,29 @@ Agent: opencode (deepseek-v4.1-flash)
   rolled back.
 - Live integrations not verified: browser drag of the creation control.
 
+### 35 — `add-expanded-item-editor` — COMPLETE
+
+- Start: 2026-09-27 13:10 · End: 2026-09-27 14:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: Inbox rows expand in place via a native `<details data-testid="row-editor">`
+  carrying the title/notes commit form (posting to `POST /todos/{id}` with `return_to`), quick
+  schedule forms (today/evening/tomorrow/someday/anytime), a date deadline form, per-tag
+  assign/remove buttons, and a link to checklist/recurrence; `UpdateTodoForm` gained optional
+  `return_to` with `?saved=1` continuation; cancel is a plain navigation with no write; expansion
+  stays inside the row `<li>` so identity, list position, and selection checkboxes persist.
+- Migrations: none.
+- Tests: 3 web tests (editor + progressive metadata markup, commit with `?saved=1` plus quick
+  schedule/deadline/date reschedule, tag assign then removal affordance switching); full
+  workspace suite green plus fmt, arch-check, clippy, WASM build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live-browser gap: smooth animated expansion belongs to the hydrated client; the
+  accessible disclosure performs the same open/commit/cancel semantics now.
+- Archive: `2026-09-27-add-expanded-item-editor`; canonical `features/expanded-item-editor` spec.
+- Commit: `feat(35): add expanded item editor`
+- Decisions: kept existing closed-row controls unchanged; progressive metadata reuses existing
+  command routes rather than introducing editor-specific endpoints.
+- Live integrations not verified: browser expansion animation.
+
 ## Run summary
 
 ### Completed changes
@@ -919,12 +942,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 32 | add-drag-and-drop | COMPLETE | `feat(32)` |
 | 33 | add-multi-selection | COMPLETE | `feat(33)` |
 | 34 | add-magic-plus | COMPLETE | `feat(34)` |
+| 35 | add-expanded-item-editor | COMPLETE | `feat(35)` |
 
-- Completed proposal range: 01–34 (34 of 74).
-- Incomplete: 35–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–35 (35 of 74).
+- Incomplete: 36–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 54 through change 34 (bootstrap, 34 numbered
-  changes, spec/report docs commits; HEAD will be the change-34 commit).
+- Total commits on `agent/things-web-overnight`: 55 through change 35 (bootstrap, 35 numbered
+  changes, spec/report docs commits; HEAD will be the change-35 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -990,10 +1014,10 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 35–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 36–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
-   composition, read-store patterns, and test harnesses are in place to make each one mechanical.
-   Next: 35.
+   composition, inline editor composition, read-store patterns, and test harnesses are in place
+   to make each one mechanical. Next: 36.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1011,9 +1035,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 34): all quality gates green
+- Current state at HEAD (change 35): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  34/34 passing; `git status` clean.
+  35/35 passing; `git status` clean.
 
 
