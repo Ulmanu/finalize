@@ -114,6 +114,12 @@ struct CreateTodoForm {
     context_kind: Option<String>,
     #[serde(default)]
     context_id: Option<String>,
+    #[serde(default)]
+    position: Option<String>,
+    #[serde(default)]
+    position_scope: Option<String>,
+    #[serde(default)]
+    schedule_kind: Option<String>,
 }
 
 async fn create_todo(
@@ -154,13 +160,52 @@ async fn create_todo(
             ),
         _ => momentum_domain::model::ContextRef::Inbox,
     };
-    match service
+    let created = match service
         .create_in(account_id, &form.title, form.notes, context)
         .await
     {
-        Ok(_) => redirect(&target),
-        Err(_) => redirect(&format!("{target}?error=create")),
+        Ok(outcome) => outcome,
+        Err(_) => return redirect(&format!("{target}?error=create")),
+    };
+    let Some(id) = created.entity_id else {
+        return redirect(&target);
+    };
+    if let Some(quick) = form.schedule_kind.as_deref().and_then(|kind| match kind {
+        "today" => Some(QuickSchedule::Today),
+        "evening" => Some(QuickSchedule::ThisEvening),
+        "tomorrow" => Some(QuickSchedule::Tomorrow),
+        "someday" => Some(QuickSchedule::Someday),
+        "anytime" => Some(QuickSchedule::Anytime),
+        _ => None,
+    }) {
+        let today = service.local_today();
+        if service
+            .schedule_quick(account_id, id, quick, today)
+            .await
+            .is_err()
+        {
+            return redirect(&format!("{target}?error=schedule"));
+        }
     }
+    if let Some(position) = form
+        .position
+        .as_deref()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+    {
+        // Drop positions are 1-based in the UI; commands use zero-based indices.
+        let position = position.saturating_sub(1);
+        let result = if form.position_scope.as_deref() == Some("today") {
+            service
+                .move_today_to_position(account_id, id, position)
+                .await
+        } else {
+            service.move_to_position(account_id, id, position).await
+        };
+        if result.is_err() {
+            return redirect(&format!("{target}?error=position"));
+        }
+    }
+    redirect(&target)
 }
 
 #[derive(Debug, Deserialize)]

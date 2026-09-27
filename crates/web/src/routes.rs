@@ -303,6 +303,24 @@ fn TodayList() -> impl IntoView {
                 <p>
                     <a href="/tomorrow" class="row-action">"Tomorrow"</a>
                 </p>
+                <form
+                    method="post"
+                    action="/todos"
+                    class="add-form"
+                    data-testid="today-add-form"
+                >
+                    <input type="hidden" name="return_to" value="/today"/>
+                    <input type="hidden" name="schedule_kind" value="today"/>
+                    <input
+                        type="text"
+                        name="title"
+                        placeholder="New to-do for today"
+                        aria-label="New to-do for today"
+                        autocomplete="off"
+                        required=true
+                    />
+                    <button type="submit" class="button-primary">"Add"</button>
+                </form>
                 {move || {
                     progress
                         .get()
@@ -363,9 +381,24 @@ fn TodayList() -> impl IntoView {
                                         <ul class="task-list" data-testid="today-day-list">
                                             {day
                                                 .into_iter()
-                                                .map(|todo| {
+                                                .enumerate()
+                                                .map(|(index, todo)| {
+                                                    let magic_plus = MagicPlusTarget {
+                                                        position: index,
+                                                        position_scope: Some("today".to_string()),
+                                                        context_kind: None,
+                                                        context_id: None,
+                                                        return_to: "/today".to_string(),
+                                                        schedule_kind: Some("today".to_string()),
+                                                        label: todo.title.clone(),
+                                                    };
                                                     view! {
-                                                        <TodoRow todo=todo today=today today_order=true/>
+                                                        <TodoRow
+                                                            todo=todo
+                                                            today=today
+                                                            today_order=true
+                                                            magic_plus=Some(magic_plus)
+                                                        />
                                                     }
                                                 })
                                                 .collect_view()}
@@ -392,9 +425,24 @@ fn TodayList() -> impl IntoView {
                                         >
                                             {evening
                                                 .into_iter()
-                                                .map(|todo| {
+                                                .enumerate()
+                                                .map(|(index, todo)| {
+                                                    let magic_plus = MagicPlusTarget {
+                                                        position: index,
+                                                        position_scope: Some("today".to_string()),
+                                                        context_kind: None,
+                                                        context_id: None,
+                                                        return_to: "/today".to_string(),
+                                                        schedule_kind: Some("evening".to_string()),
+                                                        label: todo.title.clone(),
+                                                    };
                                                     view! {
-                                                        <TodoRow todo=todo today=today today_order=true/>
+                                                        <TodoRow
+                                                            todo=todo
+                                                            today=today
+                                                            today_order=true
+                                                            magic_plus=Some(magic_plus)
+                                                        />
                                                     }
                                                 })
                                                 .collect_view()}
@@ -1219,6 +1267,15 @@ fn InboxList() -> impl IntoView {
                                     .enumerate()
                                     .map(|(index, todo)| {
                                         let position = format!("/todos/{}/position", todo.id);
+                                        let magic_plus = MagicPlusTarget {
+                                            position: index,
+                                            position_scope: None,
+                                            context_kind: None,
+                                            context_id: None,
+                                            return_to: "/inbox".to_string(),
+                                            schedule_kind: None,
+                                            label: todo.title.clone(),
+                                        };
                                         view! {
                                             <TodoRow
                                                 todo=todo
@@ -1227,6 +1284,7 @@ fn InboxList() -> impl IntoView {
                                                 position_action=Some(position)
                                                 position_return_to="/inbox"
                                                 selectable=true
+                                                magic_plus=Some(magic_plus)
                                             />
                                         }
                                     })
@@ -1311,6 +1369,25 @@ fn InboxList() -> impl IntoView {
     }
 }
 
+/// Where a Magic Plus insertion control creates its item.
+#[derive(Clone, PartialEq)]
+pub struct MagicPlusTarget {
+    /// Zero-based insertion position among the visible rows.
+    pub position: usize,
+    /// Which ordering the position applies to (`today` for projection buckets).
+    pub position_scope: Option<String>,
+    /// Context kind for alternate creation targets (project/heading/area).
+    pub context_kind: Option<String>,
+    /// Context identity for alternate creation targets.
+    pub context_id: Option<EntityId>,
+    /// Page to return to after creation.
+    pub return_to: String,
+    /// Quick schedule applied on creation (`today`/`evening`/...).
+    pub schedule_kind: Option<String>,
+    /// Accessible label naming the following row.
+    pub label: String,
+}
+
 #[component]
 fn TodoRow(
     todo: TodoSummary,
@@ -1321,6 +1398,7 @@ fn TodoRow(
     #[prop(default = None)] drag_index: Option<usize>,
     #[prop(into, default = String::new())] position_return_to: String,
     #[prop(default = false)] selectable: bool,
+    #[prop(default = None)] magic_plus: Option<MagicPlusTarget>,
 ) -> impl IntoView {
     let id = todo.id;
     let title = todo.title.clone();
@@ -1365,6 +1443,69 @@ fn TodoRow(
             data-drag-index=drag_index.map(|index| index.to_string())
             data-drop-position=drag_index.map(|index| (index + 1).to_string())
         >
+            {magic_plus
+                .map(|target| {
+                    view! {
+                        <details class="insert-here" data-testid="insert-here">
+                            <summary>{format!("Insert above {}", target.label)}</summary>
+                            <form method="post" action="/todos" class="insert-form">
+                                <input
+                                    type="text"
+                                    name="title"
+                                    aria-label="Insert to-do title"
+                                    autocomplete="off"
+                                    required=true
+                                />
+                                <input
+                                    type="hidden"
+                                    name="return_to"
+                                    value=target.return_to.clone()
+                                />
+                                <input
+                                    type="hidden"
+                                    name="position"
+                                    value=(target.position + 1).to_string()
+                                />
+                                {target
+                                    .position_scope
+                                    .clone()
+                                    .map(|scope| {
+                                        view! {
+                                            <input type="hidden" name="position_scope" value=scope/>
+                                        }
+                                    })}
+                                {target
+                                    .schedule_kind
+                                    .clone()
+                                    .map(|kind| {
+                                        view! {
+                                            <input type="hidden" name="schedule_kind" value=kind/>
+                                        }
+                                    })}
+                                {target
+                                    .context_kind
+                                    .clone()
+                                    .map(|kind| {
+                                        view! {
+                                            <input type="hidden" name="context_kind" value=kind/>
+                                        }
+                                    })}
+                                {target
+                                    .context_id
+                                    .map(|context| {
+                                        view! {
+                                            <input
+                                                type="hidden"
+                                                name="context_id"
+                                                value=context.to_string()
+                                            />
+                                        }
+                                    })}
+                                <button type="submit" class="button">"Add here"</button>
+                            </form>
+                        </details>
+                    }
+                })}
             {selectable
                 .then(|| {
                     view! {

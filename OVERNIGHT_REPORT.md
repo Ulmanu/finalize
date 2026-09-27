@@ -851,6 +851,34 @@ Agent: opencode (deepseek-v4.1-flash)
   keys are parsed manually; selection is client/browser state, not synchronized domain data.
 - Live integrations not verified: browser shift-range/keyboard selection gesture layer.
 
+### 34 — `add-magic-plus` — COMPLETE
+
+- Start: 2026-09-27 12:10 · End: 2026-09-27 13:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: `POST /todos` gained optional `position` (1-based, converted server-side),
+  `position_scope` (today), and `schedule_kind` (quick schedule) fields; after `CreateTodo` the
+  handler applies `ScheduleTodo` and then `MoveTodoToPosition`/`MoveTodayToPosition`, with
+  distinct `?error=create/schedule/position` continuation states. `MagicPlusTarget` and a native
+  accessible `<details>` insert form render per row on Inbox and Today (hidden position, scope,
+  schedule, context, return fields); the Today page gained a today-scoped add form so the visible
+  context is the creation default even when empty; project/heading forms already carried their
+  context as alternate targets.
+- Migrations: none.
+- Tests: 4 web tests (insert-control markup on Inbox and Today, positioned creation ordering
+  between neighbors, alternate project-context creation, today-scoped scheduled insertion
+  ordering in the Today bucket); full workspace suite green plus fmt, arch-check, clippy, WASM
+  build. Positional command semantics reuse change 32's testkit coverage.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live-browser gap: pointer-dragging the Magic Plus between rows attaches to the same
+  hidden-field/position contract from the hydrated client; the accessible `<details>` form
+  performs the identical insertion now.
+- Archive: `2026-09-27-add-magic-plus`; canonical `features/magic-plus` spec created.
+- Commit: `feat(34): add magic plus`
+- Decisions: insertion composes existing commands (no new write path); invalid context IDs fall
+  back to Inbox; failed positioning after successful creation is surfaced rather than silently
+  rolled back.
+- Live integrations not verified: browser drag of the creation control.
+
 ## Run summary
 
 ### Completed changes
@@ -890,12 +918,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 31 | add-move-engine | COMPLETE | `feat(31)` |
 | 32 | add-drag-and-drop | COMPLETE | `feat(32)` |
 | 33 | add-multi-selection | COMPLETE | `feat(33)` |
+| 34 | add-magic-plus | COMPLETE | `feat(34)` |
 
-- Completed proposal range: 01–33 (33 of 74).
-- Incomplete: 34–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–34 (34 of 74).
+- Incomplete: 35–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 53 through change 33 (bootstrap, 33 numbered
-  changes, spec/report docs commits; HEAD will be the change-33 commit).
+- Total commits on `agent/things-web-overnight`: 54 through change 34 (bootstrap, 34 numbered
+  changes, spec/report docs commits; HEAD will be the change-34 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -961,9 +990,10 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 34–74, strictly in order; the workspace, command layer, projection scopes,
-   move engine, drag/drop drop-target operations, selection/bulk layer, read-store patterns, and
-   test harnesses are in place to make each one mechanical. Next: 34.
+1. Changes 35–74, strictly in order; the workspace, command layer, projection scopes,
+   move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
+   composition, read-store patterns, and test harnesses are in place to make each one mechanical.
+   Next: 35.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -981,9 +1011,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 33): all quality gates green
+- Current state at HEAD (change 34): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  33/33 passing; `git status` clean.
+  34/34 passing; `git status` clean.
 
 
