@@ -833,8 +833,8 @@ Agent: opencode (deepseek-v4.1-flash)
 - Completed proposal range: 01–31 (31 of 74).
 - Incomplete: 32–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 47 through change 30 (bootstrap, 30 numbered
-  changes, spec/report commits; HEAD `c83d736` at the time of this note).
+- Total commits on `agent/things-web-overnight`: 49 through change 31 (bootstrap, 31 numbered
+  changes, spec/report docs commits; HEAD `30d87c7` at the time of this note).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -900,9 +900,9 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 31–74, strictly in order; the workspace, command layer, projection scopes, read-store
-   patterns, and test harnesses are in place to make each one mechanical. Next: 31
-   (`add-move-engine`).
+1. Changes 32–74, strictly in order; the workspace, command layer, projection scopes,
+   move engine, read-store patterns, and test harnesses are in place to make each one
+   mechanical. Next: 32 (`add-drag-and-drop`).
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -920,9 +920,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD `c83d736` (change 30): all quality gates green
+- Current state at HEAD `30d87c7` (change 31): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  30/30 passing; `git status` clean.
+  31/31 passing; `git status` clean.
 
 
