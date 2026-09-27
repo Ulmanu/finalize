@@ -3012,6 +3012,16 @@ fn HeadingSection(
                     <input type="hidden" name="return_to" value=return_to.clone()/>
                     <button type="submit" class="button-secondary">"Archive"</button>
                 </form>
+                <form method="post" action=format!("/headings/{id}/move_project") class="row-schedule">
+                    <input type="hidden" name="return_to" value=return_to.clone()/>
+                    <input
+                        type="text"
+                        name="project"
+                        placeholder="Project id"
+                        aria-label="Destination project id"
+                    />
+                    <button type="submit" class="button-secondary">"Move heading"</button>
+                </form>
             </div>
             <form method="post" action="/todos" class="add-form">
                 <input type="hidden" name="return_to" value=return_to.clone()/>

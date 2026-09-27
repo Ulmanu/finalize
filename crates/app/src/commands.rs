@@ -160,6 +160,13 @@ pub enum Command {
         /// New title.
         title: String,
     },
+    /// Moves a heading to another project, taking its child to-dos along.
+    MoveHeading {
+        /// Heading to move.
+        id: EntityId,
+        /// Destination project.
+        project: EntityId,
+    },
     /// Reorders a heading with its assigned child to-dos.
     ReorderHeading {
         /// Heading to move.
@@ -448,6 +455,7 @@ impl Command {
             | Self::LogProject { id }
             | Self::RenameHeading { id, .. }
             | Self::ReorderHeading { id, .. }
+            | Self::MoveHeading { id, .. }
             | Self::ArchiveHeading { id }
             | Self::RestoreHeading { id }
             | Self::RenameTag { id, .. }
@@ -497,6 +505,7 @@ impl Command {
             Self::UnassignTag { .. } => "unassign_tag",
             Self::RenameHeading { .. } => "rename_heading",
             Self::ReorderHeading { .. } => "reorder_heading",
+            Self::MoveHeading { .. } => "move_heading",
             Self::ArchiveHeading { .. } => "archive_heading",
             Self::RestoreHeading { .. } => "restore_heading",
             Self::RenameProject { .. } => "rename_project",
@@ -700,6 +709,11 @@ pub enum DomainEvent {
         /// Entity identity.
         id: EntityId,
     },
+    /// A heading moved to another project.
+    HeadingMoved {
+        /// Entity identity.
+        id: EntityId,
+    },
     /// A heading was reordered within its project.
     HeadingReordered {
         /// Entity identity.
@@ -829,6 +843,7 @@ impl DomainEvent {
             | Self::HeadingCreated { id, .. }
             | Self::HeadingChanged { id }
             | Self::HeadingReordered { id }
+            | Self::HeadingMoved { id }
             | Self::HeadingArchived { id }
             | Self::HeadingRestored { id }
             | Self::TodoCreated { id }
@@ -1473,6 +1488,12 @@ impl CommandDispatcher {
                     .load_project(account_id, *id)
                     .await?
                     .ok_or(CommandError::NotFound)?;
+                let destination = match area {
+                    Some(area_id) => crate::movement::Destination::Area(*area_id),
+                    None => crate::movement::Destination::Inbox,
+                };
+                crate::movement::validate(crate::movement::Movable::Project, destination)?;
+                crate::movement::ensure_destination(unit, account_id, destination).await?;
                 let expected = project.meta.version;
                 project.area = *area;
                 project.meta.touch(now);
@@ -1622,6 +1643,23 @@ impl CommandDispatcher {
                 unit.save_heading(account_id, &heading, Some(expected))
                     .await?;
                 Ok((Some(*id), vec![DomainEvent::HeadingChanged { id: *id }]))
+            }
+            Command::MoveHeading { id, project } => {
+                let mut heading = unit
+                    .load_heading(account_id, *id)
+                    .await?
+                    .ok_or(CommandError::NotFound)?;
+                let destination = crate::movement::Destination::Project(*project);
+                crate::movement::validate(crate::movement::Movable::Heading, destination)?;
+                crate::movement::ensure_destination(unit, account_id, destination).await?;
+                if heading.project != *project {
+                    let expected = heading.meta.version;
+                    heading.project = *project;
+                    heading.meta.touch(now);
+                    unit.save_heading(account_id, &heading, Some(expected))
+                        .await?;
+                }
+                Ok((Some(*id), vec![DomainEvent::HeadingMoved { id: *id }]))
             }
             Command::ReorderHeading { id, direction } => {
                 let heading = unit
@@ -2076,14 +2114,10 @@ impl CommandDispatcher {
                 ))
             }
             command => {
-                if let Command::MoveTodo {
-                    context: ContextRef::Heading(heading_id),
-                    ..
-                } = command
-                {
-                    if unit.load_heading(account_id, *heading_id).await?.is_none() {
-                        return Err(CommandError::Validation("unknown heading".to_string()));
-                    }
+                if let Command::MoveTodo { context, .. } = command {
+                    let destination = crate::movement::Destination::from_context(*context);
+                    crate::movement::validate(crate::movement::Movable::Todo, destination)?;
+                    crate::movement::ensure_destination(unit, account_id, destination).await?;
                 }
                 let id = command.target().ok_or(CommandError::NotFound)?;
                 let mut todo = unit
@@ -2226,6 +2260,7 @@ fn apply_to_todo(
         | Command::CreateHeading { .. }
         | Command::RenameHeading { .. }
         | Command::ReorderHeading { .. }
+        | Command::MoveHeading { .. }
         | Command::ArchiveHeading { .. }
         | Command::RestoreHeading { .. }
         | Command::ReorderToday { .. }
@@ -2461,6 +2496,7 @@ pub fn invalidations_for(event: &DomainEvent) -> Vec<Projection> {
         }
         DomainEvent::HeadingCreated { .. }
         | DomainEvent::HeadingChanged { .. }
+        | DomainEvent::HeadingMoved { .. }
         | DomainEvent::HeadingReordered { .. }
         | DomainEvent::HeadingArchived { .. }
         | DomainEvent::HeadingRestored { .. } => vec![

@@ -10,6 +10,7 @@ pub mod areas;
 pub mod auth;
 pub mod commands;
 pub mod logbook;
+pub mod movement;
 pub mod ordering;
 pub mod projects;
 pub mod recurring;

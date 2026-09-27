@@ -24,6 +24,7 @@ use tower::ServiceExt;
 struct Harness {
     router: axum::Router,
     service: Arc<TodoService>,
+    projects: Arc<momentum_app::projects::ProjectService>,
     account_id: momentum_domain::AccountId,
     cookie: String,
 }
@@ -46,8 +47,15 @@ async fn harness() -> Harness {
         Arc::new(database.clone()),
         clock.clone(),
     ));
-    let reader = Arc::new(MemoryTodoReadStore::new(database));
-    let service = Arc::new(TodoService::new(dispatcher, reader, clock));
+    let reader = Arc::new(MemoryTodoReadStore::new(database.clone()));
+    let service = Arc::new(TodoService::new(dispatcher.clone(), reader, clock.clone()));
+    let projects = Arc::new(momentum_app::projects::ProjectService::new(
+        dispatcher,
+        Arc::new(momentum_testkit::projects::MemoryProjectReadStore::new(
+            database,
+        )),
+        clock,
+    ));
 
     let registration = auth
         .register("person@example.com", "correct horse battery", None)
@@ -69,12 +77,13 @@ async fn harness() -> Harness {
         Some(Arc::new(AuthContext::new(auth, false))),
         Some(service.clone()),
         None,
-        None,
+        Some(projects.clone()),
     );
 
     Harness {
         router: server::router_with_state(state),
         service,
+        projects,
         account_id: registration.account_id,
         cookie: format!("momentum_session={}", login.token),
     }
@@ -298,7 +307,13 @@ async fn move_assigns_a_project_context() {
         .await
         .expect("list")[0]
         .id;
-    let project = momentum_domain::EntityId::new();
+    let project = h
+        .projects
+        .create(h.account_id, "Destination project", None)
+        .await
+        .expect("project")
+        .entity_id
+        .expect("id");
 
     let body = format!("context_kind=project&context_id={project}&return_to=%2Finbox");
     let (status, _, _) = request(&h, "POST", &format!("/todos/{id}/move"), Some(&body)).await;

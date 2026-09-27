@@ -203,7 +203,19 @@ async fn temporal_commands_are_independent() {
 async fn move_preserves_identity_and_schedule() {
     let h = harness();
     let id = create(&h, "Move me").await;
-    let project = EntityId::new();
+    let project = h
+        .dispatcher
+        .execute(envelope(
+            h.account,
+            Command::CreateProject {
+                title: "Destination".to_string(),
+                area: None,
+            },
+        ))
+        .await
+        .expect("create project")
+        .entity_id
+        .expect("project id");
 
     let outcome = h
         .dispatcher

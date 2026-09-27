@@ -767,6 +767,31 @@ Agent: opencode (deepseek-v4.1-flash)
   always derived on read with no stored percentage.
 - Live integrations not verified: PostgreSQL count semantics (no database).
 
+### 31 — `add-move-engine` — COMPLETE
+
+- Start: 2026-09-27 08:35 · End: 2026-09-27 09:50
+- Proposal validation: strict validation passed before archive.
+- Implementation: `movement::{Destination, Movable, is_valid, validate, ensure_destination}`
+  single-sources the destination matrix (to-do: Inbox/Area/Project/Heading; project:
+  Inbox/Area; heading: Project) plus existence/ownership/alive checks; `MoveTodo` and
+  `MoveProject` now validate through the engine, and the new `MoveHeading` command transfers a
+  heading (with its children by reference) between projects; the project detail page gained a
+  labeled "Move heading" form; three legacy tests that relied on unvalidated ad-hoc destination
+  ids were updated to create real destinations (canonical behavior now validated).
+- Migrations: none.
+- Tests: 5 testkit tests (matrix, preservation across project moves incl. tags/notes/deadline/
+  schedule/checklist/identity, heading transfer with children following, area destinations,
+  adapter equivalence between service and command dispatch) and 1 web test (todo Move dialog +
+  heading move form over HTTP); full workspace suite green plus fmt, arch-check, clippy, WASM
+  build.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-27-add-move-engine`; canonical `features/movement` spec created.
+- Commit: `feat(31): add move engine`
+- Decisions: failed moves leave state untouched (destination checks run before any save);
+  heading transfer is a placement change, not child rewrites; unknown/trashed destinations are
+  not-found rather than validation errors.
+- Live integrations not verified: none specific to this change.
+
 ## Run summary
 
 ### Completed changes
@@ -803,9 +828,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 28 | add-trash | COMPLETE | `feat(28)` |
 | 29 | add-special-lists | COMPLETE | `feat(29)` |
 | 30 | add-project-progress | COMPLETE | `feat(30)` |
+| 31 | add-move-engine | COMPLETE | `feat(31)` |
 
-- Completed proposal range: 01–30 (30 of 74).
-- Incomplete: 31–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–31 (31 of 74).
+- Incomplete: 32–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 47 through change 30 (bootstrap, 30 numbered
   changes, spec/report commits; HEAD `c83d736` at the time of this note).

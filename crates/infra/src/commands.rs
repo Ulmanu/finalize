@@ -1336,6 +1336,7 @@ impl UnitOfWork for PgUnitOfWork {
                 DomainEvent::ProjectDeleted { .. } => "project_deleted",
                 DomainEvent::HeadingCreated { .. } => "heading_created",
                 DomainEvent::HeadingChanged { .. } => "heading_changed",
+                DomainEvent::HeadingMoved { .. } => "heading_moved",
                 DomainEvent::HeadingReordered { .. } => "heading_reordered",
                 DomainEvent::HeadingArchived { .. } => "heading_archived",
                 DomainEvent::HeadingRestored { .. } => "heading_restored",

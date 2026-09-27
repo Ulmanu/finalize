@@ -286,6 +286,27 @@ impl ProjectService {
         .await
     }
 
+    /// Moves a heading to another project, taking its child to-dos along.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn move_heading(
+        &self,
+        account_id: AccountId,
+        heading: EntityId,
+        project: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::MoveHeading {
+                id: heading,
+                project,
+            },
+        )
+        .await
+    }
+
     /// Moves a heading one position up or down, taking its children with it.
     ///
     /// # Errors

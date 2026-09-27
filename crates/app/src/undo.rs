@@ -201,6 +201,7 @@ pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Comm
         | Command::CreateHeading { .. }
         | Command::RenameHeading { .. }
         | Command::ReorderHeading { .. }
+        | Command::MoveHeading { .. }
         | Command::ArchiveHeading { .. }
         | Command::RestoreHeading { .. }
         | Command::AddChecklistItem { .. }

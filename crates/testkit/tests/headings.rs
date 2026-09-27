@@ -246,7 +246,10 @@ async fn headings_are_scoped_to_their_project() {
         .move_to(h.account, todo, ContextRef::Heading(missing))
         .await
         .expect_err("moving to an unknown heading must be rejected");
-    assert!(matches!(error, CommandError::Validation(_)));
+    assert!(
+        matches!(error, CommandError::NotFound),
+        "the move engine reports unknown destinations as not-found"
+    );
 
     let stranger = AccountId::new();
     let error = h
