@@ -1106,6 +1106,34 @@ Agent: opencode (deepseek-v4.1-flash)
   progress so only future generation changes; one-time edits reuse existing copy commands.
 - Live integrations not verified: recurrence editing UI (later changes).
 
+### 43 — `add-quick-find` — COMPLETE
+
+- Start: 2026-09-28 11:10 · End: 2026-09-28 13:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::search` provides `SearchKind`, `SearchHit`, `ScoredHit`,
+  `SearchService` (static list/settings destinations plus areas, projects, headings from project
+  summaries, tags, and `AllOpen` to-do titles), four confidence tiers (exact/prefix/word-start/
+  substring) with deterministic tie-breaks by recency, kind, title, and URL, capped at 60 and
+  never hiding matches; `RecentsStore` + bounded `MemoryRecentsStore` record visits via
+  `GET /search/go` (internal URLs only) and boost equal-tier hits; `/search` page with a labeled
+  autofocus form, kind/score data attributes and Recent badges; topbar Quick Find form on every
+  page; `AppState::with_recents` provides the store to the Leptos context and the axum handler.
+- Migrations: none (recents are process-local navigation state).
+- Tests: 1 app unit test (tier scoring incl. word-split and substring cases) and 2 web tests
+  (exact-before-prefix-before-word ordering with project/tag/todo mixes, static destinations,
+  empty query, topbar presence; recents recording via go, external-URL rejection, and the
+  recency tie-break badge); full workspace suite green plus fmt, arch-check, clippy, WASM build
+  (exit checked directly). Clippy findings (`iter().any` → `contains`, unused import) fixed.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live-browser gap: the type-to-open keyboard gesture (first keystroke focuses Quick Find
+  seeded with that character) attaches to this page and input from the hydrated Rust/WASM client,
+  consistent with changes 32/33/71/72; the page itself is fully functional without script.
+- Archive: `2026-09-28-add-quick-find`; canonical `features/quick-find` spec created.
+- Commit: `feat(43): add quick find`
+- Decisions: recents are in-process because no durable preference store exists yet; headings
+  reuse project summaries; recency only breaks ties within a tier.
+- Live integrations not verified: hydrated type-to-open gesture.
+
 ## Run summary
 
 ### Completed changes
@@ -1154,12 +1182,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 40 | add-recurrence-model | COMPLETE | `feat(40)` |
 | 41 | add-recurrence-materializer | COMPLETE | `feat(41)` |
 | 42 | add-recurrence-exceptions | COMPLETE | `feat(42)` |
+| 43 | add-quick-find | COMPLETE | `feat(43)` |
 
-- Completed proposal range: 01–42 (42 of 74).
-- Incomplete: 43–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–43 (43 of 74).
+- Incomplete: 44–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 63 through change 42 (bootstrap, 42 numbered
-  changes, spec/report docs commits; HEAD will be the change-42 commit).
+- Total commits on `agent/things-web-overnight`: 64 through change 43 (bootstrap, 43 numbered
+  changes, spec/report docs commits; HEAD will be the change-43 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1225,11 +1254,11 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 43–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 44–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
-   plumbing, recurrence model/materializer/exceptions, read-store patterns, and test harnesses are
-   in place to make each one mechanical. Next: 43.
+   plumbing, recurrence model/materializer/exceptions, Quick Find search, read-store patterns, and
+   test harnesses are in place to make each one mechanical. Next: 44.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1247,9 +1276,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 42): all quality gates green
+- Current state at HEAD (change 43): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  42/42 passing; `git status` clean.
+  43/43 passing; `git status` clean.
 
 

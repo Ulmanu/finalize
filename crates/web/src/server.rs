@@ -17,6 +17,7 @@ use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::recurring::RecurringService;
 use momentum_app::reminders::PushSubscriptionStore;
+use momentum_app::search::RecentsStore;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::Database;
@@ -29,6 +30,7 @@ use crate::logbook_routes;
 use crate::notes_routes;
 use crate::project_routes;
 use crate::push_routes;
+use crate::search_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
 use crate::tag_routes;
 use crate::todo_routes;
@@ -68,6 +70,8 @@ pub struct AppState {
     pub recurring: Option<Arc<RecurringService>>,
     /// Browser push subscriptions for reminder delivery.
     pub push_subscriptions: Option<Arc<dyn PushSubscriptionStore>>,
+    /// Recent destinations for Quick Find ranking.
+    pub recents: Option<Arc<dyn RecentsStore>>,
 }
 
 impl AppState {
@@ -94,7 +98,15 @@ impl AppState {
             logbook: None,
             recurring: None,
             push_subscriptions: None,
+            recents: None,
         }
+    }
+
+    /// Adds the Quick Find recents store.
+    #[must_use]
+    pub fn with_recents(mut self, recents: Arc<dyn RecentsStore>) -> Self {
+        self.recents = Some(recents);
+        self
     }
 
     /// Adds the push subscription store.
@@ -208,6 +220,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let tag_service = state.tags.clone();
     let logbook_service = state.logbook.clone();
     let recurring_service = state.recurring.clone();
+    let recents = state.recents.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -222,6 +235,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(notes_routes::routes())
         .merge(logbook_routes::routes())
         .merge(push_routes::routes())
+        .merge(search_routes::routes())
         .leptos_routes_with_context(
             &state,
             paths,
@@ -232,6 +246,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(tag_service.clone());
                 provide_context(logbook_service.clone());
                 provide_context(recurring_service.clone());
+                provide_context(recents.clone());
             },
             move || shell(shell_options.clone()),
         )

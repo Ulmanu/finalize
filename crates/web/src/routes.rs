@@ -19,6 +19,7 @@ use momentum_app::areas::{AreaService, AreaSummary};
 use momentum_app::logbook::{LogbookAgenda, LogbookEntry, LogbookService};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::recurring::{RecurrenceTemplateSummary, RecurringService};
+use momentum_app::search::{RecentsStore, SearchHit, SearchService};
 use momentum_app::tags::{TagService, TagSummary};
 use momentum_app::todos::{Progress, TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::{DeadlineState, Status};
@@ -50,6 +51,7 @@ pub fn AppRoutes() -> impl IntoView {
                 <Route path=path!("/repeating") view=RecurringPage/>
                 <Route path=path!("/projects/logged") view=LoggedProjectsPage/>
                 <Route path=path!("/settings") view=SettingsPage/>
+                <Route path=path!("/search") view=SearchPage/>
                 <Route path=path!("/areas/:area_id") view=AreaPage/>
                 <Route path=path!("/projects/:project_id") view=ProjectPage/>
                 <Route path=path!("/todos/:todo_id") view=TodoPage/>
@@ -453,6 +455,136 @@ fn TodayList() -> impl IntoView {
                             }
                                 .into_any()
                         })
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+/// Quick Find search page.
+#[component]
+pub fn SearchPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <QuickFind/> }}
+        </Protected>
+    }
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(char::from(*byte));
+            }
+            other => {
+                use std::fmt::Write;
+                let _ = write!(encoded, "%{other:02X}");
+            }
+        }
+    }
+    encoded
+}
+
+#[component]
+fn QuickFind() -> impl IntoView {
+    let todos = use_context::<Option<Arc<TodoService>>>().flatten();
+    let projects = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let areas = use_context::<Option<Arc<AreaService>>>().flatten();
+    let tags = use_context::<Option<Arc<TagService>>>().flatten();
+    let recents = use_context::<Option<Arc<dyn RecentsStore>>>().flatten();
+    let account = use_account();
+    let query = use_query_map();
+    let results = AsyncDerived::new(move || {
+        let todos = todos.clone();
+        let projects = projects.clone();
+        let areas = areas.clone();
+        let tags = tags.clone();
+        let recents = recents.clone();
+        let account = account.clone();
+        let needle = query.read().get("q").unwrap_or_default();
+        async move {
+            match (todos, projects, account) {
+                (Some(todos), Some(projects), Some(account)) => {
+                    let service = SearchService::new(todos, projects, areas, tags, recents);
+                    service
+                        .search(account.account_id, &needle)
+                        .await
+                        .unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+    view! {
+        <section class="list-page" data-testid="quick-find">
+            <header class="list-header">
+                <h1 class="list-title">"Quick Find"</h1>
+                <p class="list-description">
+                    "Search lists, projects, areas, tags, headings, and to-dos."
+                </p>
+            </header>
+            <form method="get" action="/search" class="add-form" data-testid="quick-find-form">
+                <input
+                    id="quick-find-query"
+                    type="text"
+                    name="q"
+                    placeholder="Search"
+                    aria-label="Search"
+                    autocomplete="off"
+                    autofocus=true
+                />
+                <button type="submit" class="button-primary">"Search"</button>
+            </form>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let hits = results.get().unwrap_or_default();
+                    if hits.is_empty() {
+                        return view! {
+                            <div class="list-empty" data-testid="quick-find-empty">
+                                <p>"No matches."</p>
+                            </div>
+                        }
+                            .into_any();
+                    }
+                    view! {
+                        <ul class="task-list" data-testid="quick-find-results">
+                            {hits
+                                .into_iter()
+                                .map(|scored| {
+                                    let SearchHit { title, url, kind } = scored.hit;
+                                    let href = format!(
+                                        "/search/go?url={}",
+                                        percent_encode(&url),
+                                    );
+                                    view! {
+                                        <li
+                                            class="search-hit"
+                                            data-testid="search-hit"
+                                            data-kind=kind.as_str()
+                                            data-score=scored.score.to_string()
+                                        >
+                                            <a href=href class="task-title">{title}</a>
+                                            {scored
+                                                .recent
+                                                .then(|| {
+                                                    view! {
+                                                        <span
+                                                            class="row-badge"
+                                                            data-testid="recent-hit"
+                                                        >
+                                                            "Recent"
+                                                        </span>
+                                                    }
+                                                })}
+                                        </li>
+                                    }
+                                })
+                                .collect_view()}
+                        </ul>
+                    }
+                        .into_any()
                 }}
             </Suspense>
         </section>

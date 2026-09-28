@@ -29,6 +29,8 @@ pub mod project_routes;
 pub mod push_routes;
 pub mod responsive;
 pub mod routes;
+#[cfg(feature = "ssr")]
+pub mod search_routes;
 pub mod session;
 #[cfg(feature = "ssr")]
 pub mod tag_routes;

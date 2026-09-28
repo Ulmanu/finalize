@@ -139,6 +139,20 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                     <span class="nav-toggle-icon" aria-hidden="true"></span>
                 </button>
                 <A href="/today" attr:class="brand">{product}</A>
+                <form
+                    method="get"
+                    action="/search"
+                    class="topbar-search"
+                    data-testid="quick-find-link"
+                >
+                    <input
+                        type="text"
+                        name="q"
+                        placeholder="Quick Find"
+                        aria-label="Quick Find"
+                        autocomplete="off"
+                    />
+                </form>
                 <span class="topbar-account">{signed_in_label}</span>
             </header>
 

@@ -17,6 +17,7 @@ pub mod ordering;
 pub mod projects;
 pub mod recurring;
 pub mod reminders;
+pub mod search;
 pub mod selection;
 pub mod session;
 pub mod tags;
