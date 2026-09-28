@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use momentum_domain::recurrence::{Recurrence, RecurrenceTemplate};
+use momentum_domain::recurrence::{Recurrence, RecurrenceEnd, RecurrenceTemplate};
 use momentum_domain::time::LocalDate;
 use momentum_domain::{AccountId, EntityId};
 
@@ -36,15 +36,32 @@ pub struct PersistedTemplate {
     pub horizon: Option<LocalDate>,
 }
 
+/// Generated-copy state for one template.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TemplateState {
+    /// Currently open copy, when one exists.
+    pub open_copy: Option<EntityId>,
+    /// Most recent copy completion date, when any copy was completed.
+    pub last_completion: Option<LocalDate>,
+    /// Total generated copies.
+    pub copies: u32,
+}
+
 /// Persistence for recurrence templates and generated occurrences.
 #[async_trait]
 pub trait MaterializerStore: Send + Sync {
-    /// Templates that still need generation up to `horizon`.
-    async fn templates_due(
+    /// Templates whose rule may still generate occurrences.
+    async fn active_templates(
         &self,
         account_id: AccountId,
-        horizon: LocalDate,
     ) -> Result<Vec<PersistedTemplate>, CommandError>;
+
+    /// Generated-copy state used to gate after-completion rules.
+    async fn template_state(
+        &self,
+        account_id: AccountId,
+        template_id: EntityId,
+    ) -> Result<TemplateState, CommandError>;
 
     /// Persists generation progress for one template.
     async fn advance(
@@ -100,14 +117,48 @@ impl RecurrenceMaterializer {
     ) -> Result<MaterializationRun, CommandError> {
         let horizon = advance(today, HORIZON_DAYS);
         let mut run = MaterializationRun::default();
-        for template in self.store.templates_due(account_id, horizon).await? {
-            let mut date = match template.next_occurrence {
-                Some(date) if date > today => date,
-                _ => today,
+        for template in self.store.active_templates(account_id).await? {
+            let after_completion = template.rule.pattern.is_after_completion();
+            let empty_state = TemplateState::default();
+            let (mut date, limit, state) = if after_completion {
+                let state = self.store.template_state(account_id, template.id).await?;
+                if state.open_copy.is_some() {
+                    // Wait until the current copy is completed before anchoring the next one.
+                    continue;
+                }
+                let ended = match template.rule.end {
+                    RecurrenceEnd::After(limit) => state.copies >= limit,
+                    RecurrenceEnd::On(bound) => today > bound,
+                    RecurrenceEnd::Never => false,
+                };
+                if ended {
+                    continue;
+                }
+                let start = if state.copies == 0 {
+                    today
+                } else {
+                    let base = state.last_completion.unwrap_or(today);
+                    let start = template.rule.pattern.next_after(base);
+                    if start < today {
+                        today
+                    } else {
+                        start
+                    }
+                };
+                (start, 1_u32, state)
+            } else {
+                let mut start = match template.next_occurrence {
+                    Some(date) if date > today => date,
+                    _ => today,
+                };
+                if !matches_pattern(&template, start) {
+                    start = template.rule.pattern.next_after(start.previous_day());
+                }
+                (start, MAX_OCCURRENCES_PER_RUN, empty_state)
             };
             let mut generated = 0_u32;
-            let mut next = None;
-            while date <= horizon && generated < MAX_OCCURRENCES_PER_RUN {
+            let mut next = template.next_occurrence;
+            while date <= horizon && generated < limit {
                 match self
                     .todos
                     .materialize_occurrence(account_id, template.id, date)
@@ -124,8 +175,14 @@ impl RecurrenceMaterializer {
                     Err(error) => run.failed.push((date, error.to_string())),
                 }
                 generated += 1;
-                let occurrences = generated;
-                match template.rule.next_occurrence(date, occurrences) {
+                if after_completion {
+                    // After-completion rules publish one copy at a time; stay active for the
+                    // next completion instead of advancing a chain.
+                    next = after_completion_next(&template, &state, generated, date);
+                    break;
+                }
+                let _ = limit;
+                match template.rule.next_occurrence(date, generated) {
                     Some(following) => {
                         next = Some(following);
                         date = following;
@@ -155,6 +212,24 @@ impl RecurrenceMaterializer {
         for tag in &template.template.tag_ids {
             let _ = tags.assign(account_id, copy, *tag).await;
         }
+    }
+}
+
+fn matches_pattern(template: &PersistedTemplate, date: LocalDate) -> bool {
+    template.rule.pattern.next_after(date.previous_day()) == date
+}
+
+fn after_completion_next(
+    template: &PersistedTemplate,
+    state: &TemplateState,
+    generated: u32,
+    occurrence: LocalDate,
+) -> Option<LocalDate> {
+    let copies = state.copies.saturating_add(generated);
+    match template.rule.end {
+        RecurrenceEnd::After(limit) if copies >= limit => None,
+        RecurrenceEnd::On(bound) if occurrence > bound => None,
+        _ => Some(occurrence),
     }
 }
 

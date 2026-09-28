@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use chrono::{TimeZone, Utc};
-use momentum_app::commands::CommandDispatcher;
+use chrono::{DateTime, Datelike, TimeZone, Utc};
+use momentum_app::commands::{CommandDispatcher, ScheduleInput};
 use momentum_app::materializer::{RecurrenceMaterializer, HORIZON_DAYS};
 use momentum_app::todos::{TodoScope, TodoService};
 use momentum_domain::model::{ContextRef, Schedule};
@@ -25,8 +25,14 @@ struct Harness {
 }
 
 fn harness() -> Harness {
-    let database = MemoryDatabase::new();
-    let now = Utc.with_ymd_and_hms(2026, 6, 10, 9, 0, 0).unwrap();
+    harness_on(
+        MemoryDatabase::new(),
+        Utc.with_ymd_and_hms(2026, 6, 10, 9, 0, 0).unwrap(),
+        AccountId::new(),
+    )
+}
+
+fn harness_on(database: MemoryDatabase, now: DateTime<Utc>, account: AccountId) -> Harness {
     let clock = Arc::new(TestClock::new(now));
     let dispatcher = Arc::new(CommandDispatcher::new(
         Arc::new(database.clone()),
@@ -40,8 +46,8 @@ fn harness() -> Harness {
     Harness {
         database,
         todos,
-        account: AccountId::new(),
-        today: LocalDate::from_ymd(2026, 6, 10).expect("today"),
+        account,
+        today: LocalDate::from_naive(now.date_naive()),
     }
 }
 
@@ -177,6 +183,174 @@ async fn end_conditions_stop_and_existing_occurrences_are_skipped() {
     assert_eq!(run.skipped, vec![h2.today]);
     assert_eq!(run.materialized.len(), 2);
     assert_eq!(open_count(&h2).await, 2);
+}
+
+#[tokio::test]
+async fn after_completion_anchors_to_actual_completion_and_early_completion_wins() {
+    let database = MemoryDatabase::new();
+    let account = AccountId::new();
+    let day0 = LocalDate::from_ymd(2026, 6, 10).expect("day0");
+    let day1 = day0.next_day();
+    let day2 = day1.next_day();
+    let day3 = advance(day0, 3);
+    let day4 = advance(day0, 4);
+
+    let h0 = harness_on(database.clone(), at(day0), account);
+    let template_id = seed(
+        &h0,
+        Recurrence::new(
+            RecurrencePattern::AfterCompletion { days: 3 },
+            RecurrenceEnd::Never,
+        ),
+        None,
+    );
+    let run = materializer(&h0).run(account, day0).await.expect("run");
+    assert_eq!(run.materialized.len(), 1);
+    let copy1 = run.materialized[0];
+    assert_eq!(
+        h0.todos
+            .get(account, copy1)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(day0)
+    );
+    // The next copy waits for the current one to complete.
+    let waiting = materializer(&h0).run(account, day0).await.expect("run");
+    assert!(waiting.materialized.is_empty());
+    h0.todos.complete(account, copy1).await.expect("complete");
+
+    // One day later the next copy is anchored to the completion date, not the schedule.
+    let h1 = harness_on(database.clone(), at(day1), account);
+    let run = materializer(&h1).run(account, day1).await.expect("run");
+    assert_eq!(run.materialized.len(), 1);
+    let copy2 = run.materialized[0];
+    assert_eq!(
+        h1.todos
+            .get(account, copy2)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(day3)
+    );
+
+    // Completing that copy early anchors the following one to the early completion date.
+    h1.todos.complete(account, copy2).await.expect("complete");
+    let h2 = harness_on(database.clone(), at(day2), account);
+    let run = materializer(&h2).run(account, day2).await.expect("run");
+    assert_eq!(run.materialized.len(), 1);
+    let copy3 = run.materialized[0];
+    assert_eq!(
+        h2.todos
+            .get(account, copy3)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(day4)
+    );
+    assert_ne!(
+        h2.todos
+            .get(account, copy3)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(advance(day3, 3))
+    );
+    assert!(h2
+        .database
+        .recurrence_template(account, template_id)
+        .is_some());
+}
+
+#[tokio::test]
+async fn one_time_copy_edits_do_not_change_the_template_and_rule_edits_regenerate() {
+    let h = harness();
+    let template_id = seed(
+        &h,
+        Recurrence::new(RecurrencePattern::Daily, RecurrenceEnd::Never),
+        Some(h.today),
+    );
+    let first = materializer(&h).run(h.account, h.today).await.expect("run");
+    assert!(first.materialized.len() > 2);
+    let edited = first.materialized[0];
+    let moved_to = advance(h.today, 10);
+    h.todos
+        .schedule(h.account, edited, ScheduleInput::On(moved_to))
+        .await
+        .expect("reschedule one copy");
+
+    let stored = h
+        .database
+        .recurrence_template(h.account, template_id)
+        .expect("template");
+    assert_eq!(
+        stored.next_occurrence,
+        Some(advance(h.today, HORIZON_DAYS + 1))
+    );
+    assert_eq!(
+        h.todos
+            .get(h.account, edited)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(moved_to)
+    );
+
+    // Editing the future rule resets progress and leaves existing copies untouched.
+    h.todos
+        .update_recurrence_rule(
+            h.account,
+            template_id,
+            Recurrence::new(
+                RecurrencePattern::Weekly {
+                    weekdays: [0_u32].into_iter().collect(),
+                },
+                RecurrenceEnd::Never,
+            ),
+        )
+        .await
+        .expect("update rule");
+    let stored = h
+        .database
+        .recurrence_template(h.account, template_id)
+        .expect("template");
+    assert_eq!(stored.next_occurrence, Some(h.today));
+    assert!(stored.horizon.is_none());
+
+    // Run beyond the earlier horizon so the new weekly rule reaches fresh dates.
+    let later = advance(h.today, HORIZON_DAYS + 1);
+    let second = materializer(&h).run(h.account, later).await.expect("run");
+    assert!(second.skipped.is_empty());
+    assert!(!second.materialized.is_empty());
+    for copy in &second.materialized {
+        let schedule = h
+            .todos
+            .get(h.account, *copy)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule;
+        let date = schedule.date().expect("scheduled date");
+        assert_eq!(date.as_naive().weekday(), chrono::Weekday::Mon);
+    }
+    assert_eq!(
+        h.todos
+            .get(h.account, edited)
+            .await
+            .unwrap()
+            .unwrap()
+            .schedule,
+        Schedule::on(moved_to)
+    );
+}
+
+fn at(date: LocalDate) -> DateTime<Utc> {
+    Utc.from_utc_datetime(&date.as_naive().and_hms_opt(9, 0, 0).expect("time"))
 }
 
 fn advance(base: LocalDate, days: i64) -> LocalDate {

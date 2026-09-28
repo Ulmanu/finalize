@@ -216,6 +216,7 @@ pub fn inverse_commands(pre_state: Option<&Todo>, command: &Command) -> Vec<Comm
         | Command::LogTodo { .. }
         | Command::MarkTodoReminderDelivered { .. }
         | Command::MaterializeRecurrenceOccurrence { .. }
+        | Command::UpdateRecurrenceRule { .. }
         | Command::SnoozeTodoReminder { .. }
         | Command::LogProject { .. }
         | Command::RestoreProject { .. }

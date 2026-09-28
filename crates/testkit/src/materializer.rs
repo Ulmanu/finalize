@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use momentum_app::commands::CommandError;
-use momentum_app::materializer::{MaterializerStore, PersistedTemplate};
+use momentum_app::materializer::{MaterializerStore, PersistedTemplate, TemplateState};
 use momentum_domain::time::LocalDate;
 use momentum_domain::{AccountId, EntityId};
 
@@ -24,10 +24,9 @@ impl MemoryMaterializerStore {
 
 #[async_trait]
 impl MaterializerStore for MemoryMaterializerStore {
-    async fn templates_due(
+    async fn active_templates(
         &self,
         account_id: AccountId,
-        horizon: LocalDate,
     ) -> Result<Vec<PersistedTemplate>, CommandError> {
         Ok(self
             .database
@@ -35,12 +34,22 @@ impl MaterializerStore for MemoryMaterializerStore {
             .into_iter()
             .filter(
                 |template| match (template.next_occurrence, template.horizon) {
-                    (Some(next), _) => next <= horizon,
+                    (Some(_), _) => true,
                     (None, None) => true,
                     (None, Some(_)) => false,
                 },
             )
             .collect())
+    }
+
+    async fn template_state(
+        &self,
+        account_id: AccountId,
+        template_id: EntityId,
+    ) -> Result<TemplateState, CommandError> {
+        Ok(self
+            .database
+            .recurrence_template_state(account_id, template_id))
     }
 
     async fn advance(

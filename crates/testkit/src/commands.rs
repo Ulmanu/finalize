@@ -1,6 +1,6 @@
 //! In-memory unit of work for deterministic command-layer tests.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -28,7 +28,7 @@ struct MemoryState {
     projection_ranks: HashMap<(AccountId, ProjectionScope, EntityId), Rank>,
     next_ranks: HashMap<(AccountId, ContextRef), i64>,
     recurrence_templates: HashMap<(AccountId, EntityId), PersistedTemplate>,
-    recurrence_instances: HashSet<(AccountId, EntityId, String)>,
+    recurrence_instances: HashMap<(AccountId, EntityId, String), EntityId>,
 }
 
 /// Shared in-memory database backing command-layer tests.
@@ -108,7 +108,48 @@ impl MemoryDatabase {
             .lock()
             .expect("memory state lock")
             .recurrence_instances
-            .insert((account_id, template_id, occurrence_key.to_string()));
+            .insert(
+                (account_id, template_id, occurrence_key.to_string()),
+                EntityId::new(),
+            );
+    }
+
+    /// Snapshot of a template's generated copies for materializer decisions.
+    #[must_use]
+    pub fn recurrence_template_state(
+        &self,
+        account_id: AccountId,
+        template_id: EntityId,
+    ) -> momentum_app::materializer::TemplateState {
+        let state = self.state.lock().expect("memory state lock");
+        let mut open_copy = None;
+        let mut last_completion = None;
+        let mut copies = 0_u32;
+        for ((account, template, _), copy) in &state.recurrence_instances {
+            if *account != account_id || *template != template_id {
+                continue;
+            }
+            copies += 1;
+            let Some(todo) = state.todos.get(&(account_id, *copy)) else {
+                continue;
+            };
+            if todo.status == momentum_domain::model::Status::Open {
+                open_copy = Some(*copy);
+            }
+            if let Some(completed) = todo.completed_at {
+                let date = momentum_domain::time::LocalDate::from_naive(completed.date_naive());
+                if last_completion
+                    .is_none_or(|current: momentum_domain::time::LocalDate| current < date)
+                {
+                    last_completion = Some(date);
+                }
+            }
+        }
+        momentum_app::materializer::TemplateState {
+            open_copy,
+            last_completion,
+            copies,
+        }
     }
 
     /// Persists materialization progress for a template.
@@ -138,7 +179,7 @@ impl MemoryDatabase {
             .lock()
             .expect("memory state lock")
             .recurrence_instances
-            .contains(&(account_id, template_id, occurrence_key.to_string()))
+            .contains_key(&(account_id, template_id, occurrence_key.to_string()))
     }
 
     /// Makes the next `save_todo` fail, simulating a persistence error.
@@ -503,7 +544,31 @@ impl UnitOfWork for MemoryUnitOfWork {
             .lock()
             .expect("memory state lock")
             .recurrence_instances
-            .insert((account_id, template_id, occurrence_key.to_string())))
+            .insert(
+                (account_id, template_id, occurrence_key.to_string()),
+                _copy_id,
+            )
+            .is_none())
+    }
+
+    async fn save_recurrence_rule(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        rule: &momentum_domain::recurrence::Recurrence,
+        next_occurrence: Option<LocalDate>,
+    ) -> Result<(), CommandError> {
+        let mut state = self.database.state.lock().expect("memory state lock");
+        let Some(template) = state
+            .recurrence_templates
+            .get_mut(&(account_id, template_id))
+        else {
+            return Err(CommandError::NotFound);
+        };
+        template.rule = rule.clone();
+        template.next_occurrence = next_occurrence;
+        template.horizon = None;
+        Ok(())
     }
 
     async fn load_todo(

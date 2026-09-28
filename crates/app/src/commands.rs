@@ -428,6 +428,13 @@ pub enum Command {
         /// New deadline, or `None` to clear.
         deadline: Option<LocalDate>,
     },
+    /// Replaces a recurrence template's rule (future occurrences only).
+    UpdateRecurrenceRule {
+        /// Recurrence template identity.
+        template_id: EntityId,
+        /// The new rule.
+        rule: momentum_domain::recurrence::Recurrence,
+    },
     /// Materializes one recurrence occurrence as a new copy (idempotent).
     MaterializeRecurrenceOccurrence {
         /// Recurrence template identity.
@@ -463,6 +470,7 @@ impl Command {
         match self {
             Self::CreateTodo { .. }
             | Self::MaterializeRecurrenceOccurrence { .. }
+            | Self::UpdateRecurrenceRule { .. }
             | Self::CreateArea { .. }
             | Self::CreateProject { .. }
             | Self::CreateHeading { .. }
@@ -529,6 +537,7 @@ impl Command {
         match self {
             Self::CreateTodo { .. } => "create_todo",
             Self::MaterializeRecurrenceOccurrence { .. } => "materialize_recurrence_occurrence",
+            Self::UpdateRecurrenceRule { .. } => "update_recurrence_rule",
             Self::CreateArea { .. } => "create_area",
             Self::CreateProject { .. } => "create_project",
             Self::CreateHeading { .. } => "create_heading",
@@ -1055,6 +1064,15 @@ pub trait UnitOfWork: Send {
         copy_id: EntityId,
     ) -> Result<bool, CommandError>;
 
+    /// Persists a recurrence rule and resets materialization progress.
+    async fn save_recurrence_rule(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        rule: &momentum_domain::recurrence::Recurrence,
+        next_occurrence: Option<LocalDate>,
+    ) -> Result<(), CommandError>;
+
     /// Loads the ordered items of a contextual scope.
     async fn load_context_order(
         &mut self,
@@ -1321,6 +1339,19 @@ impl CommandDispatcher {
     ) -> Result<(Option<EntityId>, Vec<DomainEvent>), CommandError> {
         let account_id = envelope.account_id;
         match &envelope.command {
+            Command::UpdateRecurrenceRule { template_id, rule } => {
+                if unit
+                    .load_recurrence_template(account_id, *template_id)
+                    .await?
+                    .is_none()
+                {
+                    return Err(CommandError::NotFound);
+                }
+                let today = LocalDate::today_in_timezone(now, "UTC");
+                unit.save_recurrence_rule(account_id, *template_id, rule, Some(today))
+                    .await?;
+                Ok((Some(*template_id), Vec::new()))
+            }
             Command::MaterializeRecurrenceOccurrence {
                 template_id,
                 occurrence,
@@ -2449,6 +2480,7 @@ fn apply_to_todo(
     match command {
         Command::CreateTodo { .. }
         | Command::MaterializeRecurrenceOccurrence { .. }
+        | Command::UpdateRecurrenceRule { .. }
         | Command::DuplicateTodo { .. }
         | Command::ReorderTodo { .. }
         | Command::CreateArea { .. }

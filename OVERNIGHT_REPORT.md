@@ -1079,6 +1079,33 @@ Agent: opencode (deepseek-v4.1-flash)
   `next_occurrence` + `horizon_date` on the template row; occurrences keyed by ISO date.
 - Live integrations not verified: template creation UI/commands (later changes).
 
+### 42 — `add-recurrence-exceptions` — COMPLETE
+
+- Start: 2026-09-28 09:00 · End: 2026-09-28 11:05
+- Proposal validation: strict validation passed before archive. (The first gate run was interrupted
+  externally; a clean re-run passed all gates, EXIT=0.)
+- Implementation: `MaterializerStore` now exposes `active_templates` and `TemplateState`
+  (open copy, last completion, copy count) with PG join SQL and memory snapshotting; the
+  materializer pauses after-completion templates while a copy is open, anchors the next copy to
+  the latest completion date (first copy at today), publishes one at a time, and enforces
+  count/date bounds; regular rules realign to rule-matching dates after resets
+  (`next_after(date - 1) == date`); new `UpdateRecurrenceRule` command + `TodoService` method + 
+  unit-of-work rule persistence (PG update resets `next_occurrence` to today and clears the
+  horizon; memory mirrors) distinguishes future-rule edits from per-copy one-time edits.
+- Migrations: none.
+- Tests: 2 new testkit tests (after-completion pausing while open, completion-anchored next
+  occurrence, early completion anchoring day 4 rather than day 6; one-time copy reschedule
+  leaving template progress untouched, then rule replacement regenerating on-pattern Mondays
+  while existing copies stay unchanged) plus the existing materializer/model suites; full
+  workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-28-add-recurrence-exceptions`; canonical `features/recurrence-exceptions`
+  spec created.
+- Commit: `feat(42): add recurrence exceptions`
+- Decisions: date-level anchoring via the completion timestamp's UTC date; rule edits reset
+  progress so only future generation changes; one-time edits reuse existing copy commands.
+- Live integrations not verified: recurrence editing UI (later changes).
+
 ## Run summary
 
 ### Completed changes
@@ -1126,12 +1153,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 39 | add-reminder-snoozing | COMPLETE | `feat(39)` |
 | 40 | add-recurrence-model | COMPLETE | `feat(40)` |
 | 41 | add-recurrence-materializer | COMPLETE | `feat(41)` |
+| 42 | add-recurrence-exceptions | COMPLETE | `feat(42)` |
 
-- Completed proposal range: 01–41 (41 of 74).
-- Incomplete: 42–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–42 (42 of 74).
+- Incomplete: 43–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 62 through change 41 (bootstrap, 41 numbered
-  changes, spec/report docs commits; HEAD will be the change-41 commit).
+- Total commits on `agent/things-web-overnight`: 63 through change 42 (bootstrap, 42 numbered
+  changes, spec/report docs commits; HEAD will be the change-42 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1197,11 +1225,11 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 42–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 43–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
-   plumbing, recurrence model and materializer, read-store patterns, and test harnesses are in
-   place to make each one mechanical. Next: 42.
+   plumbing, recurrence model/materializer/exceptions, read-store patterns, and test harnesses are
+   in place to make each one mechanical. Next: 43.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1219,9 +1247,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 41): all quality gates green
+- Current state at HEAD (change 42): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  41/41 passing; `git status` clean.
+  42/42 passing; `git status` clean.
 
 

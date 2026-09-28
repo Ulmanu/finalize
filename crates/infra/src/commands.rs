@@ -315,6 +315,34 @@ impl UnitOfWork for PgUnitOfWork {
         Ok(result.rows_affected() == 1)
     }
 
+    async fn save_recurrence_rule(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        rule: &Recurrence,
+        next_occurrence: Option<LocalDate>,
+    ) -> Result<(), CommandError> {
+        let tx = self.tx()?;
+        let rule =
+            serde_json::to_value(rule).map_err(|error| CommandError::Storage(error.to_string()))?;
+        let result = sqlx::query(
+            "update recurrence_templates set rule = $3, next_occurrence = $4, \
+             horizon_date = null, updated_at = now() \
+             where account_id = $1 and entity_id = $2",
+        )
+        .bind(account_id.as_uuid())
+        .bind(template_id.as_uuid())
+        .bind(rule)
+        .bind(next_occurrence.map(|date| date.as_naive()))
+        .execute(&mut **tx)
+        .await
+        .map_err(storage)?;
+        if result.rows_affected() == 0 {
+            return Err(CommandError::NotFound);
+        }
+        Ok(())
+    }
+
     async fn load_todo(
         &mut self,
         account_id: AccountId,

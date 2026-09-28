@@ -745,6 +745,24 @@ impl TodoService {
             .await
     }
 
+    /// Replaces a recurrence rule for future occurrences.
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn update_recurrence_rule(
+        &self,
+        account_id: AccountId,
+        template_id: EntityId,
+        rule: momentum_domain::recurrence::Recurrence,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::UpdateRecurrenceRule { template_id, rule },
+        )
+        .await
+    }
+
     /// Materializes one recurrence occurrence as a fresh copy (idempotent).
     ///
     /// # Errors
