@@ -13,6 +13,7 @@ use axum::{Extension, Form, Router};
 use momentum_app::bulk::{BulkAction, BulkService};
 use momentum_app::commands::{ReminderInput, ScheduleInput};
 use momentum_app::movement::Destination;
+use momentum_app::reminders::SnoozeChoice;
 use momentum_app::session::SessionState;
 use momentum_app::todos::{QuickSchedule, TodoService};
 use momentum_domain::natural_date::{parse_natural_date, Locale};
@@ -50,6 +51,7 @@ pub fn routes() -> Router<AppState> {
         .route("/todos/{todo_id}/move", post(move_todo))
         .route("/todos/{todo_id}/deadline", post(set_deadline))
         .route("/todos/{todo_id}/reminder", post(set_reminder))
+        .route("/todos/{todo_id}/snooze", post(snooze_reminder))
         .route("/todos/{todo_id}/checklist", post(add_checklist_item))
         .route("/todos/{todo_id}/checklist/expand", post(expand_checklist))
         .route(
@@ -656,6 +658,40 @@ async fn move_todo(
     match service.move_to(account_id, id, context).await {
         Ok(_) => redirect(&target),
         Err(_) => redirect(&format!("{target}?error=move")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct SnoozeForm {
+    option: String,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn snooze_reminder(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Path(todo_id): Path<String>,
+    Form(form): Form<SnoozeForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let Ok(id) = todo_id.parse::<EntityId>() else {
+        return redirect("/inbox?error=notfound");
+    };
+    let target = form
+        .return_to
+        .as_deref()
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or("/inbox")
+        .to_string();
+    let Some(choice) = SnoozeChoice::parse(&form.option) else {
+        return redirect(&format!("{target}?error=snooze"));
+    };
+    match service.snooze(account_id, id, choice).await {
+        Ok(_) => redirect(&target),
+        Err(_) => redirect(&format!("{target}?error=snooze")),
     }
 }
 

@@ -428,6 +428,13 @@ pub enum Command {
         /// New deadline, or `None` to clear.
         deadline: Option<LocalDate>,
     },
+    /// Snoozes a delivered to-do reminder to a later instant.
+    SnoozeTodoReminder {
+        /// Entity to update.
+        id: EntityId,
+        /// Instant the reminder fires again.
+        until: DateTime<Utc>,
+    },
     /// Marks a to-do reminder as delivered.
     MarkTodoReminderDelivered {
         /// Entity to update.
@@ -497,6 +504,7 @@ impl Command {
             | Self::ScheduleTodo { id, .. }
             | Self::SetTodoDeadline { id, .. }
             | Self::SetTodoReminder { id, .. }
+            | Self::SnoozeTodoReminder { id, .. }
             | Self::MarkTodoReminderDelivered { id } => Some(*id),
             Self::AddChecklistItem { todo, .. }
             | Self::SetChecklistItemTitle { todo, .. }
@@ -569,6 +577,7 @@ impl Command {
             Self::SetTodoDeadline { .. } => "set_todo_deadline",
             Self::SetTodoReminder { .. } => "set_todo_reminder",
             Self::MarkTodoReminderDelivered { .. } => "mark_todo_reminder_delivered",
+            Self::SnoozeTodoReminder { .. } => "snooze_todo_reminder",
         }
     }
 }
@@ -2446,6 +2455,10 @@ fn apply_to_todo(
         Command::SetTodoDeadline { deadline, .. } => {
             todo.set_deadline(deadline.map(Deadline::new), now);
             Ok(DomainEvent::TodoDeadlineChanged { id })
+        }
+        Command::SnoozeTodoReminder { id, until } => {
+            todo.snooze_reminder(*until, now);
+            Ok(DomainEvent::TodoReminderChanged { id: *id })
         }
         Command::MarkTodoReminderDelivered { id } => {
             todo.mark_reminder_delivered(now);

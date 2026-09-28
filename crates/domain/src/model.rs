@@ -451,14 +451,39 @@ impl Reminder {
     /// Whether the reminder is due at `now` and still waiting to fire.
     #[must_use]
     pub fn is_due(&self, now: DateTime<Utc>) -> bool {
-        matches!(self.state, ReminderState::Scheduled) && self.at <= now
+        matches!(
+            self.state,
+            ReminderState::Scheduled | ReminderState::Snoozed
+        ) && self.at <= now
+    }
+
+    /// Snoozes a delivered reminder to a later instant, returning whether anything changed.
+    ///
+    /// Repeating the same snooze target is a no-op, so repeated clicks cannot schedule duplicate
+    /// deliveries.
+    pub fn snooze(&mut self, until: DateTime<Utc>) -> bool {
+        if !matches!(
+            self.state,
+            ReminderState::Delivered | ReminderState::Snoozed
+        ) {
+            return false;
+        }
+        if self.state == ReminderState::Snoozed && self.at == until {
+            return false;
+        }
+        self.at = until;
+        self.state = ReminderState::Snoozed;
+        true
     }
 
     /// Marks the reminder delivered, returning whether the state changed.
     ///
     /// Repeating this after a restart or retry is a no-op, so delivery cannot storm.
     pub fn mark_delivered(&mut self) -> bool {
-        if matches!(self.state, ReminderState::Scheduled) {
+        if matches!(
+            self.state,
+            ReminderState::Scheduled | ReminderState::Snoozed
+        ) {
             self.state = ReminderState::Delivered;
             true
         } else {
@@ -672,6 +697,19 @@ impl Todo {
         if self.reminder != reminder {
             self.reminder = reminder;
             self.meta.touch(now);
+        }
+    }
+
+    /// Snoozes the attached delivered reminder to `until`, returning whether anything changed.
+    pub fn snooze_reminder(&mut self, until: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+        let Some(reminder) = self.reminder.as_mut() else {
+            return false;
+        };
+        if reminder.snooze(until) {
+            self.meta.touch(now);
+            true
+        } else {
+            false
         }
     }
 

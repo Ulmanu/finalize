@@ -122,6 +122,67 @@ pub struct PushSubscription {
     pub auth: String,
 }
 
+/// Configured snooze choices offered for delivered reminders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnoozeChoice {
+    /// Ten minutes from now.
+    TenMinutes,
+    /// One hour from now.
+    OneHour,
+    /// The next local calendar day at the reminder's wall-clock time.
+    Tomorrow,
+}
+
+impl SnoozeChoice {
+    /// Every configured choice, in display order.
+    pub const ALL: [Self; 3] = [Self::TenMinutes, Self::OneHour, Self::Tomorrow];
+
+    /// Stable identifier used by forms and tests.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TenMinutes => "ten_minutes",
+            Self::OneHour => "one_hour",
+            Self::Tomorrow => "tomorrow",
+        }
+    }
+
+    /// Parses the stable identifier.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "ten_minutes" => Some(Self::TenMinutes),
+            "one_hour" => Some(Self::OneHour),
+            "tomorrow" => Some(Self::Tomorrow),
+            _ => None,
+        }
+    }
+}
+
+/// Resolves a snooze choice into the instant the reminder should fire.
+///
+/// "Tomorrow" uses the reminder's local timezone and calendar date rather than a fixed 24-hour
+/// offset, so daylight-saving transitions and near-midnight wall clocks behave correctly.
+///
+/// # Errors
+///
+/// Returns a validation error when the reminder's timezone cannot be resolved.
+pub fn resolve_snooze(
+    reminder: &momentum_domain::model::Reminder,
+    now: DateTime<Utc>,
+    choice: SnoozeChoice,
+) -> Result<DateTime<Utc>, CommandError> {
+    match choice {
+        SnoozeChoice::TenMinutes => Ok(now + chrono::Duration::minutes(10)),
+        SnoozeChoice::OneHour => Ok(now + chrono::Duration::hours(1)),
+        SnoozeChoice::Tomorrow => {
+            let time_of_day = momentum_domain::time::local_time_in(&reminder.timezone, reminder.at);
+            momentum_domain::time::next_local_day_at(&reminder.timezone, now, time_of_day)
+                .map_err(|error| CommandError::Validation(error.to_string()))
+        }
+    }
+}
+
 /// Persistence for browser push subscriptions.
 #[async_trait]
 pub trait PushSubscriptionStore: Send + Sync {

@@ -994,6 +994,38 @@ Agent: opencode (deepseek-v4.1-flash)
   the app crate.
 - Live integrations not verified: real push service delivery; service-worker registration.
 
+### 39 — `add-reminder-snoozing` — COMPLETE
+
+- Start: 2026-09-27 18:10 · End: 2026-09-27 19:05
+- Proposal validation: strict validation passed before archive.
+- Implementation: the reminder state machine now treats `Snoozed` as deliverable and marks
+  snoozed reminders delivered again when they fire; `Reminder::snooze(until)` transitions from
+  Delivered/Snoozed and is a no-op for a repeated target (no duplicate deliveries, no version
+  churn); `SnoozeChoice::{TenMinutes,OneHour,Tomorrow}` with `resolve_snooze`; new
+  `SnoozeTodoReminder` command and `TodoService::snooze` (loads the reminder, resolves via the
+  service clock, dispatches); `momentum_domain::time::next_local_day_at` computes the next local
+  calendar day at the reminder's wall-clock time in its IANA timezone and steps over DST gaps;
+  rows with delivered/snoozed reminders render labeled 10m/1h/Tomorrow controls posting to
+  `POST /todos/{id}/snooze` with `?error=snooze` continuation.
+- Migrations: none.
+- Tests: domain unit tests (next-local-day normal/DST-gap/invalid zone; snooze due/idempotence),
+  3 testkit tests (idempotent repeat with unchanged version, redelivery exactly at the snoozed
+  instant and not after, local "tomorrow" resolving to a 43.5-hour offset rather than +24h,
+  missing-reminder rejection), 2 web tests (delivered-only controls and choice routing incl.
+  invalid option, missing reminder error path); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build (exit status checked directly after the change-38 masking lesson).
+- Bug found and fixed during the change: `MarkTodoReminderDelivered` initially only accepted
+  `Scheduled`, so a redelivered snoozed reminder was re-notified every pass; `mark_delivered` now
+  accepts `Snoozed` (caught by the new testkit redelivery test).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live gap: notification action buttons (snooze from the OS notification) belong to the
+  hydrated client; the web row controls are the accessible surface.
+- Archive: `2026-09-28-add-reminder-snoozing`; canonical `features/reminder-snoozing` spec created.
+- Commit: `feat(39): add reminder snoozing`
+- Decisions: "tomorrow" keeps the reminder's own wall-clock time on the next local day; snooze
+  transitions only from delivered/snoozed; repeated same-target snoozes are true no-ops.
+- Live integrations not verified: notification-button snoozing.
+
 ## Run summary
 
 ### Completed changes
@@ -1038,12 +1070,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 36 | add-date-pickers | COMPLETE | `feat(36)` |
 | 37 | add-natural-language-dates | COMPLETE | `feat(37)` |
 | 38 | add-reminders | COMPLETE | `feat(38)` |
+| 39 | add-reminder-snoozing | COMPLETE | `feat(39)` |
 
-- Completed proposal range: 01–38 (38 of 74).
-- Incomplete: 39–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–39 (39 of 74).
+- Incomplete: 40–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 58 through change 38 (bootstrap, 38 numbered
-  changes, spec/report docs commits; HEAD will be the change-38 commit).
+- Total commits on `agent/things-web-overnight`: 60 through change 39 (bootstrap, 39 numbered
+  changes, spec/report docs commits; HEAD will be the change-39 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1109,10 +1142,11 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 39–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 40–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
-   composition, inline editor/picker/natural-date composition, reminder scheduling/push plumbing,
-   read-store patterns, and test harnesses are in place to make each one mechanical. Next: 39.
+   composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
+   plumbing, read-store patterns, and test harnesses are in place to make each one mechanical.
+   Next: 40.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1130,9 +1164,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 38): all quality gates green
+- Current state at HEAD (change 39): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  38/38 passing; `git status` clean.
+  39/39 passing; `git status` clean.
 
 

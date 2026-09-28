@@ -745,6 +745,32 @@ impl TodoService {
             .await
     }
 
+    /// Snoozes the attached reminder using a configured choice.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the to-do or reminder is missing or the timezone cannot be resolved.
+    pub async fn snooze(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        choice: crate::reminders::SnoozeChoice,
+    ) -> Result<CommandOutcome, CommandError> {
+        let todo = self
+            .reader
+            .get_todo(account_id, id)
+            .await?
+            .ok_or(CommandError::NotFound)?;
+        let Some(reminder) = todo.reminder else {
+            return Err(CommandError::Validation(
+                "to-do has no reminder to snooze".to_string(),
+            ));
+        };
+        let until = crate::reminders::resolve_snooze(&reminder, self.clock.now(), choice)?;
+        self.dispatch(account_id, Command::SnoozeTodoReminder { id, until })
+            .await
+    }
+
     /// Marks the attached reminder delivered (idempotent).
     ///
     /// # Errors

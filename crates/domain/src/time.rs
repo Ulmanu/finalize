@@ -7,7 +7,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
@@ -40,6 +40,47 @@ pub fn parse_local_datetime(text: &str) -> Result<NaiveDateTime, TimeError> {
     NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M")
         .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S"))
         .map_err(|_| TimeError::InvalidFormat)
+}
+
+/// The local wall-clock time of an instant in a named timezone (UTC fallback).
+#[must_use]
+pub fn local_time_in(timezone: &str, instant: DateTime<Utc>) -> NaiveTime {
+    match timezone.parse::<chrono_tz::Tz>() {
+        Ok(zone) => instant.with_timezone(&zone).time(),
+        Err(_) => instant.time(),
+    }
+}
+
+/// Resolves the next local calendar day at `time_of_day` in a named timezone.
+///
+/// The target is computed from the local date rather than by adding 24 hours, so daylight-saving
+/// transitions keep the wall-clock intent. Local times that do not exist (the spring-forward gap)
+/// step forward hour by hour until they resolve.
+///
+/// # Errors
+///
+/// Returns [`TimeError::InvalidTimezone`] for unresolvable zone names.
+pub fn next_local_day_at(
+    timezone: &str,
+    now: DateTime<Utc>,
+    time_of_day: NaiveTime,
+) -> Result<DateTime<Utc>, TimeError> {
+    let site = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| TimeError::InvalidTimezone)?;
+    let _ = site;
+    let next = LocalDate::today_in_timezone(now, timezone).next_day();
+    let mut local = next.as_naive().and_time(time_of_day);
+    for _ in 0..4 {
+        match local_datetime_to_utc(local, timezone) {
+            Ok(instant) => return Ok(instant),
+            Err(TimeError::InvalidLocalTime) => {
+                local += chrono::Duration::hours(1);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(TimeError::InvalidLocalTime)
 }
 
 /// Converts a wall-clock local datetime in an IANA timezone to UTC.
@@ -225,6 +266,26 @@ pub fn utc_midnight(date: LocalDate) -> DateTime<Utc> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn next_local_day_uses_local_dates_and_survives_dst_gaps() {
+        // 2026-06-10T22:30Z is 2026-06-11 00:30 in Berlin; "tomorrow" is June 12 local.
+        let now = Utc.with_ymd_and_hms(2026, 6, 10, 22, 30, 0).unwrap();
+        let time = NaiveTime::from_hms_opt(9, 0, 0).unwrap();
+        let target = next_local_day_at("Europe/Berlin", now, time).expect("resolve");
+        assert_eq!(target, Utc.with_ymd_and_hms(2026, 6, 12, 7, 0, 0).unwrap());
+
+        // Berlin springs forward on 2026-03-29; 02:30 does not exist and steps to 03:30 local.
+        let before = Utc.with_ymd_and_hms(2026, 3, 28, 12, 0, 0).unwrap();
+        let gap = NaiveTime::from_hms_opt(2, 30, 0).unwrap();
+        let target = next_local_day_at("Europe/Berlin", before, gap).expect("resolve");
+        assert_eq!(target, Utc.with_ymd_and_hms(2026, 3, 29, 1, 30, 0).unwrap());
+
+        assert_eq!(
+            next_local_day_at("Mars/Olympus", now, time),
+            Err(TimeError::InvalidTimezone)
+        );
+    }
 
     #[test]
     fn converts_local_datetime_in_named_timezone_to_utc() {

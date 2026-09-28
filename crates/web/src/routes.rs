@@ -1455,6 +1455,13 @@ fn TodoRow(
         (label, matches!(state, Some(DeadlineState::Overdue)))
     });
     let note = (!todo.notes.is_empty()).then(|| todo.notes.clone());
+    let snoozable = todo.reminder.as_ref().is_some_and(|reminder| {
+        matches!(
+            reminder.state,
+            momentum_domain::model::ReminderState::Delivered
+                | momentum_domain::model::ReminderState::Snoozed
+        )
+    });
     let reminder = todo
         .reminder
         .map(|reminder| format!("Reminder: {}", reminder.at.format("%Y-%m-%d %H:%M UTC")));
@@ -1575,6 +1582,41 @@ fn TodoRow(
                             view! {
                                 <span class="row-badge date-badge" data-testid="reminder-badge">
                                     {label}
+                                </span>
+                            }
+                        })}
+                    {snoozable
+                        .then(|| {
+                            let snooze_target = format!("/todos/{id}/snooze");
+                            let choices = [
+                                ("ten_minutes", "10m", "Snooze 10 minutes"),
+                                ("one_hour", "1h", "Snooze 1 hour"),
+                                ("tomorrow", "Tomorrow", "Snooze until tomorrow"),
+                            ];
+                            view! {
+                                <span class="row-snooze" data-testid="row-snooze">
+                                    {choices
+                                        .into_iter()
+                                        .map(|(option, label, aria)| {
+                                            view! {
+                                                <form
+                                                    method="post"
+                                                    action=snooze_target.clone()
+                                                    class="inline-form"
+                                                >
+                                                    <input type="hidden" name="option" value=option/>
+                                                    <button
+                                                        type="submit"
+                                                        class="row-action"
+                                                        aria-label=aria
+                                                        data-testid=format!("snooze-{option}")
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                </form>
+                                            }
+                                        })
+                                        .collect_view()}
                                 </span>
                             }
                         })}
