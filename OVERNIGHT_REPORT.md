@@ -1026,6 +1026,30 @@ Agent: opencode (deepseek-v4.1-flash)
   transitions only from delivered/snoozed; repeated same-target snoozes are true no-ops.
 - Live integrations not verified: notification-button snoozing.
 
+### 40 — `add-recurrence-model` — COMPLETE
+
+- Start: 2026-09-27 19:10 · End: 2026-09-27 19:45
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_domain::recurrence` provides `RecurrencePattern` (Daily; Weekly with
+  selected weekdays as days-from-Monday; Monthly with selected day numbers searching forward up
+  to 400 days; Yearly with leap-day clamping; AfterCompletion delays),
+  `Recurrence::{new,next_occurrence}` with `RecurrenceEnd::{Never,On,After}` evaluated against the
+  occurrence count, and `RecurrenceTemplate` owning title, notes, tags, checklist, heading
+  structure, deadline/reminder offsets, and context with `deadline_for` and `copy_for` producing
+  independent values.
+- Migrations: none (pure domain change; persistence arrives with copy-on-complete).
+- Tests: 4 domain unit tests (all patterns with leap-year clamping, after-completion, end
+  conditions, template copy independence) and 2 testkit integration tests (rules through the
+  public API, template materialization); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build (exit checked directly).
+- Note: weekdays are `BTreeSet<u32>` days-from-Monday because `chrono::Weekday` lacks `Ord`.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-28-add-recurrence-model`; canonical `features/recurrence-model` spec created.
+- Commit: `feat(40): add recurrence model`
+- Decisions: after-completion patterns advance from the completion base; end bounds are
+  count-based and date-based; templates are plain owned values.
+- Live integrations not verified: none (domain-only change).
+
 ## Run summary
 
 ### Completed changes
@@ -1071,12 +1095,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 37 | add-natural-language-dates | COMPLETE | `feat(37)` |
 | 38 | add-reminders | COMPLETE | `feat(38)` |
 | 39 | add-reminder-snoozing | COMPLETE | `feat(39)` |
+| 40 | add-recurrence-model | COMPLETE | `feat(40)` |
 
-- Completed proposal range: 01–39 (39 of 74).
-- Incomplete: 40–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–40 (40 of 74).
+- Incomplete: 41–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 60 through change 39 (bootstrap, 39 numbered
-  changes, spec/report docs commits; HEAD will be the change-39 commit).
+- Total commits on `agent/things-web-overnight`: 61 through change 40 (bootstrap, 40 numbered
+  changes, spec/report docs commits; HEAD will be the change-40 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1142,11 +1167,11 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 40–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 41–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
-   plumbing, read-store patterns, and test harnesses are in place to make each one mechanical.
-   Next: 40.
+   plumbing, recurrence domain model, read-store patterns, and test harnesses are in place to
+   make each one mechanical. Next: 41.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1164,9 +1189,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 39): all quality gates green
+- Current state at HEAD (change 40): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  39/39 passing; `git status` clean.
+  40/40 passing; `git status` clean.
 
 

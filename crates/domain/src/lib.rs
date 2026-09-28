@@ -16,6 +16,7 @@ pub mod model;
 pub mod natural_date;
 pub mod notes;
 pub mod password;
+pub mod recurrence;
 pub mod time;
 
 pub use email::{Email, EmailError};
