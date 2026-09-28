@@ -428,6 +428,13 @@ pub enum Command {
         /// New deadline, or `None` to clear.
         deadline: Option<LocalDate>,
     },
+    /// Materializes one recurrence occurrence as a new copy (idempotent).
+    MaterializeRecurrenceOccurrence {
+        /// Recurrence template identity.
+        template_id: EntityId,
+        /// Logical occurrence date.
+        occurrence: LocalDate,
+    },
     /// Snoozes a delivered to-do reminder to a later instant.
     SnoozeTodoReminder {
         /// Entity to update.
@@ -455,6 +462,7 @@ impl Command {
     pub const fn target(&self) -> Option<EntityId> {
         match self {
             Self::CreateTodo { .. }
+            | Self::MaterializeRecurrenceOccurrence { .. }
             | Self::CreateArea { .. }
             | Self::CreateProject { .. }
             | Self::CreateHeading { .. }
@@ -520,6 +528,7 @@ impl Command {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::CreateTodo { .. } => "create_todo",
+            Self::MaterializeRecurrenceOccurrence { .. } => "materialize_recurrence_occurrence",
             Self::CreateArea { .. } => "create_area",
             Self::CreateProject { .. } => "create_project",
             Self::CreateHeading { .. } => "create_heading",
@@ -1022,6 +1031,30 @@ pub trait UnitOfWork: Send {
         expected_version: Option<i64>,
     ) -> Result<(), CommandError>;
 
+    /// Loads a recurrence template with its materialization progress.
+    async fn load_recurrence_template(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<crate::materializer::PersistedTemplate>, CommandError>;
+
+    /// Whether a recurrence occurrence was already materialized.
+    async fn recurrence_instance_exists(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+    ) -> Result<bool, CommandError>;
+
+    /// Records a materialized occurrence, returning false when another writer won the race.
+    async fn record_recurrence_instance(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+        copy_id: EntityId,
+    ) -> Result<bool, CommandError>;
+
     /// Loads the ordered items of a contextual scope.
     async fn load_context_order(
         &mut self,
@@ -1288,6 +1321,67 @@ impl CommandDispatcher {
     ) -> Result<(Option<EntityId>, Vec<DomainEvent>), CommandError> {
         let account_id = envelope.account_id;
         match &envelope.command {
+            Command::MaterializeRecurrenceOccurrence {
+                template_id,
+                occurrence,
+            } => {
+                let key = occurrence.to_iso();
+                if unit
+                    .recurrence_instance_exists(account_id, *template_id, &key)
+                    .await?
+                {
+                    return Ok((None, Vec::new()));
+                }
+                let Some(template) = unit
+                    .load_recurrence_template(account_id, *template_id)
+                    .await?
+                else {
+                    return Err(CommandError::NotFound);
+                };
+                let title = Title::parse(&template.template.title)
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                let mut todo = Todo::new(title, now);
+                todo.notes = template.template.notes.clone();
+                todo.context = template.template.context;
+                todo.schedule = Schedule::on(*occurrence);
+                todo.deadline = template.template.deadline_for(*occurrence);
+                for item in &template.template.checklist {
+                    let item = Title::parse(item)
+                        .map_err(|error| CommandError::Validation(error.to_string()))?;
+                    todo.add_checklist_item(item, now);
+                }
+                unit.save_todo(account_id, &todo, None).await?;
+                let context = todo.context;
+                let items = unit.load_context_order(account_id, context).await?;
+                let mut order = crate::ordering::ScopeOrder::from_items(
+                    crate::ordering::OrderingScope::Context(context),
+                    items
+                        .into_iter()
+                        .map(|(entity_id, rank)| crate::ordering::OrderedItem { entity_id, rank })
+                        .collect(),
+                );
+                let change = order
+                    .append(todo.id())
+                    .map_err(|error| CommandError::Validation(error.to_string()))?;
+                unit.set_context_rank(account_id, todo.id(), change.rank)
+                    .await?;
+                for item in change.rebalanced {
+                    unit.set_context_rank(account_id, item.entity_id, item.rank)
+                        .await?;
+                }
+                if !unit
+                    .record_recurrence_instance(account_id, *template_id, &key, todo.id())
+                    .await?
+                {
+                    return Err(CommandError::Validation(
+                        "occurrence already materialized".to_string(),
+                    ));
+                }
+                Ok((
+                    Some(todo.id()),
+                    vec![DomainEvent::TodoCreated { id: todo.id() }],
+                ))
+            }
             Command::CreateTodo {
                 title,
                 notes,
@@ -2354,6 +2448,7 @@ fn apply_to_todo(
     let id = todo.id();
     match command {
         Command::CreateTodo { .. }
+        | Command::MaterializeRecurrenceOccurrence { .. }
         | Command::DuplicateTodo { .. }
         | Command::ReorderTodo { .. }
         | Command::CreateArea { .. }

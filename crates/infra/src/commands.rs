@@ -7,10 +7,12 @@ use async_trait::async_trait;
 use momentum_app::commands::{
     ChangeRecord, CommandError, DomainEvent, UnitOfWork, UnitOfWorkFactory,
 };
+use momentum_app::materializer::PersistedTemplate;
 use momentum_domain::model::{
     Area, ContextRef, Deadline, EntityMeta, Project, Reminder, ReminderState, Schedule, Status,
     Title, Todo,
 };
+use momentum_domain::recurrence::{Recurrence, RecurrenceTemplate};
 use momentum_domain::time::LocalDate;
 use momentum_domain::{AccountId, EntityId};
 use serde_json::Value;
@@ -237,6 +239,82 @@ async fn upsert_placement(
 
 #[async_trait]
 impl UnitOfWork for PgUnitOfWork {
+    async fn load_recurrence_template(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<PersistedTemplate>, CommandError> {
+        let tx = self.tx()?;
+        let row = sqlx::query(
+            "select rule, template, next_occurrence, horizon_date from recurrence_templates \
+             where account_id = $1 and entity_id = $2",
+        )
+        .bind(account_id.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let rule = serde_json::from_value::<Recurrence>(row.get("rule"))
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+        let template = serde_json::from_value::<RecurrenceTemplate>(row.get("template"))
+            .map_err(|error| CommandError::Storage(error.to_string()))?;
+        Ok(Some(PersistedTemplate {
+            id,
+            rule,
+            template,
+            next_occurrence: row
+                .get::<Option<chrono::NaiveDate>, _>("next_occurrence")
+                .map(LocalDate::from_naive),
+            horizon: row
+                .get::<Option<chrono::NaiveDate>, _>("horizon_date")
+                .map(LocalDate::from_naive),
+        }))
+    }
+
+    async fn recurrence_instance_exists(
+        &mut self,
+        _account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+    ) -> Result<bool, CommandError> {
+        let tx = self.tx()?;
+        let exists: bool = sqlx::query_scalar(
+            "select exists(select 1 from recurrence_instances \
+             where template_id = $1 and occurrence_key = $2)",
+        )
+        .bind(template_id.as_uuid())
+        .bind(occurrence_key)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(exists)
+    }
+
+    async fn record_recurrence_instance(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+        copy_id: EntityId,
+    ) -> Result<bool, CommandError> {
+        let tx = self.tx()?;
+        let result = sqlx::query(
+            "insert into recurrence_instances (template_id, account_id, occurrence_key, entity_id) \
+             values ($1, $2, $3, $4) on conflict (template_id, occurrence_key) do nothing",
+        )
+        .bind(template_id.as_uuid())
+        .bind(account_id.as_uuid())
+        .bind(occurrence_key)
+        .bind(copy_id.as_uuid())
+        .execute(&mut **tx)
+        .await
+        .map_err(storage)?;
+        Ok(result.rows_affected() == 1)
+    }
+
     async fn load_todo(
         &mut self,
         account_id: AccountId,

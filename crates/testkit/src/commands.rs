@@ -1,6 +1,6 @@
 //! In-memory unit of work for deterministic command-layer tests.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -8,8 +8,10 @@ use async_trait::async_trait;
 use momentum_app::commands::{
     AreaChildren, ChangeRecord, CommandError, ProjectChildren, UnitOfWork, UnitOfWorkFactory,
 };
+use momentum_app::materializer::PersistedTemplate;
 use momentum_app::ordering::{OrderedItem, OrderingScope, ProjectionScope, Rank, ScopeOrder};
 use momentum_domain::model::{Area, ContextRef, Heading, Project, Tag, Todo};
+use momentum_domain::time::LocalDate;
 use momentum_domain::{AccountId, EntityId};
 use uuid::Uuid;
 
@@ -25,6 +27,8 @@ struct MemoryState {
     context_ranks: HashMap<(AccountId, EntityId), Rank>,
     projection_ranks: HashMap<(AccountId, ProjectionScope, EntityId), Rank>,
     next_ranks: HashMap<(AccountId, ContextRef), i64>,
+    recurrence_templates: HashMap<(AccountId, EntityId), PersistedTemplate>,
+    recurrence_instances: HashSet<(AccountId, EntityId, String)>,
 }
 
 /// Shared in-memory database backing command-layer tests.
@@ -54,6 +58,87 @@ impl MemoryDatabase {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Seeds a recurrence template for materializer tests.
+    pub fn seed_recurrence_template(&self, account_id: AccountId, template: PersistedTemplate) {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .recurrence_templates
+            .insert((account_id, template.id), template);
+    }
+
+    /// Returns a stored recurrence template.
+    #[must_use]
+    pub fn recurrence_template(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Option<PersistedTemplate> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .recurrence_templates
+            .get(&(account_id, id))
+            .cloned()
+    }
+
+    /// Returns every stored recurrence template for an account.
+    #[must_use]
+    pub fn recurrence_templates_for(&self, account_id: AccountId) -> Vec<PersistedTemplate> {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .recurrence_templates
+            .iter()
+            .filter(|((account, _), _)| *account == account_id)
+            .map(|(_, template)| template.clone())
+            .collect()
+    }
+
+    /// Records a materialized occurrence without creating a copy (test seeding).
+    pub fn seed_recurrence_instance(
+        &self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+    ) {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .recurrence_instances
+            .insert((account_id, template_id, occurrence_key.to_string()));
+    }
+
+    /// Persists materialization progress for a template.
+    pub fn advance_recurrence_template(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+        next_occurrence: Option<LocalDate>,
+        horizon: LocalDate,
+    ) {
+        let mut state = self.state.lock().expect("memory state lock");
+        if let Some(template) = state.recurrence_templates.get_mut(&(account_id, id)) {
+            template.next_occurrence = next_occurrence;
+            template.horizon = Some(horizon);
+        }
+    }
+
+    /// Whether an occurrence was recorded.
+    #[must_use]
+    pub fn recurrence_instance_exists(
+        &self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+    ) -> bool {
+        self.state
+            .lock()
+            .expect("memory state lock")
+            .recurrence_instances
+            .contains(&(account_id, template_id, occurrence_key.to_string()))
     }
 
     /// Makes the next `save_todo` fail, simulating a persistence error.
@@ -386,6 +471,41 @@ impl std::fmt::Debug for MemoryUnitOfWork {
 
 #[async_trait]
 impl UnitOfWork for MemoryUnitOfWork {
+    async fn load_recurrence_template(
+        &mut self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<Option<PersistedTemplate>, CommandError> {
+        Ok(self.database.recurrence_template(account_id, id))
+    }
+
+    async fn recurrence_instance_exists(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+    ) -> Result<bool, CommandError> {
+        Ok(self
+            .database
+            .recurrence_instance_exists(account_id, template_id, occurrence_key))
+    }
+
+    async fn record_recurrence_instance(
+        &mut self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence_key: &str,
+        _copy_id: EntityId,
+    ) -> Result<bool, CommandError> {
+        Ok(self
+            .database
+            .state
+            .lock()
+            .expect("memory state lock")
+            .recurrence_instances
+            .insert((account_id, template_id, occurrence_key.to_string())))
+    }
+
     async fn load_todo(
         &mut self,
         account_id: AccountId,

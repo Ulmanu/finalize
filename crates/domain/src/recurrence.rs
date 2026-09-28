@@ -14,7 +14,8 @@ use crate::time::LocalDate;
 use crate::EntityId;
 
 /// How a recurring item repeats.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecurrencePattern {
     /// Every calendar day.
     Daily,
@@ -61,7 +62,8 @@ impl RecurrencePattern {
 }
 
 /// When a recurrence stops.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecurrenceEnd {
     /// Repeats indefinitely.
     Never,
@@ -72,7 +74,7 @@ pub enum RecurrenceEnd {
 }
 
 /// A configured recurrence rule.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Recurrence {
     /// Repetition pattern.
     pub pattern: RecurrencePattern,
@@ -158,7 +160,7 @@ fn next_year_same_date(base: LocalDate) -> LocalDate {
 }
 
 /// A heading inherited by future copies.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TemplateHeading {
     /// Heading title.
     pub title: String,
@@ -170,7 +172,7 @@ pub struct TemplateHeading {
 ///
 /// All fields are owned values, so materializing a copy never shares mutable state with the
 /// completed original.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RecurrenceTemplate {
     /// Future-copy title.
     pub title: String,

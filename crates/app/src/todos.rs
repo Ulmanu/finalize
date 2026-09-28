@@ -745,6 +745,27 @@ impl TodoService {
             .await
     }
 
+    /// Materializes one recurrence occurrence as a fresh copy (idempotent).
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn materialize_occurrence(
+        &self,
+        account_id: AccountId,
+        template_id: EntityId,
+        occurrence: LocalDate,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(
+            account_id,
+            Command::MaterializeRecurrenceOccurrence {
+                template_id,
+                occurrence,
+            },
+        )
+        .await
+    }
+
     /// Snoozes the attached reminder using a configured choice.
     ///
     /// # Errors

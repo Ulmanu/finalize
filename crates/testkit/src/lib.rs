@@ -10,6 +10,7 @@ pub mod auth;
 pub mod commands;
 pub mod fixtures;
 pub mod logbook;
+pub mod materializer;
 pub mod projects;
 pub mod recurring;
 pub mod reminders;
