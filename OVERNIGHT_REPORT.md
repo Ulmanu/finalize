@@ -978,6 +978,10 @@ Agent: opencode (deepseek-v4.1-flash)
   green before the interruption.
 - Interruption note: the first gate run was terminated during `cargo test` compilation by an
   external SIGTERM; a clean re-run of the full workspace suite passed (EXIT=0).
+- Follow-up fix: the first WASM build failed because `push_routes` was declared without an
+  `ssr` feature gate (axum is optional); the module is now `#[cfg(feature = "ssr")]` and the WASM
+  client builds cleanly. The failed build was masked by piping the build script to `tail` in the
+  commit chain; future runs must check the script exit status directly.
 - Verification: manual artifact-to-implementation pass; every requirement scenario covered.
 - Known live gap: the production `PushTransport` network adapter (VAPID/HTTP to a push service)
   and the browser service-worker subscription flow belong to the hydrated client and deployment

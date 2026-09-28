@@ -25,6 +25,7 @@ pub mod logbook_routes;
 pub mod notes_routes;
 #[cfg(feature = "ssr")]
 pub mod project_routes;
+#[cfg(feature = "ssr")]
 pub mod push_routes;
 pub mod responsive;
 pub mod routes;
