@@ -447,6 +447,24 @@ impl Reminder {
             state: ReminderState::Scheduled,
         }
     }
+
+    /// Whether the reminder is due at `now` and still waiting to fire.
+    #[must_use]
+    pub fn is_due(&self, now: DateTime<Utc>) -> bool {
+        matches!(self.state, ReminderState::Scheduled) && self.at <= now
+    }
+
+    /// Marks the reminder delivered, returning whether the state changed.
+    ///
+    /// Repeating this after a restart or retry is a no-op, so delivery cannot storm.
+    pub fn mark_delivered(&mut self) -> bool {
+        if matches!(self.state, ReminderState::Scheduled) {
+            self.state = ReminderState::Delivered;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// The single contextual parent of a to-do.
@@ -654,6 +672,21 @@ impl Todo {
         if self.reminder != reminder {
             self.reminder = reminder;
             self.meta.touch(now);
+        }
+    }
+
+    /// Marks the attached reminder delivered, returning whether anything changed.
+    ///
+    /// Idempotent: a to-do without a scheduled reminder is left untouched.
+    pub fn mark_reminder_delivered(&mut self, now: DateTime<Utc>) -> bool {
+        let Some(reminder) = self.reminder.as_mut() else {
+            return false;
+        };
+        if reminder.mark_delivered() {
+            self.meta.touch(now);
+            true
+        } else {
+            false
         }
     }
 
@@ -882,6 +915,26 @@ impl Tag {
             title,
             parent,
         }
+    }
+}
+
+#[cfg(test)]
+mod reminder_delivery_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn due_and_delivery_are_idempotent() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 10, 9, 0, 0).unwrap();
+        let mut reminder = Reminder::scheduled(now - chrono::Duration::minutes(5), "UTC");
+        assert!(reminder.is_due(now));
+        assert!(reminder.mark_delivered());
+        assert!(!reminder.is_due(now));
+        assert!(!reminder.mark_delivered());
+        assert_eq!(reminder.state, ReminderState::Delivered);
+
+        let future = Reminder::scheduled(now + chrono::Duration::minutes(5), "UTC");
+        assert!(!future.is_due(now));
     }
 }
 

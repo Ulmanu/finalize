@@ -14,6 +14,7 @@ pub mod db;
 pub mod logbook;
 pub mod projects;
 pub mod recurring;
+pub mod reminders;
 pub mod tags;
 pub mod todos;
 
@@ -25,5 +26,6 @@ pub use db::{Database, DbError, Migration, MigrationError, MIGRATIONS};
 pub use logbook::PgLoggingPolicyStore;
 pub use projects::PgProjectReadStore;
 pub use recurring::PgRecurrenceReadStore;
+pub use reminders::PgReminderSource;
 pub use tags::PgTagReadStore;
 pub use todos::PgTodoReadStore;

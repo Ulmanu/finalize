@@ -428,6 +428,11 @@ pub enum Command {
         /// New deadline, or `None` to clear.
         deadline: Option<LocalDate>,
     },
+    /// Marks a to-do reminder as delivered.
+    MarkTodoReminderDelivered {
+        /// Entity to update.
+        id: EntityId,
+    },
     /// Replaces the reminder.
     SetTodoReminder {
         /// Entity to update.
@@ -491,7 +496,8 @@ impl Command {
             | Self::MoveTodo { id, .. }
             | Self::ScheduleTodo { id, .. }
             | Self::SetTodoDeadline { id, .. }
-            | Self::SetTodoReminder { id, .. } => Some(*id),
+            | Self::SetTodoReminder { id, .. }
+            | Self::MarkTodoReminderDelivered { id } => Some(*id),
             Self::AddChecklistItem { todo, .. }
             | Self::SetChecklistItemTitle { todo, .. }
             | Self::SetChecklistItemCompleted { todo, .. }
@@ -562,6 +568,7 @@ impl Command {
             Self::ScheduleTodo { .. } => "schedule_todo",
             Self::SetTodoDeadline { .. } => "set_todo_deadline",
             Self::SetTodoReminder { .. } => "set_todo_reminder",
+            Self::MarkTodoReminderDelivered { .. } => "mark_todo_reminder_delivered",
         }
     }
 }
@@ -2439,6 +2446,10 @@ fn apply_to_todo(
         Command::SetTodoDeadline { deadline, .. } => {
             todo.set_deadline(deadline.map(Deadline::new), now);
             Ok(DomainEvent::TodoDeadlineChanged { id })
+        }
+        Command::MarkTodoReminderDelivered { id } => {
+            todo.mark_reminder_delivered(now);
+            Ok(DomainEvent::TodoReminderChanged { id: *id })
         }
         Command::SetTodoReminder { reminder, .. } => {
             if reminder.is_some() && todo.schedule.date().is_none() {

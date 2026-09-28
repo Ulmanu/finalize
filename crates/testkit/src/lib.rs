@@ -12,5 +12,6 @@ pub mod fixtures;
 pub mod logbook;
 pub mod projects;
 pub mod recurring;
+pub mod reminders;
 pub mod tags;
 pub mod todos;

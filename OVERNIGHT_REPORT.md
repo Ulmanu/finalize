@@ -956,6 +956,40 @@ Agent: opencode (deepseek-v4.1-flash)
   roll forward to the next year.
 - Live integrations not verified: none beyond the documented hydration gap.
 
+### 38 — `add-reminders` — COMPLETE
+
+- Start: 2026-09-27 16:10 · End: 2026-09-27 18:00
+- Proposal validation: strict validation passed before archive.
+- Implementation: domain gained `Reminder::is_due` and idempotent `mark_delivered` plus
+  `Todo::mark_reminder_delivered`; new undo-inert `MarkTodoReminderDelivered` command and
+  `TodoService::mark_reminder_delivered`; `momentum_app::reminders` provides `ReminderScheduler`
+  over `ReminderSource`/`ReminderNotifier` traits with per-item results (failures stay scheduled
+  for retry; restarts and repeat passes are no-ops because delivered state persists in the
+  reminder JSON), `PushSubscription{Store}`, `build_push_notification` deep links, a fan-out
+  `WebPushNotifier` over a `PushTransport`, and an in-process `MemoryPushSubscriptionStore`;
+  `momentum_infra::PgReminderSource` reads due reminders from the entities table filtering in
+  Rust; `POST /push/subscriptions` registers/refreshes endpoints via a new `with_push_subscriptions`
+  AppState builder.
+- Migrations: none (delivery state lives in `reminder_rule`).
+- Tests: 1 domain unit test (due/idempotence), 3 testkit tests (deliver once and restart no-op,
+  failure retry with state preserved, push fan-out with deep-link and JSON escaping plus endpoint
+  refresh), 2 web tests (registration/refresh, missing-store error); full workspace suite green
+  (69 suites) after re-running the killed gate; fmt/arch-check/clippy/openspec strict validation
+  green before the interruption.
+- Interruption note: the first gate run was terminated during `cargo test` compilation by an
+  external SIGTERM; a clean re-run of the full workspace suite passed (EXIT=0).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live gap: the production `PushTransport` network adapter (VAPID/HTTP to a push service)
+  and the browser service-worker subscription flow belong to the hydrated client and deployment
+  configuration; subscription persistence, scheduling, payloads, and fan-out are implemented and
+  tested behind traits.
+- Archive: `2026-09-28-add-reminders`; canonical `features/reminder-delivery` spec created.
+- Commit: `feat(38): add reminders`
+- Decisions: at-least-once delivery with persisted state preventing storms; PG due filtering in
+  Rust to avoid JSON SQL portability; manual JSON escaping since serde_json is feature-gated in
+  the app crate.
+- Live integrations not verified: real push service delivery; service-worker registration.
+
 ## Run summary
 
 ### Completed changes
@@ -999,12 +1033,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 35 | add-expanded-item-editor | COMPLETE | `feat(35)` |
 | 36 | add-date-pickers | COMPLETE | `feat(36)` |
 | 37 | add-natural-language-dates | COMPLETE | `feat(37)` |
+| 38 | add-reminders | COMPLETE | `feat(38)` |
 
-- Completed proposal range: 01–37 (37 of 74).
-- Incomplete: 38–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–38 (38 of 74).
+- Incomplete: 39–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 57 through change 37 (bootstrap, 37 numbered
-  changes, spec/report docs commits; HEAD will be the change-37 commit).
+- Total commits on `agent/things-web-overnight`: 58 through change 38 (bootstrap, 38 numbered
+  changes, spec/report docs commits; HEAD will be the change-38 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1070,10 +1105,10 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 38–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 39–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
-   composition, inline editor/picker/natural-date composition, read-store patterns, and test
-   harnesses are in place to make each one mechanical. Next: 38.
+   composition, inline editor/picker/natural-date composition, reminder scheduling/push plumbing,
+   read-store patterns, and test harnesses are in place to make each one mechanical. Next: 39.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1091,9 +1126,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 37): all quality gates green
+- Current state at HEAD (change 38): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  37/37 passing; `git status` clean.
+  38/38 passing; `git status` clean.
 
 

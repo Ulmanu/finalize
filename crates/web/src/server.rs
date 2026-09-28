@@ -16,6 +16,7 @@ use momentum_app::areas::AreaService;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::recurring::RecurringService;
+use momentum_app::reminders::PushSubscriptionStore;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::Database;
@@ -27,6 +28,7 @@ use crate::auth_routes::{self, AuthContext};
 use crate::logbook_routes;
 use crate::notes_routes;
 use crate::project_routes;
+use crate::push_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
 use crate::tag_routes;
 use crate::todo_routes;
@@ -64,6 +66,8 @@ pub struct AppState {
     pub logbook: Option<Arc<LogbookService>>,
     /// Recurrence reads for the Repeating special view.
     pub recurring: Option<Arc<RecurringService>>,
+    /// Browser push subscriptions for reminder delivery.
+    pub push_subscriptions: Option<Arc<dyn PushSubscriptionStore>>,
 }
 
 impl AppState {
@@ -89,7 +93,18 @@ impl AppState {
             tags: None,
             logbook: None,
             recurring: None,
+            push_subscriptions: None,
         }
+    }
+
+    /// Adds the push subscription store.
+    #[must_use]
+    pub fn with_push_subscriptions(
+        mut self,
+        push_subscriptions: Arc<dyn PushSubscriptionStore>,
+    ) -> Self {
+        self.push_subscriptions = Some(push_subscriptions);
+        self
     }
 
     /// Adds the tag service.
@@ -206,6 +221,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(tag_routes::routes())
         .merge(notes_routes::routes())
         .merge(logbook_routes::routes())
+        .merge(push_routes::routes())
         .leptos_routes_with_context(
             &state,
             paths,

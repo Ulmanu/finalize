@@ -745,6 +745,20 @@ impl TodoService {
             .await
     }
 
+    /// Marks the attached reminder delivered (idempotent).
+    ///
+    /// # Errors
+    ///
+    /// Propagates command failures.
+    pub async fn mark_reminder_delivered(
+        &self,
+        account_id: AccountId,
+        id: EntityId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.dispatch(account_id, Command::MarkTodoReminderDelivered { id })
+            .await
+    }
+
     /// Replaces the reminder.
     ///
     /// # Errors
