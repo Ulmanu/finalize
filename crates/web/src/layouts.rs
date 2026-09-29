@@ -125,14 +125,21 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     let layout = LayoutState::use_state();
     let drawer_open = layout.drawer_open;
     #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    let pull_state = StoredValue::new(None::<(f64, f64, std::time::Instant, bool)>);
+    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    let navigate = leptos_router::hooks::use_navigate();
+    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
     {
-        let navigate = leptos_router::hooks::use_navigate();
         let navigate = navigate.clone();
         Effect::new(move |_| {
             use leptos::web_sys::KeyboardEvent;
+            use std::cell::RefCell;
+            use std::rc::Rc;
+            use std::time::Instant;
             use wasm_bindgen::closure::Closure;
             use wasm_bindgen::JsCast;
             let navigate = navigate.clone();
+            let keydown_navigate = navigate.clone();
             let callback = Closure::<dyn FnMut(KeyboardEvent)>::new(move |event: KeyboardEvent| {
                 let editing = editing_target();
                 if let Some(seed) = momentum_app::keyboard::type_travel_seed(
@@ -144,13 +151,61 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                 ) {
                     event.prevent_default();
                     let target = format!("/search?q={}", crate::routes::percent_encode(&seed));
-                    navigate(&target, Default::default());
+                    keydown_navigate(&target, Default::default());
                 }
             });
             let document = leptos::prelude::document();
             let _ = document
                 .add_event_listener_with_callback("keydown", callback.as_ref().unchecked_ref());
             callback.forget();
+
+            // Pull-to-search: record the touch start, navigate on a qualifying touchend.
+            let pull: Rc<RefCell<Option<(f64, f64, Instant, bool)>>> = Rc::new(RefCell::new(None));
+            let pull_start = Rc::clone(&pull);
+            let touch_start = Closure::<dyn FnMut(web_sys::TouchEvent)>::new(
+                move |event: web_sys::TouchEvent| {
+                    if let Some(touch) = event.touches().item(0) {
+                        let at_top = leptos::prelude::window()
+                            .scroll_y()
+                            .map(|y| y <= 0.0)
+                            .unwrap_or(false);
+                        *pull_start.borrow_mut() = Some((
+                            f64::from(touch.client_y()),
+                            f64::from(touch.client_x()),
+                            Instant::now(),
+                            at_top,
+                        ));
+                    }
+                },
+            );
+            let _ = document.add_event_listener_with_callback(
+                "touchstart",
+                touch_start.as_ref().unchecked_ref(),
+            );
+            touch_start.forget();
+
+            let pull_end = Rc::clone(&pull);
+            let navigate = navigate.clone();
+            let touch_end = Closure::<dyn FnMut(web_sys::TouchEvent)>::new(
+                move |event: web_sys::TouchEvent| {
+                    if let Some((start_y, start_x, started, at_top)) = pull_end.borrow_mut().take()
+                    {
+                        if let Some(touch) = event.changed_touches().item(0) {
+                            let dy = f64::from(touch.client_y()) - start_y;
+                            let dx = f64::from(touch.client_x()) - start_x;
+                            let duration =
+                                u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                            if momentum_app::gestures::pull_to_search(at_top, dx, dy, duration) {
+                                event.prevent_default();
+                                navigate("/search", Default::default());
+                            }
+                        }
+                    }
+                },
+            );
+            let _ = document
+                .add_event_listener_with_callback("touchend", touch_end.as_ref().unchecked_ref());
+            touch_end.forget();
         });
     }
 

@@ -1214,6 +1214,37 @@ Agent: opencode (deepseek-v4.1-flash)
 - Live integrations not verified: none beyond the browser runtime itself, exercised by the wasm
   build.
 
+### 47 — `add-mobile-gestures` — COMPLETE
+
+- Start: 2026-09-28 17:30 · End: 2026-09-28 19:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::gestures` provides thresholds (`SWIPE_THRESHOLD` 60 px,
+  `LONG_PRESS_MS` 500 ms, `PULL_THRESHOLD` 80 px, `GESTURE_MAX_MS` 800 ms, `LONG_PRESS_SLOP`
+  10 px), `classify_touch` (long press within slop → Open; fast mostly-horizontal swipe →
+  configured left/right action; otherwise None so scrolling/tapping wins), a `SwipeConfiguration`
+  with the default (left selects, right opens When), and `pull_to_search` (top boundary +
+  downward + fast + mostly vertical); the authenticated layout installs document-level
+  touchstart/touchend listeners in the hydrate+wasm effect (position/timestamp/top-boundary state
+  in an `Rc<RefCell<_>>`, navigation to Quick Find on a qualifying pull).
+- Migrations: none.
+- Tests: 3 app unit tests covering the full matrix (swipe direction/threshold/slow/vertical,
+  long-press slop and duration plus swipe-after-press, pull boundary/distance/duration/angle);
+  full workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Debugging notes: view-macro event closures cannot carry hydrate-only DOM code safely, so pull
+  wiring moved into the existing hydrate effect; touch APIs required a direct `web-sys`
+  dependency with `Touch`/`TouchList`/`TouchEvent` features enabled under the `hydrate` feature
+  (not ssr); `Touch::client_y()` is `i32` and is converted to `f64`; the `navigate` handle is
+  cloned per closure.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live gap: row-level swipe/long-press dispatch consumes the exposed configuration and
+  classifiers from the hydrated client; drop targets, selection, and accessible equivalents are
+  already server-rendered and tested (changes 32/33).
+- Archive: `2026-09-29-add-mobile-gestures`; canonical `features/mobile-gestures` spec created.
+- Commit: `feat(47): add mobile gestures`
+- Decisions: recognition is pure arithmetic in the app crate; pull requires the top boundary to
+  avoid hijacking normal scroll-up; long press winner-takes-all over swipe only within slop.
+- Live integrations not verified: row-level touch dispatch.
+
 ## Run summary
 
 ### Completed changes
@@ -1266,9 +1297,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 44 | add-deep-search | COMPLETE | `feat(44)` |
 | 45 | add-keyboard-command-system | COMPLETE | `feat(45)` |
 | 46 | add-type-travel | COMPLETE | `feat(46)` |
+| 47 | add-mobile-gestures | COMPLETE | `feat(47)` |
 
-- Completed proposal range: 01–46 (46 of 74).
-- Incomplete: 47–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–47 (47 of 74).
+- Incomplete: 48–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1337,12 +1369,12 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 47–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 48–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
-   registry and Type Travel, read-store patterns, and test harnesses are in place to make each
-   one mechanical. Next: 47.
+   registry, Type Travel, touch gesture machines, read-store patterns, and test harnesses are in
+   place to make each one mechanical. Next: 48.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1360,7 +1392,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 46): all quality gates green
+- Current state at HEAD (change 47): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.
