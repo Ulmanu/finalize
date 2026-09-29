@@ -9,6 +9,7 @@
 pub mod areas;
 pub mod auth;
 pub mod bulk;
+pub mod calendar;
 pub mod commands;
 pub mod gestures;
 pub mod keyboard;

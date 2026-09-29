@@ -16,6 +16,7 @@ use crate::design::CheckControl;
 use crate::layouts::{Protected, PublicLayout};
 use crate::session::use_account;
 use momentum_app::areas::{AreaService, AreaSummary};
+use momentum_app::calendar::{CalendarRange, CalendarService};
 use momentum_app::logbook::{LogbookAgenda, LogbookEntry, LogbookService};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::recurring::{RecurrenceTemplateSummary, RecurringService};
@@ -420,6 +421,74 @@ fn TodayList() -> impl IntoView {
                         })
                 }}
             </Suspense>
+            {today
+                .map(|today| view! { <CalendarSection range_start=today range_end=today/> })}
+        </section>
+    }
+}
+
+/// Read-only calendar projection for one inclusive local date range.
+#[component]
+fn CalendarSection(
+    #[prop(into)] range_start: LocalDate,
+    #[prop(into)] range_end: LocalDate,
+) -> impl IntoView {
+    let calendar = use_context::<Option<Arc<CalendarService>>>().flatten();
+    let account = use_account();
+    let projection = AsyncDerived::new(move || {
+        let calendar = calendar.clone();
+        let account = account.clone();
+        async move {
+            let (Some(calendar), Some(account)) = (calendar, account) else {
+                return momentum_app::calendar::CalendarProjection::default();
+            };
+            calendar
+                .events(
+                    account.account_id,
+                    CalendarRange::new(range_start, range_end),
+                )
+                .await
+        }
+    });
+    view! {
+        <section data-testid="calendar-events">
+            <h2 class="section-heading">"Calendar"</h2>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let projection = projection.get().unwrap_or_default();
+                    let degraded = projection.degraded.clone();
+                    let rows = projection
+                        .events
+                        .into_iter()
+                        .map(|event| {
+                            view! {
+                                <li
+                                    class="task-row task-row-readonly"
+                                    data-testid="calendar-row"
+                                    data-external="true"
+                                >
+                                    <span class="task-title">{event.title}</span>
+                                    <span class="row-badge">{event.calendar_name}</span>
+                                </li>
+                            }
+                        })
+                        .collect_view();
+                    view! {
+                        {degraded
+                            .map(|reason| {
+                                view! {
+                                    <p
+                                        class="calendar-degraded"
+                                        data-testid="calendar-degraded"
+                                    >
+                                        {reason}
+                                    </p>
+                                }
+                            })}
+                        <ul class="task-list">{rows}</ul>
+                    }
+                }}
+            </Suspense>
         </section>
     }
 }
@@ -600,19 +669,38 @@ pub fn UpcomingPage() -> impl IntoView {
 #[component]
 fn UpcomingAgendaView() -> impl IntoView {
     let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let calendar = use_context::<Option<Arc<CalendarService>>>().flatten();
     let account = use_account();
     let today = service.as_ref().map(|service| service.local_today());
     let agenda = AsyncDerived::new(move || {
         let service = service.clone();
+        let calendar = calendar.clone();
         let account = account.clone();
         async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .upcoming_agenda(account.account_id)
-                    .await
-                    .unwrap_or_default(),
-                _ => momentum_app::todos::UpcomingAgenda::default(),
+            let (Some(service), Some(account)) = (service, account) else {
+                return momentum_app::todos::UpcomingAgenda::default();
+            };
+            let agenda = service
+                .upcoming_agenda(account.account_id)
+                .await
+                .unwrap_or_default();
+            let Some(calendar) = calendar else {
+                return agenda;
+            };
+            let today = service.local_today();
+            let mut end = today;
+            for _ in 0..60 {
+                end = end.next_day();
             }
+            let projection = calendar
+                .events(account.account_id, CalendarRange::new(today, end))
+                .await;
+            let rows = projection
+                .events
+                .iter()
+                .map(momentum_app::todos::CalendarRow::from_event)
+                .collect();
+            agenda.with_calendar_rows(rows, projection.degraded)
         }
     });
 
@@ -681,6 +769,19 @@ fn UpcomingAgendaView() -> impl IntoView {
                                         }
                                     })
                                     .collect_view()}
+                                {agenda
+                                    .calendar_degraded
+                                    .clone()
+                                    .map(|reason| {
+                                        view! {
+                                            <p
+                                                class="calendar-degraded"
+                                                data-testid="calendar-degraded"
+                                            >
+                                                {reason}
+                                            </p>
+                                        }
+                                    })}
                                 {(!agenda.calendar.is_empty())
                                     .then(|| {
                                         view! {
@@ -695,6 +796,7 @@ fn UpcomingAgendaView() -> impl IntoView {
                                                                 <li
                                                                     class="task-row task-row-readonly"
                                                                     data-testid="calendar-row"
+                                                                    data-external="true"
                                                                 >
                                                                     <span class="task-title">
                                                                         {row.title}

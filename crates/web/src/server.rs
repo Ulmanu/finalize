@@ -13,6 +13,7 @@ use leptos::config::LeptosOptions;
 use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use momentum_app::areas::AreaService;
+use momentum_app::calendar::CalendarService;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::recurring::RecurringService;
@@ -72,6 +73,8 @@ pub struct AppState {
     pub push_subscriptions: Option<Arc<dyn PushSubscriptionStore>>,
     /// Recent destinations for Quick Find ranking.
     pub recents: Option<Arc<dyn RecentsStore>>,
+    /// Calendar projection service, when a provider is configured.
+    pub calendar: Option<Arc<CalendarService>>,
 }
 
 impl AppState {
@@ -99,7 +102,15 @@ impl AppState {
             recurring: None,
             push_subscriptions: None,
             recents: None,
+            calendar: None,
         }
+    }
+
+    /// Adds the calendar projection service.
+    #[must_use]
+    pub fn with_calendar(mut self, calendar: Arc<CalendarService>) -> Self {
+        self.calendar = Some(calendar);
+        self
     }
 
     /// Adds the Quick Find recents store.
@@ -221,6 +232,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let logbook_service = state.logbook.clone();
     let recurring_service = state.recurring.clone();
     let recents = state.recents.clone();
+    let calendar = state.calendar.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -247,6 +259,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(logbook_service.clone());
                 provide_context(recurring_service.clone());
                 provide_context(recents.clone());
+                provide_context(calendar.clone());
             },
             move || shell(shell_options.clone()),
         )

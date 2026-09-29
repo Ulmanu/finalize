@@ -157,13 +157,26 @@ pub struct CalendarRow {
     pub title: String,
 }
 
+impl CalendarRow {
+    /// Builds a read-only row from a provider-neutral calendar event.
+    #[must_use]
+    pub fn from_event(event: &crate::calendar::CalendarEvent) -> Self {
+        Self {
+            date: event.starts_on,
+            title: event.title.clone(),
+        }
+    }
+}
+
 /// The Upcoming agenda: date-grouped task rows plus read-only calendar rows.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UpcomingAgenda {
     /// Future scheduled items grouped by local date, ascending.
     pub days: Vec<UpcomingDay>,
-    /// External calendar rows; empty until a calendar integration exists.
+    /// External calendar rows from the calendar projection.
     pub calendar: Vec<CalendarRow>,
+    /// Calendar degradation reason, when the provider failed.
+    pub calendar_degraded: Option<String>,
 }
 
 impl UpcomingAgenda {
@@ -187,7 +200,25 @@ impl UpcomingAgenda {
         Self {
             days,
             calendar: Vec::new(),
+            calendar_degraded: None,
         }
+    }
+
+    /// Attaches read-only calendar rows and an optional degradation reason.
+    #[must_use]
+    pub fn with_calendar_rows(
+        mut self,
+        mut rows: Vec<CalendarRow>,
+        degraded: Option<String>,
+    ) -> Self {
+        rows.sort_by(|left, right| {
+            left.date
+                .cmp(&right.date)
+                .then_with(|| left.title.cmp(&right.title))
+        });
+        self.calendar = rows;
+        self.calendar_degraded = degraded;
+        self
     }
 }
 
