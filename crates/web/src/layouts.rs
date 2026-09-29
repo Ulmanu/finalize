@@ -105,6 +105,16 @@ pub const MOBILE_BAR_DESTINATIONS: &[NavDestination] = &[
     },
 ];
 
+#[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+fn editing_target() -> bool {
+    let Some(element) = leptos::prelude::document().active_element() else {
+        return false;
+    };
+    let tag = element.tag_name().to_lowercase();
+    matches!(tag.as_str(), "input" | "textarea" | "select")
+        || element.get_attribute("contenteditable").is_some()
+}
+
 /// Authenticated application layout with responsive navigation.
 #[component]
 pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
@@ -114,6 +124,35 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     let account_label = signed_in_label.clone();
     let layout = LayoutState::use_state();
     let drawer_open = layout.drawer_open;
+    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
+    {
+        let navigate = leptos_router::hooks::use_navigate();
+        let navigate = navigate.clone();
+        Effect::new(move |_| {
+            use leptos::web_sys::KeyboardEvent;
+            use wasm_bindgen::closure::Closure;
+            use wasm_bindgen::JsCast;
+            let navigate = navigate.clone();
+            let callback = Closure::<dyn FnMut(KeyboardEvent)>::new(move |event: KeyboardEvent| {
+                let editing = editing_target();
+                if let Some(seed) = momentum_app::keyboard::type_travel_seed(
+                    &event.key(),
+                    event.ctrl_key(),
+                    event.meta_key(),
+                    event.alt_key(),
+                    editing,
+                ) {
+                    event.prevent_default();
+                    let target = format!("/search?q={}", crate::routes::percent_encode(&seed));
+                    navigate(&target, Default::default());
+                }
+            });
+            let document = leptos::prelude::document();
+            let _ = document
+                .add_event_listener_with_callback("keydown", callback.as_ref().unchecked_ref());
+            callback.forget();
+        });
+    }
 
     view! {
         <div

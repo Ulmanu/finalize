@@ -1186,6 +1186,34 @@ Agent: opencode (deepseek-v4.1-flash)
   reserved commands keep their conventional primary key for documentation only.
 - Live integrations not verified: hydrated key dispatch.
 
+### 46 — `add-type-travel` — COMPLETE
+
+- Start: 2026-09-28 15:45 · End: 2026-09-28 17:20
+- Proposal validation: strict validation passed before archive.
+- Implementation: `keyboard::type_travel_seed(key, ctrl, meta, alt, editing)` is the pure decision
+  (printable single characters only, no modifier chords, never while an editable control is
+  focused); the authenticated layout installs a document-level keydown listener that inspects
+  `document.active_element()` (input/textarea/select/contenteditable) and navigates to
+  `/search?q=<seed>`; Escape on the Quick Find input steps back in history. The listener is
+  compiled only for `all(feature = "hydrate", target_arch = "wasm32")`.
+- Migrations: none.
+- Tests: 1 new app unit test covering the decision matrix (printable, accented, editing,
+  modifiers, multi-character, control, whitespace, empty) plus the existing keyboard registry
+  suite; full workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked
+  directly).
+- Debugging note: the first wiring used `cfg(feature = "hydrate")` alone, which made
+  `--all-features` native test builds run hydrated router code and panic
+  (`spawn_local` outside a LocalSet) in the anytime suite; gating on `target_arch = "wasm32"` as
+  well fixed it. The full all-features suite is green again.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Archive: `2026-09-29-add-type-travel`; canonical `features/type-travel` spec created.
+- Commit: `feat(46): add type travel`
+- Decisions: document-level listener (key events on body focus do not bubble through the layout
+  div); a leaked closure is intentional for the app-lifetime layout; Escape restores via
+  `history.back()`.
+- Live integrations not verified: none beyond the browser runtime itself, exercised by the wasm
+  build.
+
 ## Run summary
 
 ### Completed changes
@@ -1237,12 +1265,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 43 | add-quick-find | COMPLETE | `feat(43)` |
 | 44 | add-deep-search | COMPLETE | `feat(44)` |
 | 45 | add-keyboard-command-system | COMPLETE | `feat(45)` |
+| 46 | add-type-travel | COMPLETE | `feat(46)` |
 
-- Completed proposal range: 01–45 (45 of 74).
-- Incomplete: 46–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–46 (46 of 74).
+- Incomplete: 47–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 66 through change 45 (bootstrap, 45 numbered
-  changes, spec/report docs commits; HEAD will be the change-45 commit).
+- Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
+  changes, spec/report docs commits; HEAD will be the change-46 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1308,12 +1337,12 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 46–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 47–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
-   registry, read-store patterns, and test harnesses are in place to make each one mechanical.
-   Next: 46.
+   registry and Type Travel, read-store patterns, and test harnesses are in place to make each
+   one mechanical. Next: 47.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1331,9 +1360,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 45): all quality gates green
+- Current state at HEAD (change 46): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  45/45 passing; `git status` clean.
+  46/46 passing; `git status` clean.
 
 

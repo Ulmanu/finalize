@@ -341,8 +341,37 @@ pub fn conflicts() -> Vec<&'static CommandDefinition> {
         .collect()
 }
 
+/// Decides whether a keypress should start Type Travel and which character seeds it.
+///
+/// Returns the seed character only for printable single-character keys pressed without
+/// Ctrl/Meta/Alt while focus is outside an editable control; everything else returns `None`, so
+/// typing inside notes, titles, checklists, or date inputs never triggers navigation.
+#[must_use]
+pub fn type_travel_seed(
+    key: &str,
+    ctrl: bool,
+    meta: bool,
+    alt: bool,
+    editing: bool,
+) -> Option<String> {
+    if editing || ctrl || meta || alt {
+        return None;
+    }
+    let mut characters = key.chars();
+    let character = characters.next()?;
+    if characters.next().is_some() {
+        return None;
+    }
+    if character.is_control() || character.is_whitespace() {
+        return None;
+    }
+    Some(character.to_string())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::type_travel_seed;
+
     use super::{
         command, commands_for, conflicts, keys_for, registry, CommandCategory, CommandSurface,
     };
@@ -404,5 +433,30 @@ mod tests {
         let global = commands_for(CommandSurface::Global);
         assert!(global.iter().any(|command| command.id == "quick_find"));
         assert!(command("complete_todo").is_some());
+    }
+
+    #[test]
+    fn type_travel_starts_only_outside_editors_with_printable_keys() {
+        assert_eq!(
+            type_travel_seed("r", false, false, false, false),
+            Some("r".to_string())
+        );
+        assert_eq!(
+            type_travel_seed("é", false, false, false, false),
+            Some("é".to_string())
+        );
+        // Editors never trigger Type Travel.
+        assert_eq!(type_travel_seed("r", false, false, false, true), None);
+        // Modifier chords and non-printable keys are ignored.
+        assert_eq!(type_travel_seed("r", true, false, false, false), None);
+        assert_eq!(type_travel_seed("r", false, true, false, false), None);
+        assert_eq!(type_travel_seed("r", false, false, true, false), None);
+        assert_eq!(type_travel_seed("Enter", false, false, false, false), None);
+        assert_eq!(
+            type_travel_seed("ArrowUp", false, false, false, false),
+            None
+        );
+        assert_eq!(type_travel_seed(" ", false, false, false, false), None);
+        assert_eq!(type_travel_seed("", false, false, false, false), None);
     }
 }

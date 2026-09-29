@@ -434,7 +434,7 @@ pub fn SearchPage() -> impl IntoView {
     }
 }
 
-fn percent_encode(value: &str) -> String {
+pub(crate) fn percent_encode(value: &str) -> String {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.as_bytes() {
         match byte {
@@ -497,6 +497,18 @@ fn QuickFind() -> impl IntoView {
                     aria-label="Search"
                     autocomplete="off"
                     autofocus=true
+                    on:keydown=move |event| {
+                        if event.key() == "Escape" {
+                            #[cfg(feature = "hydrate")]
+                            {
+                                if let Ok(history) = leptos::prelude::window().history() {
+                                    let _ = history.back();
+                                }
+                            }
+                            #[cfg(not(feature = "hydrate"))]
+                            let _ = &event;
+                        }
+                    }
                 />
                 <button type="submit" class="button-primary">"Search"</button>
             </form>
