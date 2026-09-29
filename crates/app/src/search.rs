@@ -1,8 +1,10 @@
-//! Quick Find: deterministic type-to-search across lists, entities, and settings.
+//! Quick Find and deep search: deterministic, normalized matching across lists, entities,
+//! notes, checklists, and logged content.
 //!
 //! Ranking is intentionally transparent: exact matches first, then prefixes, then word starts,
-//! then substrings; recency only breaks ties within the same confidence tier, and every match is
-//! returned so nothing is hidden by a recency boost.
+//! then substrings; field priority (title before checklist before notes) and recency only break
+//! ties within the same confidence tier, and every match is returned so nothing is hidden.
+//! Matching folds case and Latin diacritics while display text stays original.
 
 use std::sync::{Arc, Mutex};
 
@@ -13,7 +15,7 @@ use crate::areas::AreaService;
 use crate::commands::CommandError;
 use crate::projects::ProjectService;
 use crate::tags::TagService;
-use crate::todos::{TodoScope, TodoService};
+use crate::todos::{TodoScope, TodoService, TodoSummary};
 
 /// What kind of destination a hit is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -50,15 +52,40 @@ impl SearchKind {
     }
 }
 
+/// Which field matched the query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SearchField {
+    /// The title matched.
+    Title,
+    /// A checklist item matched.
+    Checklist,
+    /// Notes matched.
+    Notes,
+}
+
+impl SearchField {
+    /// Stable identifier used by markup and tests.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Title => "title",
+            Self::Checklist => "checklist",
+            Self::Notes => "notes",
+        }
+    }
+}
+
 /// One navigable destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchHit {
-    /// Display title.
+    /// Display title (original, unnormalized text).
     pub title: String,
     /// In-application destination.
     pub url: String,
     /// Destination kind.
     pub kind: SearchKind,
+    /// Field that matched the query.
+    pub matched_in: SearchField,
 }
 
 /// A ranked hit.
@@ -166,7 +193,7 @@ impl SearchService {
         account_id: AccountId,
         query: &str,
     ) -> Result<Vec<ScoredHit>, CommandError> {
-        let needle = query.trim().to_lowercase();
+        let needle = normalize(query.trim());
         if needle.is_empty() {
             return Ok(Vec::new());
         }
@@ -174,65 +201,120 @@ impl SearchService {
             Some(store) => store.list(account_id).await.unwrap_or_default(),
             None => Vec::new(),
         };
-        let mut hits = built_in_destinations();
+        let mut raw: Vec<(SearchHit, u8)> = Vec::new();
+        for hit in built_in_destinations() {
+            if let Some(score) = score_for(&hit.title, &needle) {
+                raw.push((hit, score));
+            }
+        }
         for todo in self.todos.list(account_id, TodoScope::AllOpen).await? {
-            hits.push(SearchHit {
-                title: todo.title.clone(),
-                url: format!("/todos/{}", todo.id),
-                kind: SearchKind::Todo,
-            });
+            if let Some((hit, score)) = todo_hit(&todo, &needle) {
+                raw.push((hit, score));
+            }
+        }
+        for logged in self
+            .todos
+            .list(account_id, TodoScope::Logbook { logged_only: false })
+            .await?
+        {
+            if let Some((hit, score)) = todo_hit(&logged, &needle) {
+                raw.push((hit, score));
+            }
         }
         for project in self.projects.list(account_id).await? {
-            hits.push(SearchHit {
-                title: project.title.clone(),
-                url: format!("/projects/{}", project.id),
-                kind: SearchKind::Project,
-            });
+            if let Some(score) = score_for(&project.title, &needle) {
+                raw.push((
+                    SearchHit {
+                        title: project.title.clone(),
+                        url: format!("/projects/{}", project.id),
+                        kind: SearchKind::Project,
+                        matched_in: SearchField::Title,
+                    },
+                    score,
+                ));
+            } else if let Some(score) = score_for(&project.notes, &needle) {
+                raw.push((
+                    SearchHit {
+                        title: project.title.clone(),
+                        url: format!("/projects/{}", project.id),
+                        kind: SearchKind::Project,
+                        matched_in: SearchField::Notes,
+                    },
+                    score,
+                ));
+            }
             for heading in project.headings.iter().filter(|heading| !heading.archived) {
-                hits.push(SearchHit {
-                    title: heading.title.clone(),
-                    url: format!("/projects/{}#{}", project.id, heading.id),
-                    kind: SearchKind::Heading,
-                });
+                if let Some(score) = score_for(&heading.title, &needle) {
+                    raw.push((
+                        SearchHit {
+                            title: heading.title.clone(),
+                            url: format!("/projects/{}#{}", project.id, heading.id),
+                            kind: SearchKind::Heading,
+                            matched_in: SearchField::Title,
+                        },
+                        score,
+                    ));
+                }
             }
         }
         if let Some(areas) = &self.areas {
             for area in areas.list(account_id).await? {
-                hits.push(SearchHit {
-                    title: area.title,
-                    url: format!("/areas/{}", area.id),
-                    kind: SearchKind::Area,
-                });
+                if let Some(score) = score_for(&area.title, &needle) {
+                    raw.push((
+                        SearchHit {
+                            title: area.title,
+                            url: format!("/areas/{}", area.id),
+                            kind: SearchKind::Area,
+                            matched_in: SearchField::Title,
+                        },
+                        score,
+                    ));
+                }
             }
         }
         if let Some(tags) = &self.tags {
             for tag in tags.list(account_id).await? {
-                hits.push(SearchHit {
-                    title: tag.title.clone(),
-                    url: tag_url(tag.id),
-                    kind: SearchKind::Tag,
-                });
+                if let Some(score) = score_for(&tag.title, &needle) {
+                    raw.push((
+                        SearchHit {
+                            title: tag.title.clone(),
+                            url: tag_url(tag.id),
+                            kind: SearchKind::Tag,
+                            matched_in: SearchField::Title,
+                        },
+                        score,
+                    ));
+                }
             }
         }
-        let mut scored: Vec<ScoredHit> = hits
+        // One row per destination, keeping the best-matching field.
+        let mut best: Vec<(SearchHit, u8)> = Vec::new();
+        for (hit, score) in raw {
+            let existing = best.iter_mut().find(|(known, _)| known.url == hit.url);
+            match existing {
+                Some((known, known_score)) => {
+                    if (score, hit.matched_in) < (*known_score, known.matched_in) {
+                        *known = hit;
+                        *known_score = score;
+                    }
+                }
+                None => best.push((hit, score)),
+            }
+        }
+        let mut scored: Vec<ScoredHit> = best
             .into_iter()
-            .filter_map(|hit| {
-                let score = score_for(&hit.title, &needle)?;
+            .map(|(hit, score)| {
                 let recent = recents.contains(&hit.url);
-                Some(ScoredHit { hit, score, recent })
+                ScoredHit { hit, score, recent }
             })
             .collect();
         scored.sort_by(|left, right| {
             left.score
                 .cmp(&right.score)
+                .then_with(|| left.hit.matched_in.cmp(&right.hit.matched_in))
                 .then_with(|| left.recent.cmp(&right.recent).reverse())
                 .then_with(|| left.hit.kind.cmp(&right.hit.kind))
-                .then_with(|| {
-                    left.hit
-                        .title
-                        .to_lowercase()
-                        .cmp(&right.hit.title.to_lowercase())
-                })
+                .then_with(|| normalize(&left.hit.title).cmp(&normalize(&right.hit.title)))
                 .then_with(|| left.hit.url.cmp(&right.hit.url))
         });
         scored.truncate(60);
@@ -252,12 +334,71 @@ impl SearchService {
     }
 }
 
+/// Folds Latin diacritics and lowercases text for matching; display text stays original.
+#[must_use]
+pub fn normalize(text: &str) -> String {
+    text.chars()
+        .map(fold_char)
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn fold_char(character: char) -> char {
+    match character {
+        'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' | 'Á' | 'À' | 'Â' | 'Ä' | 'Ã' | 'Å' => 'a',
+        'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+        'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+        'ó' | 'ò' | 'ô' | 'ö' | 'õ' | 'Ó' | 'Ò' | 'Ô' | 'Ö' | 'Õ' => 'o',
+        'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+        'ç' | 'Ç' => 'c',
+        'ñ' | 'Ñ' => 'n',
+        'ý' | 'ÿ' | 'Ý' => 'y',
+        other => other,
+    }
+}
+
+fn todo_hit(todo: &TodoSummary, needle: &str) -> Option<(SearchHit, u8)> {
+    let url = format!("/todos/{}", todo.id);
+    let mut best: Option<(SearchHit, u8, u8)> = None;
+    let mut consider = |content: &str, matched_in: SearchField| {
+        let Some(score) = score_for(content, needle) else {
+            return;
+        };
+        let field_rank = match matched_in {
+            SearchField::Title => 0_u8,
+            SearchField::Checklist => 1,
+            SearchField::Notes => 2,
+        };
+        let better = best.as_ref().is_none_or(|(_, best_score, best_rank)| {
+            (score, field_rank) < (*best_score, *best_rank)
+        });
+        if better {
+            best = Some((
+                SearchHit {
+                    title: todo.title.clone(),
+                    url: url.clone(),
+                    kind: SearchKind::Todo,
+                    matched_in,
+                },
+                score,
+                field_rank,
+            ));
+        }
+    };
+    consider(&todo.title, SearchField::Title);
+    for item in &todo.checklist {
+        consider(&item.title, SearchField::Checklist);
+    }
+    consider(&todo.notes, SearchField::Notes);
+    best.map(|(hit, score, _)| (hit, score))
+}
+
 fn tag_url(id: momentum_domain::EntityId) -> String {
     format!("/inbox?tags={id}")
 }
 
 fn score_for(title: &str, needle: &str) -> Option<u8> {
-    let lowered = title.to_lowercase();
+    let lowered = normalize(title);
     if lowered == needle {
         return Some(0);
     }
@@ -294,13 +435,14 @@ fn built_in_destinations() -> Vec<SearchHit> {
         title: title.to_string(),
         url: url.to_string(),
         kind,
+        matched_in: SearchField::Title,
     })
     .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::score_for;
+    use super::{normalize, score_for};
 
     #[test]
     fn scores_match_confidence_tiers() {
@@ -311,5 +453,14 @@ mod tests {
         assert_eq!(score_for("Quarterly re-roadmap-ed", "roadmap"), Some(2));
         assert_eq!(score_for("Something else", "roadmap"), None);
         assert_eq!(score_for("INBOX", "inbox"), Some(0));
+    }
+
+    #[test]
+    fn normalization_folds_case_and_diacritics_for_matching_only() {
+        assert_eq!(normalize("Café RÉSUMÉ"), "cafe resume");
+        assert_eq!(normalize("Señor Muñoz"), "senor munoz");
+        assert_eq!(score_for("Café run", "cafe"), Some(1));
+        assert_eq!(score_for("Résumé review", "resume"), Some(1));
+        assert_eq!(score_for("El área norte", "area"), Some(2));
     }
 }

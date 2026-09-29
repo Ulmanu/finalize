@@ -1134,6 +1134,31 @@ Agent: opencode (deepseek-v4.1-flash)
   reuse project summaries; recency only breaks ties within a tier.
 - Live integrations not verified: hydrated type-to-open gesture.
 
+### 44 — `add-deep-search` — COMPLETE
+
+- Start: 2026-09-28 13:10 · End: 2026-09-28 14:20
+- Proposal validation: strict validation passed before archive.
+- Implementation: search now considers to-do notes, every checklist item title, project notes, and
+  logged/completed content via `TodoScope::Logbook { logged_only: false }`; `SearchField`
+  (title < checklist < notes) breaks ties inside a confidence tier and `data-matched-in` plus a
+  "Notes"/"Checklist" badge surface it; one row per destination keeps the best-matching field;
+  `normalize` folds case and Latin diacritics (shared by server search and the future hydrated
+  client for offline/server parity) while display text stays original.
+- Migrations: none.
+- Tests: 2 app unit tests (tiers incl. word-split/substring; normalization and diacritic queries)
+  and 1 new web test (notes match via "röadmap", checklist match via "cafe" with badge, logged
+  completed content via "errand", title match ranking above notes match); full workspace suite
+  green plus fmt, arch-check, clippy, WASM build (exit checked directly). Clippy unused-import
+  fixed.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live gap: the persisted offline index does not exist yet; the shared `normalize`/scoring
+  API is the compatibility contract, exercised server-side today.
+- Archive: `2026-09-29-add-deep-search`; canonical `features/deep-search` spec created.
+- Commit: `feat(44): add deep search`
+- Decisions: hand-rolled Latin diacritic folding (no Unicode dependency); best-field-per-URL
+  dedup; field priority sorts between score and recency.
+- Live integrations not verified: offline index implementation.
+
 ## Run summary
 
 ### Completed changes
@@ -1183,12 +1208,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 41 | add-recurrence-materializer | COMPLETE | `feat(41)` |
 | 42 | add-recurrence-exceptions | COMPLETE | `feat(42)` |
 | 43 | add-quick-find | COMPLETE | `feat(43)` |
+| 44 | add-deep-search | COMPLETE | `feat(44)` |
 
-- Completed proposal range: 01–43 (43 of 74).
-- Incomplete: 44–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–44 (44 of 74).
+- Incomplete: 45–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 64 through change 43 (bootstrap, 43 numbered
-  changes, spec/report docs commits; HEAD will be the change-43 commit).
+- Total commits on `agent/things-web-overnight`: 65 through change 44 (bootstrap, 44 numbered
+  changes, spec/report docs commits; HEAD will be the change-44 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1254,11 +1280,11 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 44–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 45–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
-   plumbing, recurrence model/materializer/exceptions, Quick Find search, read-store patterns, and
-   test harnesses are in place to make each one mechanical. Next: 44.
+   plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, read-store
+   patterns, and test harnesses are in place to make each one mechanical. Next: 45.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1276,9 +1302,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 43): all quality gates green
+- Current state at HEAD (change 44): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  43/43 passing; `git status` clean.
+  44/44 passing; `git status` clean.
 
 

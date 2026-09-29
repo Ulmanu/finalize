@@ -229,6 +229,84 @@ async fn search_ranks_matches_and_covers_lists_entities_and_settings() {
 }
 
 #[tokio::test]
+async fn deep_search_matches_notes_checklists_and_logged_content() {
+    let h = harness().await;
+    h.todos
+        .create(
+            h.account_id,
+            "Groceries",
+            Some("Pick up for the röadmap offsite".to_string()),
+        )
+        .await
+        .expect("todo");
+    let groceries = h
+        .todos
+        .list(h.account_id, momentum_app::todos::TodoScope::Inbox)
+        .await
+        .expect("inbox")
+        .into_iter()
+        .find(|todo| todo.title == "Groceries")
+        .expect("groceries")
+        .id;
+    h.todos
+        .add_checklist_item(h.account_id, groceries, "Café run")
+        .await
+        .expect("checklist");
+    h.todos
+        .create(h.account_id, "Roadmap review", None)
+        .await
+        .expect("todo");
+    let review = h
+        .todos
+        .list(h.account_id, momentum_app::todos::TodoScope::Inbox)
+        .await
+        .expect("inbox")
+        .into_iter()
+        .find(|todo| todo.title == "Roadmap review")
+        .expect("review")
+        .id;
+    h.todos
+        .create(h.account_id, "Old errand", None)
+        .await
+        .expect("todo");
+    let errand = h
+        .todos
+        .list(h.account_id, momentum_app::todos::TodoScope::Inbox)
+        .await
+        .expect("inbox")
+        .into_iter()
+        .find(|todo| todo.title == "Old errand")
+        .expect("errand")
+        .id;
+    h.todos
+        .complete(h.account_id, errand)
+        .await
+        .expect("complete");
+
+    // Notes match, and an actual title match still ranks above it.
+    let (_, _, body) = raw_request(&h, "GET", "/search?q=roadmap").await;
+    let title_href = format!("%2Ftodos%2F{review}");
+    let notes_href = format!("%2Ftodos%2F{groceries}");
+    assert!(body.contains("data-matched-in=\"notes\""), "{body}");
+    let title_index = body
+        .find(&title_href)
+        .unwrap_or_else(|| panic!("title href: {body}"));
+    let notes_index = body
+        .find(&notes_href)
+        .unwrap_or_else(|| panic!("notes href: {body}"));
+    assert!(title_index < notes_index, "{body}");
+
+    // Checklist text matches through diacritic folding.
+    let (_, _, body) = raw_request(&h, "GET", "/search?q=cafe").await;
+    assert!(body.contains("data-matched-in=\"checklist\""), "{body}");
+    assert!(body.contains("data-testid=\"field-hit\""), "{body}");
+
+    // Logged/completed content remains searchable.
+    let (_, _, body) = raw_request(&h, "GET", "/search?q=errand").await;
+    assert!(body.contains(&format!("%2Ftodos%2F{errand}")), "{body}");
+}
+
+#[tokio::test]
 async fn opening_a_destination_records_recents_and_boosts_it() {
     let h = harness().await;
     let project = create_project(&h, "Roadmap").await;

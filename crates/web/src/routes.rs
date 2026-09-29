@@ -19,7 +19,7 @@ use momentum_app::areas::{AreaService, AreaSummary};
 use momentum_app::logbook::{LogbookAgenda, LogbookEntry, LogbookService};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::recurring::{RecurrenceTemplateSummary, RecurringService};
-use momentum_app::search::{RecentsStore, SearchHit, SearchService};
+use momentum_app::search::{RecentsStore, SearchField, SearchHit, SearchService};
 use momentum_app::tags::{TagService, TagSummary};
 use momentum_app::todos::{Progress, TodoScope, TodoService, TodoSummary};
 use momentum_domain::model::{DeadlineState, Status};
@@ -553,17 +553,28 @@ fn QuickFind() -> impl IntoView {
                             {hits
                                 .into_iter()
                                 .map(|scored| {
-                                    let SearchHit { title, url, kind } = scored.hit;
+                                    let SearchHit {
+                                        title,
+                                        url,
+                                        kind,
+                                        matched_in,
+                                    } = scored.hit;
                                     let href = format!(
                                         "/search/go?url={}",
                                         percent_encode(&url),
                                     );
+                                    let field_label = match matched_in {
+                                        SearchField::Title => None,
+                                        SearchField::Checklist => Some("Checklist"),
+                                        SearchField::Notes => Some("Notes"),
+                                    };
                                     view! {
                                         <li
                                             class="search-hit"
                                             data-testid="search-hit"
                                             data-kind=kind.as_str()
                                             data-score=scored.score.to_string()
+                                            data-matched-in=matched_in.as_str()
                                         >
                                             <a href=href class="task-title">{title}</a>
                                             {scored
@@ -575,6 +586,17 @@ fn QuickFind() -> impl IntoView {
                                                             data-testid="recent-hit"
                                                         >
                                                             "Recent"
+                                                        </span>
+                                                    }
+                                                })}
+                                            {field_label
+                                                .map(|label| {
+                                                    view! {
+                                                        <span
+                                                            class="row-badge"
+                                                            data-testid="field-hit"
+                                                        >
+                                                            {label}
                                                         </span>
                                                     }
                                                 })}
