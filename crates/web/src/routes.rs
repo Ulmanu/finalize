@@ -218,43 +218,6 @@ pub fn SignupPage() -> impl IntoView {
     }
 }
 
-/// Generic built-in list page rendered inside the authenticated shell.
-#[component]
-fn ListPage(
-    #[prop(into)] title: String,
-    #[prop(into, optional)] description: String,
-) -> impl IntoView {
-    let description = if description.is_empty() {
-        format!("The {title} list.")
-    } else {
-        description
-    };
-    view! {
-        <section class="list-page" data-testid="list-page">
-            <header class="list-header">
-                <h1 class="list-title">{title}</h1>
-                <p class="list-description">{description}</p>
-            </header>
-            <div class="list-empty" data-testid="list-empty">
-                <p>"Nothing here yet."</p>
-            </div>
-        </section>
-    }
-}
-
-macro_rules! list_route_page {
-    ($component:ident, $title:literal, $description:literal) => {
-        #[component]
-        pub fn $component() -> impl IntoView {
-            view! {
-                <Protected>
-                    {move || view! { <ListPage title=$title description=$description/> }}
-                </Protected>
-            }
-        }
-    };
-}
-
 #[component]
 pub fn TodayPage() -> impl IntoView {
     view! {
@@ -1047,11 +1010,67 @@ fn SomedayProjectRow(project: ProjectSummary) -> impl IntoView {
         </li>
     }
 }
-list_route_page!(
-    SettingsPage,
-    "Settings",
-    "Preferences and account settings."
-);
+/// Settings page with the keyboard shortcut reference.
+#[component]
+pub fn SettingsPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <SettingsView/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn SettingsView() -> impl IntoView {
+    view! {
+        <section class="list-page" data-testid="settings-page">
+            <header class="list-header">
+                <h1 class="list-title">"Settings"</h1>
+                <p class="list-description">"Preferences and account settings."</p>
+            </header>
+            <section class="keyboard-shortcuts" data-testid="shortcut-registry">
+                <h2 class="section-heading">"Keyboard shortcuts"</h2>
+                <p class="list-description">
+                    "Bindings marked reserved fall back to a safe web equivalent."
+                </p>
+                {momentum_app::keyboard::registry()
+                    .iter()
+                    .map(|command| {
+                        view! {
+                            <div
+                                class="shortcut-row"
+                                data-testid="shortcut"
+                                data-shortcut-id=command.id
+                                data-keys=command.keys
+                                data-category=command.category.as_str()
+                            >
+                                <span class="shortcut-keys">
+                                    <kbd>{command.keys}</kbd>
+                                </span>
+                                <span class="shortcut-title">{command.title}</span>
+                                {command
+                                    .reserved_by
+                                    .map(|reserved| {
+                                        view! {
+                                            <span
+                                                class="row-badge"
+                                                data-testid="shortcut-conflict"
+                                            >
+                                                {format!(
+                                                    "Reserved by {reserved}; use {}",
+                                                    command.alternative.unwrap_or(""),
+                                                )}
+                                            </span>
+                                        }
+                                    })}
+                            </div>
+                        }
+                    })
+                    .collect_view()}
+            </section>
+        </section>
+    }
+}
 
 /// Public catalog of every design-system primitive.
 ///
@@ -1811,12 +1830,26 @@ fn TodoRow(
                         }
                     })}
                 <form method="post" action=toggle_target>
-                    <button type="submit" class="row-action" aria-label="Complete to-do">
+                    <button
+                        type="submit"
+                        class="row-action"
+                        aria-label="Complete to-do"
+                        aria-keyshortcuts=momentum_app::keyboard::keys_for("complete_todo")
+                            .unwrap_or_default()
+                    >
                         "Complete"
                     </button>
                 </form>
                 <form method="post" action=delete_target>
-                    <button type="submit" class="row-action" aria-label="Delete to-do">"Delete"</button>
+                    <button
+                        type="submit"
+                        class="row-action"
+                        aria-label="Delete to-do"
+                        aria-keyshortcuts=momentum_app::keyboard::keys_for("delete_todo")
+                            .unwrap_or_default()
+                    >
+                        "Delete"
+                    </button>
                 </form>
                 {position_action
                     .map(|action| {

@@ -1159,6 +1159,33 @@ Agent: opencode (deepseek-v4.1-flash)
   dedup; field priority sorts between score and recency.
 - Live integrations not verified: offline index implementation.
 
+### 45 — `add-keyboard-command-system` — COMPLETE
+
+- Start: 2026-09-28 14:30 · End: 2026-09-28 15:35
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::keyboard` declares 24 `CommandDefinition`s across creation,
+  status, scheduling, navigation, organization, selection, and ordering with surfaces and
+  conflict metadata; helpers `registry`, `command`, `keys_for` (resolves reserved bindings to
+  their safe alternative), `commands_for(surface)`, and `conflicts`; reserved mappings documented
+  (Cmd+K → `/`, Cmd+Backspace → Shift+Delete, Cmd+E → F2, Cmd+A → Shift+A); the Settings page
+  renders the whole reference grouped by category with `<kbd>` keys and reserved badges; Inbox
+  row Complete/Delete controls carry `aria-keyshortcuts` resolved through `keys_for`.
+- Migrations: none.
+- Tests: 3 app unit tests (unique ids/bindings, conflict alternatives, category coverage and
+  surface filtering) and 2 web tests (Settings reference content incl. the Quick Find conflict
+  note, `aria-keyshortcuts` on row controls); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build (exit checked directly). The now-unused generic `ListPage`/macro was removed
+  after Settings became bespoke (clippy).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known live gap: the key-event dispatch loop itself is the hydrated Rust/WASM client's job; it
+  consumes this registry via `keys_for`/`commands_for`.
+- Archive: `2026-09-29-add-keyboard-command-system`; canonical `features/keyboard-command-system`
+  spec created.
+- Commit: `feat(45): add keyboard command system`
+- Decisions: the registry is compile-time data shared by SSR hints and the hydrated client;
+  reserved commands keep their conventional primary key for documentation only.
+- Live integrations not verified: hydrated key dispatch.
+
 ## Run summary
 
 ### Completed changes
@@ -1209,12 +1236,13 @@ Agent: opencode (deepseek-v4.1-flash)
 | 42 | add-recurrence-exceptions | COMPLETE | `feat(42)` |
 | 43 | add-quick-find | COMPLETE | `feat(43)` |
 | 44 | add-deep-search | COMPLETE | `feat(44)` |
+| 45 | add-keyboard-command-system | COMPLETE | `feat(45)` |
 
-- Completed proposal range: 01–44 (44 of 74).
-- Incomplete: 45–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–45 (45 of 74).
+- Incomplete: 46–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
-- Total commits on `agent/things-web-overnight`: 65 through change 44 (bootstrap, 44 numbered
-  changes, spec/report docs commits; HEAD will be the change-44 commit).
+- Total commits on `agent/things-web-overnight`: 66 through change 45 (bootstrap, 45 numbered
+  changes, spec/report docs commits; HEAD will be the change-45 commit).
 - Branch: `agent/things-web-overnight`
 - HEAD at report time: see `git log --oneline -1` (commit for change 13 was the last
   implementation commit; this report is committed after it).
@@ -1280,11 +1308,12 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 45–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 46–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
-   plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, read-store
-   patterns, and test harnesses are in place to make each one mechanical. Next: 45.
+   plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
+   registry, read-store patterns, and test harnesses are in place to make each one mechanical.
+   Next: 46.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1302,9 +1331,9 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 44): all quality gates green
+- Current state at HEAD (change 45): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
-  44/44 passing; `git status` clean.
+  45/45 passing; `git status` clean.
 
 

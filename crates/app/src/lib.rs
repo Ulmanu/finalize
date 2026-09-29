@@ -10,6 +10,7 @@ pub mod areas;
 pub mod auth;
 pub mod bulk;
 pub mod commands;
+pub mod keyboard;
 pub mod logbook;
 pub mod materializer;
 pub mod movement;
