@@ -18,6 +18,7 @@ use crate::auth::Clock;
 use crate::commands::{
     ChangeRecord, Command, CommandDispatcher, CommandEnvelope, CommandError, DomainEvent,
 };
+use crate::realtime::HintHub;
 use crate::todos::TodoService;
 
 /// One client operation in a push batch.
@@ -177,6 +178,7 @@ pub struct SyncService {
     todos: Arc<TodoService>,
     changes: Arc<dyn ChangeLogReader>,
     clock: Arc<dyn Clock>,
+    hints: Option<Arc<HintHub>>,
 }
 
 impl std::fmt::Debug for SyncService {
@@ -199,7 +201,15 @@ impl SyncService {
             todos,
             changes,
             clock,
+            hints: None,
         }
+    }
+
+    /// Publishes coalesced invalidation hints after successful pushes.
+    #[must_use]
+    pub fn with_hints(mut self, hints: Arc<HintHub>) -> Self {
+        self.hints = Some(hints);
+        self
     }
 
     /// Applies pushed operations and returns changes after the client cursor.
@@ -238,12 +248,17 @@ impl SyncService {
                 command: operation.command.clone(),
             };
             match self.dispatcher.execute(envelope).await {
-                Ok(outcome) => acknowledged.push(OperationAck {
-                    operation_id: outcome.operation_id,
-                    entity_id: outcome.entity_id,
-                    sequence: outcome.sequence,
-                    replayed: outcome.replayed,
-                }),
+                Ok(outcome) => {
+                    if let Some(hints) = &self.hints {
+                        hints.publish(account_id, outcome.sequence);
+                    }
+                    acknowledged.push(OperationAck {
+                        operation_id: outcome.operation_id,
+                        entity_id: outcome.entity_id,
+                        sequence: outcome.sequence,
+                        replayed: outcome.replayed,
+                    });
+                }
                 Err(error) => conflicts.push(classify_conflict(
                     operation.operation_id,
                     operation.command.target(),

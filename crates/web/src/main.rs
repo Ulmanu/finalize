@@ -8,6 +8,7 @@ use momentum_app::auth::AuthService;
 use momentum_app::commands::CommandDispatcher;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
+use momentum_app::realtime::HintHub;
 use momentum_app::recurring::RecurringService;
 use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
@@ -35,8 +36,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ServerConfig::from_env()?;
     let database = connect_database(&config).await?;
 
-    let (session_resolver, auth, todos, areas, projects, tags, logbook, recurring, sync): (
+    let (session_resolver, auth, todos, areas, projects, tags, logbook, recurring, sync, hints): (
         Arc<dyn SessionResolver>,
+        _,
         _,
         _,
         _,
@@ -95,12 +97,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 clock.clone(),
             ));
 
-            let sync = Arc::new(SyncService::new(
-                dispatcher.clone(),
-                todo_service.clone(),
-                Arc::new(PgChangeLogReader::new(database.pool().clone())),
-                clock.clone(),
-            ));
+            let hints = Arc::new(HintHub::new());
+            let sync = Arc::new(
+                SyncService::new(
+                    dispatcher.clone(),
+                    todo_service.clone(),
+                    Arc::new(PgChangeLogReader::new(database.pool().clone())),
+                    clock.clone(),
+                )
+                .with_hints(hints.clone()),
+            );
 
             let tag_reader = Arc::new(PgTagReadStore::new(database.pool().clone()));
             let tag_service = Arc::new(TagService::new(dispatcher, tag_reader, clock));
@@ -115,10 +121,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(logbook_service),
                 Some(recurring),
                 Some(sync),
+                Some(hints),
             )
         }
         None => (
             Arc::new(AnonymousSessionResolver),
+            None,
             None,
             None,
             None,
@@ -153,6 +161,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     let state = match sync {
         Some(sync) => state.with_sync(sync),
+        None => state,
+    };
+    let state = match hints {
+        Some(hints) => state.with_hints(hints),
         None => state,
     };
     let router = server::router_with_state(state);

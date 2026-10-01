@@ -19,6 +19,7 @@ default = ["ssr"]
 ssr = [
     "dep:axum",
     "dep:tokio",
+    "dep:tokio-stream",
     "dep:tower-http",
     "dep:tracing",
     "dep:tracing-subscriber",
@@ -49,6 +50,7 @@ form_urlencoded = { workspace = true, optional = true }
 web-sys = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }

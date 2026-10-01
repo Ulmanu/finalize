@@ -1335,6 +1335,36 @@ Agent: opencode (deepseek-v4.1-flash)
   operation ids are the dedupe key on both push and replay.
 - Live integrations not verified: real client transport loop.
 
+### 51 — `add-realtime-sync` — COMPLETE
+
+- Start: 2026-09-29 11:40 · End: 2026-09-29 13:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::realtime` provides `InvalidationHint`, the `HintSink`
+  connection contract, `RecordingHintSink`, and a coalescing `HintHub` (account-scoped
+  subscriptions; one pending hint per account; bursts merge to the newest sequence; no
+  accumulation without subscribers; `delivered` unblocks the next emit); `SyncService::with_hints`
+  publishes after every acknowledged push; `GET /sync/events` (axum `Sse`) subscribes the
+  connection, emits an immediate connect hint for reconnect-safe pulls, streams coalesced
+  `invalidation` events with keepalive, and unsubscribes on drop via an RAII guard;
+  `AppState::with_hints` and the server bootstrap wire the hub (tokio `sync` feature and
+  `tokio-stream` added).
+- Migrations: none (hints are ephemeral; cursors remain authoritative).
+- Tests: 2 app unit tests (coalescing until delivered with newest-sequence retention and
+  unsubscribe; account scoping plus reconnect emission), a testkit assertion that a pushed batch
+  emits exactly one coalesced hint carrying the first acknowledged sequence, and 2 web tests
+  (SSE headers plus initial connect frame read from the body stream; 503 without the hub); full
+  workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+  Clippy map-values iteration fixed.
+- Verification: manual artifact-to-implementation verification and record; every requirement
+  scenario covered.
+- Known gap: WebSocket transport is not built (SSE is the initial adapter; the hint contract is
+  transport-agnostic) and client-side pull scheduling is hydrated-client work.
+- Archive: `2026-10-01-add-realtime-sync`; canonical `features/realtime-sync` spec created.
+- Commit: `feat(51): add realtime sync`
+- Decisions: hints are idempotent pull-now signals, never data; one pending hint per account;
+  reconnect emits a connect hint so cursors reconcile.
+- Live integrations not verified: browser EventSource loop.
+
 ## Run summary
 
 ### Completed changes
@@ -1391,9 +1421,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 48 | add-calendar-integration | COMPLETE | `feat(48)` |
 | 49 | add-offline-local-replica | COMPLETE | `feat(49)` |
 | 50 | add-cloud-sync-protocol | COMPLETE | `feat(50)` |
+| 51 | add-realtime-sync | COMPLETE | `feat(51)` |
 
-- Completed proposal range: 01–50 (50 of 74).
-- Incomplete: 51–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–51 (51 of 74).
+- Incomplete: 52–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1462,13 +1493,13 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 51–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 52–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   cloud sync protocol, read-store patterns, and test harnesses are in place to make each one
-   mechanical. Next: 51.
+   cloud sync protocol and realtime hints, read-store patterns, and test harnesses are in place
+   to make each one mechanical. Next: 52.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1486,7 +1517,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 50): all quality gates green
+- Current state at HEAD (change 51): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

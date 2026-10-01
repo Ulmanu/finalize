@@ -18,6 +18,7 @@ pub mod materializer;
 pub mod movement;
 pub mod ordering;
 pub mod projects;
+pub mod realtime;
 pub mod recurring;
 pub mod reminders;
 pub mod replica;

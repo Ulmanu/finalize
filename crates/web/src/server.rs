@@ -16,6 +16,7 @@ use momentum_app::areas::AreaService;
 use momentum_app::calendar::CalendarService;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
+use momentum_app::realtime::HintHub;
 use momentum_app::recurring::RecurringService;
 use momentum_app::reminders::PushSubscriptionStore;
 use momentum_app::replica::OfflineCoordinator;
@@ -82,6 +83,8 @@ pub struct AppState {
     pub replica: Option<Arc<OfflineCoordinator>>,
     /// Sync protocol service, when persistence is configured.
     pub sync: Option<Arc<SyncService>>,
+    /// Realtime invalidation hint hub, when realtime sync is enabled.
+    pub hints: Option<Arc<HintHub>>,
 }
 
 impl AppState {
@@ -112,7 +115,15 @@ impl AppState {
             calendar: None,
             replica: None,
             sync: None,
+            hints: None,
         }
+    }
+
+    /// Adds the realtime hint hub.
+    #[must_use]
+    pub fn with_hints(mut self, hints: Arc<HintHub>) -> Self {
+        self.hints = Some(hints);
+        self
     }
 
     /// Adds the sync service.

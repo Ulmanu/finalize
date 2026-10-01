@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use chrono::{TimeZone, Utc};
 use momentum_app::commands::{Command, CommandDispatcher};
+use momentum_app::realtime::{HintHub, RecordingHintSink};
 use momentum_app::sync::{
     ConflictResolution, ConflictRule, SyncOperation, SyncRequest, SyncService,
 };
@@ -18,6 +19,7 @@ use uuid::Uuid;
 struct Harness {
     service: SyncService,
     todos: Arc<TodoService>,
+    sink: Arc<RecordingHintSink>,
     account: AccountId,
 }
 
@@ -35,16 +37,22 @@ fn harness() -> Harness {
         Arc::new(MemoryTodoReadStore::new(database.clone())),
         clock.clone(),
     ));
+    let hub = Arc::new(HintHub::new());
+    let sink = Arc::new(RecordingHintSink::new());
     let service = SyncService::new(
         dispatcher,
         todos.clone(),
         Arc::new(MemoryChangeLogReader::new(database)),
         clock,
-    );
+    )
+    .with_hints(hub.clone());
+    let account = AccountId::new();
+    hub.subscribe(account, sink.clone());
     Harness {
         service,
         todos,
-        account: AccountId::new(),
+        sink,
+        account,
     }
 }
 
@@ -114,6 +122,12 @@ async fn push_acknowledges_monotonically_and_dedupes_operation_ids() {
     assert!(response.acknowledged[0].sequence > baseline);
     assert_eq!(response.cursor, baseline + 2);
     assert_eq!(response.changes.len(), 2);
+    // A realtime hint tells other sessions to pull; the burst coalesces into one pending hint.
+    assert_eq!(h.sink.hints().len(), 1);
+    assert_eq!(
+        h.sink.hints()[0].sequence,
+        response.acknowledged[0].sequence
+    );
 
     // Replaying the same operation ids is acknowledged as replays with the same sequences and
     // does not create new changes.
