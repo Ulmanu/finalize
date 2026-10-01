@@ -15,5 +15,6 @@ pub mod materializer;
 pub mod projects;
 pub mod recurring;
 pub mod reminders;
+pub mod sync;
 pub mod tags;
 pub mod todos;

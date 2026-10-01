@@ -9,8 +9,10 @@ use momentum_app::commands::CommandDispatcher;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::recurring::RecurringService;
+use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
+use momentum_infra::PgChangeLogReader;
 use momentum_infra::{
     Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgLoggingPolicyStore, PgProjectReadStore,
     PgRecurrenceReadStore, PgTagReadStore, PgTodoReadStore, PgUnitOfWorkFactory,
@@ -33,8 +35,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ServerConfig::from_env()?;
     let database = connect_database(&config).await?;
 
-    let (session_resolver, auth, todos, areas, projects, tags, logbook, recurring): (
+    let (session_resolver, auth, todos, areas, projects, tags, logbook, recurring, sync): (
         Arc<dyn SessionResolver>,
+        _,
         _,
         _,
         _,
@@ -92,6 +95,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 clock.clone(),
             ));
 
+            let sync = Arc::new(SyncService::new(
+                dispatcher.clone(),
+                todo_service.clone(),
+                Arc::new(PgChangeLogReader::new(database.pool().clone())),
+                clock.clone(),
+            ));
+
             let tag_reader = Arc::new(PgTagReadStore::new(database.pool().clone()));
             let tag_service = Arc::new(TagService::new(dispatcher, tag_reader, clock));
 
@@ -104,10 +114,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(tag_service),
                 Some(logbook_service),
                 Some(recurring),
+                Some(sync),
             )
         }
         None => (
             Arc::new(AnonymousSessionResolver),
+            None,
             None,
             None,
             None,
@@ -137,6 +149,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     let state = match recurring {
         Some(recurring) => state.with_recurring(recurring),
+        None => state,
+    };
+    let state = match sync {
+        Some(sync) => state.with_sync(sync),
         None => state,
     };
     let router = server::router_with_state(state);

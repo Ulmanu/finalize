@@ -20,6 +20,7 @@ use momentum_app::recurring::RecurringService;
 use momentum_app::reminders::PushSubscriptionStore;
 use momentum_app::replica::OfflineCoordinator;
 use momentum_app::search::RecentsStore;
+use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::Database;
@@ -34,6 +35,7 @@ use crate::project_routes;
 use crate::push_routes;
 use crate::search_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
+use crate::sync_routes;
 use crate::tag_routes;
 use crate::todo_routes;
 
@@ -78,6 +80,8 @@ pub struct AppState {
     pub calendar: Option<Arc<CalendarService>>,
     /// Offline replica coordinator, when a local store is configured.
     pub replica: Option<Arc<OfflineCoordinator>>,
+    /// Sync protocol service, when persistence is configured.
+    pub sync: Option<Arc<SyncService>>,
 }
 
 impl AppState {
@@ -107,7 +111,15 @@ impl AppState {
             recents: None,
             calendar: None,
             replica: None,
+            sync: None,
         }
+    }
+
+    /// Adds the sync service.
+    #[must_use]
+    pub fn with_sync(mut self, sync: Arc<SyncService>) -> Self {
+        self.sync = Some(sync);
+        self
     }
 
     /// Adds the offline replica coordinator.
@@ -260,6 +272,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(logbook_routes::routes())
         .merge(push_routes::routes())
         .merge(search_routes::routes())
+        .merge(sync_routes::routes())
         .leptos_routes_with_context(
             &state,
             paths,

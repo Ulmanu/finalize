@@ -1304,6 +1304,37 @@ Agent: opencode (deepseek-v4.1-flash)
   than dropping writes; the replica is client-owned with a sync cursor for later delta sync.
 - Live integrations not verified: IndexedDB adapter; HTTP sync transport.
 
+### 50 — `add-cloud-sync-protocol` — COMPLETE
+
+- Start: 2026-09-29 09:00 · End: 2026-09-29 11:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::sync` provides `SyncRequest`/`SyncResponse`, `SyncOperation`
+  (stable operation ids), `OperationAck` (sequence + replayed), `ChangeEntry`, `SyncConflict`
+  with `ConflictRule`/`ConflictResolution`, the `ChangeLogReader` port, and `SyncService`
+  (`sync` pushes through the dispatcher with client operation ids and pulls changes after the
+  cursor); `classify_conflict` maps `Conflict` to FieldVersion/ServerWins or
+  OrderingRelative/Ignored for ordering commands, `NotFound` to DeleteBeatsEdit/ClientRefreshes,
+  and other errors to Rejected; a pre-check classifies edits to trashed entities before dispatch
+  so tombs are never mutated; completion replay is an idempotent no-op acknowledged without
+  conflict; `PgChangeLogReader` reads the existing `change_log`; testkit gained
+  `MemoryChangeLogReader` and a `changes_after` accessor; JSON `POST /sync` is wired through
+  `AppState::with_sync` and the server bootstrap.
+- Migrations: none (`change_log` and its unique operation index already existed).
+- Tests: 2 app unit tests (ordering recognition, conflict classification), 3 testkit tests
+  (monotonic acknowledgements with operation-id dedupe and monotonic cursor, cursor-bounded
+  pulls, monotonic completion + delete-beats-edit + ordering-relative conflicts without
+  destructive writes), 2 web tests (JSON route push/pull, 503 without the service); full
+  workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+  Clippy unused-import fixed.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: hydrated client delta application/cache merge beyond the replica (49) is UI work.
+- Archive: `2026-10-01-add-cloud-sync-protocol`; canonical `features/cloud-sync-protocol` spec
+  created.
+- Commit: `feat(50): add cloud sync protocol`
+- Decisions: no generic LWW anywhere; trashed entities are pre-checked; cursors never regress;
+  operation ids are the dedupe key on both push and replay.
+- Live integrations not verified: real client transport loop.
+
 ## Run summary
 
 ### Completed changes
@@ -1359,9 +1390,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 47 | add-mobile-gestures | COMPLETE | `feat(47)` |
 | 48 | add-calendar-integration | COMPLETE | `feat(48)` |
 | 49 | add-offline-local-replica | COMPLETE | `feat(49)` |
+| 50 | add-cloud-sync-protocol | COMPLETE | `feat(50)` |
 
-- Completed proposal range: 01–49 (49 of 74).
-- Incomplete: 50–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–50 (50 of 74).
+- Incomplete: 51–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1430,12 +1462,13 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 50–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 51–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   read-store patterns, and test harnesses are in place to make each one mechanical. Next: 50.
+   cloud sync protocol, read-store patterns, and test harnesses are in place to make each one
+   mechanical. Next: 51.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1453,7 +1486,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 49): all quality gates green
+- Current state at HEAD (change 50): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

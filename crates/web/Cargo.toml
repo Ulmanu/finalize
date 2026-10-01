@@ -63,6 +63,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 momentum-testkit.workspace = true
+uuid.workspace = true
 tokio.workspace = true
 tower = { workspace = true, features = ["util"] }
 http-body-util.workspace = true

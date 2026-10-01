@@ -182,6 +182,22 @@ impl MemoryDatabase {
             .contains_key(&(account_id, template_id, occurrence_key.to_string()))
     }
 
+    /// Returns change records after a sequence for an account, ascending.
+    #[must_use]
+    pub fn changes_after(&self, account_id: AccountId, cursor: i64) -> Vec<ChangeRecord> {
+        let mut records: Vec<ChangeRecord> = self
+            .state
+            .lock()
+            .expect("memory state lock")
+            .changes
+            .iter()
+            .filter(|(account, record)| *account == account_id && record.sequence > cursor)
+            .map(|(_, record)| record.clone())
+            .collect();
+        records.sort_by_key(|record| record.sequence);
+        records
+    }
+
     /// Makes the next `save_todo` fail, simulating a persistence error.
     pub fn fail_next_save(&self) {
         self.fail_next_save.store(true, Ordering::SeqCst);

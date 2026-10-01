@@ -16,6 +16,7 @@ pub mod materializer;
 pub mod projects;
 pub mod recurring;
 pub mod reminders;
+pub mod sync;
 pub mod tags;
 pub mod todos;
 
@@ -29,5 +30,6 @@ pub use materializer::PgMaterializerStore;
 pub use projects::PgProjectReadStore;
 pub use recurring::PgRecurrenceReadStore;
 pub use reminders::PgReminderSource;
+pub use sync::PgChangeLogReader;
 pub use tags::PgTagReadStore;
 pub use todos::PgTodoReadStore;
