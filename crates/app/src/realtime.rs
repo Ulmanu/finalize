@@ -128,6 +128,19 @@ impl HintHub {
             .copied()
     }
 
+    /// Delivers a hint to an account's subscribers without coalescing bookkeeping.
+    ///
+    /// Used when a sibling browser tab reports committed data: the local tab must pull even
+    /// though the hub's pending state belongs to local pushes.
+    pub fn notify(&self, account_id: AccountId, hint: InvalidationHint) {
+        let state = self.state.lock().expect("hint hub lock");
+        for (account, sink) in state.subscribers.values() {
+            if *account == account_id {
+                sink.hint(hint);
+            }
+        }
+    }
+
     /// Number of registered connections.
     #[must_use]
     pub fn subscriber_count(&self) -> usize {

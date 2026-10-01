@@ -1365,6 +1365,34 @@ Agent: opencode (deepseek-v4.1-flash)
   reconnect emits a connect hint so cursors reconcile.
 - Live integrations not verified: browser EventSource loop.
 
+### 52 — `add-multitab-coordination` — COMPLETE
+
+- Start: 2026-09-29 13:40 · End: 2026-09-29 15:20
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::tabs` provides `TabId`, `TabMessage` (Committed,
+  LeadershipClaimed, OutboxChanged), the `TabBroadcaster` port with a recording implementation,
+  `LeadershipState` (lowest live lease leads; expired leases pruned), `TabCoordinator`
+  (`claim_or_renew` claims/broadcasts when none is live, `on_message` adopts sibling claims and
+  turns remote commits into local pulls, `propagate_committed`/`propagate_outbox` broadcast), and
+  `HintHub::notify` for direct delivery bypassing local coalescing bookkeeping.
+- Migrations: none (leases are in-memory views; outbox durability lives in the replica store).
+- Tests: 2 app unit tests (election with lowest-live-id and expiry; claim adoption, takeover,
+  hint delivery, outbox broadcasting) and 2 testkit tests (leader recovery after lease expiry
+  preserving pending outbox operations from the shared replica store, with simulated
+  BroadcastChannel delivery of the claim; sibling commit triggering a local pull and local
+  propagation); full workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked
+  directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: the concrete BroadcastChannel/Web Locks adapter is hydrated-client work; the port
+  and deterministic logic are complete, and Web Locks can replace the lease without observable
+  changes.
+- Archive: `2026-10-01-add-multitab-coordination`; canonical `features/multitab-coordination`
+  spec created.
+- Commit: `feat(52): add multitab coordination`
+- Decisions: deterministic min-id election with lease expiry; remote commits always notify the
+  local hint sink; leadership state never touches outbox data.
+- Live integrations not verified: browser BroadcastChannel adapter.
+
 ## Run summary
 
 ### Completed changes
@@ -1422,9 +1450,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 49 | add-offline-local-replica | COMPLETE | `feat(49)` |
 | 50 | add-cloud-sync-protocol | COMPLETE | `feat(50)` |
 | 51 | add-realtime-sync | COMPLETE | `feat(51)` |
+| 52 | add-multitab-coordination | COMPLETE | `feat(52)` |
 
-- Completed proposal range: 01–51 (51 of 74).
-- Incomplete: 52–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–52 (52 of 74).
+- Incomplete: 53–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1493,13 +1522,13 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 52–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 53–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   cloud sync protocol and realtime hints, read-store patterns, and test harnesses are in place
-   to make each one mechanical. Next: 52.
+   cloud sync protocol, realtime hints, multi-tab coordination, read-store patterns, and test
+   harnesses are in place to make each one mechanical. Next: 53.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1517,7 +1546,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 51): all quality gates green
+- Current state at HEAD (change 52): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

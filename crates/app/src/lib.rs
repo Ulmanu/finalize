@@ -26,6 +26,7 @@ pub mod search;
 pub mod selection;
 pub mod session;
 pub mod sync;
+pub mod tabs;
 pub mod tags;
 pub mod todos;
 pub mod undo;
