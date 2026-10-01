@@ -1273,6 +1273,37 @@ Agent: opencode (deepseek-v4.1-flash)
   contract is the only calendar dependency in core code.
 - Live integrations not verified: real provider network calls.
 
+### 49 — `add-offline-local-replica` — COMPLETE
+
+- Start: 2026-09-28 21:30 · End: 2026-09-28 23:10
+- Proposal validation: strict validation passed before archive. (A first gate run was aborted by
+  the operator; the clean re-run passed all gates, EXIT=0.)
+- Implementation: `momentum_app::replica` provides `ReplicaSnapshot` (entities, preferences,
+  sync cursor), `ReplicaEntity`, `OutboxEntry` (stable UUIDv7 operation id, serialized command,
+  attempts), the `ReplicaStore` persistence port with `MemoryReplicaStore`, and
+  `OfflineCoordinator` (`startup` offline restore; `apply_locally` serializes a command and
+  enqueues it before acknowledgement; `record_entity` updates the optimistic working set;
+  `acknowledge` removes delivered operations; `replay` walks in order, stops at the first
+  retryable/offline failure with attempt counts, and is idempotent by operation id); the layout
+  shows an outbox-pending indicator via `AppState::with_replica`; `serde_json` moved from
+  dev-dependencies to dependencies in the app crate.
+- Migrations: none (client-owned replica, never authoritative).
+- Tests: 3 testkit tests (optimistic enqueue + reload restore of snapshot and outbox, ordered
+  idempotent replay clearing operations, retry/offline stopping the pass with attempt counts then
+  completing later) and 2 web tests (pending indicator with a configured replica, absence
+  without); full workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked
+  directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: the concrete IndexedDB `ReplicaStore` implementation and the HTTP sync client are
+  hydrated-client/deployment work — browser-only code that cannot run in the SSR harness; the
+  port, coordinator semantics, and durability tests are complete so the adapter is a drop-in.
+- Archive: `2026-09-29-add-offline-local-replica`; canonical `features/offline-local-replica`
+  spec created.
+- Commit: `feat(49): add offline local replica`
+- Decisions: operation ids never change across replays; failures leave entries queued rather
+  than dropping writes; the replica is client-owned with a sync cursor for later delta sync.
+- Live integrations not verified: IndexedDB adapter; HTTP sync transport.
+
 ## Run summary
 
 ### Completed changes
@@ -1327,9 +1358,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 46 | add-type-travel | COMPLETE | `feat(46)` |
 | 47 | add-mobile-gestures | COMPLETE | `feat(47)` |
 | 48 | add-calendar-integration | COMPLETE | `feat(48)` |
+| 49 | add-offline-local-replica | COMPLETE | `feat(49)` |
 
-- Completed proposal range: 01–48 (48 of 74).
-- Incomplete: 49–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–49 (49 of 74).
+- Incomplete: 50–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1398,12 +1430,12 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 49–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 50–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
-   registry, Type Travel, touch gesture machines, calendar projection, read-store patterns, and
-   test harnesses are in place to make each one mechanical. Next: 49.
+   registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
+   read-store patterns, and test harnesses are in place to make each one mechanical. Next: 50.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1421,7 +1453,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 48): all quality gates green
+- Current state at HEAD (change 49): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

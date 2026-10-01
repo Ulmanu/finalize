@@ -18,6 +18,7 @@ use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::recurring::RecurringService;
 use momentum_app::reminders::PushSubscriptionStore;
+use momentum_app::replica::OfflineCoordinator;
 use momentum_app::search::RecentsStore;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
@@ -75,6 +76,8 @@ pub struct AppState {
     pub recents: Option<Arc<dyn RecentsStore>>,
     /// Calendar projection service, when a provider is configured.
     pub calendar: Option<Arc<CalendarService>>,
+    /// Offline replica coordinator, when a local store is configured.
+    pub replica: Option<Arc<OfflineCoordinator>>,
 }
 
 impl AppState {
@@ -103,7 +106,15 @@ impl AppState {
             push_subscriptions: None,
             recents: None,
             calendar: None,
+            replica: None,
         }
+    }
+
+    /// Adds the offline replica coordinator.
+    #[must_use]
+    pub fn with_replica(mut self, replica: Arc<OfflineCoordinator>) -> Self {
+        self.replica = Some(replica);
+        self
     }
 
     /// Adds the calendar projection service.
@@ -233,6 +244,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let recurring_service = state.recurring.clone();
     let recents = state.recents.clone();
     let calendar = state.calendar.clone();
+    let replica = state.replica.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -260,6 +272,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(recurring_service.clone());
                 provide_context(recents.clone());
                 provide_context(calendar.clone());
+                provide_context(replica.clone());
             },
             move || shell(shell_options.clone()),
         )

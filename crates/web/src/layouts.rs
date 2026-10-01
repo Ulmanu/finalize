@@ -126,6 +126,20 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     let drawer_open = layout.drawer_open;
     #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
     let pull_state = StoredValue::new(None::<(f64, f64, std::time::Instant, bool)>);
+    let replica = use_context::<Option<Arc<momentum_app::replica::OfflineCoordinator>>>().flatten();
+    let pending = AsyncDerived::new(move || {
+        let replica = replica.clone();
+        async move {
+            match replica {
+                Some(replica) => replica
+                    .startup()
+                    .await
+                    .ok()
+                    .map(|startup| startup.pending.len()),
+                None => None,
+            }
+        }
+    });
     #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
     let navigate = leptos_router::hooks::use_navigate();
     #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
@@ -311,6 +325,19 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
             </nav>
 
             <footer class="app-footer" aria-label="Account">
+                {move || {
+                    pending
+                        .get()
+                        .flatten()
+                        .filter(|count| *count > 0)
+                        .map(|count| {
+                            view! {
+                                <span data-testid="outbox-pending">
+                                    {format!("{count} pending")}
+                                </span>
+                            }
+                        })
+                }}
                 <span class="account-label">{account_label}</span>
             </footer>
         </div>
