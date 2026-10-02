@@ -261,6 +261,15 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                         autocomplete="off"
                     />
                 </form>
+                <a
+                    href="#quick-entry"
+                    class="quick-entry-trigger"
+                    data-testid="quick-entry-trigger"
+                    aria-keyshortcuts=momentum_app::keyboard::keys_for("quick_entry")
+                        .unwrap_or_default()
+                >
+                    "Quick Entry"
+                </a>
                 <span class="topbar-account">{signed_in_label}</span>
             </header>
 
@@ -324,6 +333,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                     .collect_view()}
             </nav>
 
+            {move || view! { <crate::routes::QuickEntryOverlay/> }}
             <footer class="app-footer" aria-label="Account">
                 {move || {
                     pending

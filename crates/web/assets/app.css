@@ -588,3 +588,36 @@ h3 {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
+
+
+/* Quick Entry overlay: opened by #quick-entry target or the hydrated client. */
+.quick-entry {
+    display: none;
+}
+.quick-entry:target {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4rem 1rem;
+    background: rgb(15 23 42 / 45%);
+}
+.quick-entry-panel {
+    width: min(28rem, 100%);
+    background: var(--surface, #ffffff);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem 1.25rem;
+    box-shadow: 0 24px 48px rgb(15 23 42 / 25%);
+}
+.quick-entry-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.quick-entry-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}

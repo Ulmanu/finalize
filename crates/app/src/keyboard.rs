@@ -87,6 +87,15 @@ const GLOBAL: &[CommandSurface] = &[CommandSurface::Global];
 
 const REGISTRY: &[CommandDefinition] = &[
     CommandDefinition {
+        id: "quick_entry",
+        title: "Quick Entry",
+        category: CommandCategory::Creation,
+        keys: "q",
+        reserved_by: None,
+        alternative: None,
+        surfaces: GLOBAL,
+    },
+    CommandDefinition {
         id: "new_todo",
         title: "New to-do",
         category: CommandCategory::Creation,

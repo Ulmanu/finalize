@@ -427,6 +427,118 @@ fn TodayList() -> impl IntoView {
     }
 }
 
+/// Keyboard-invoked capture overlay: creates a fully-specified to-do without navigating away.
+#[component]
+pub fn QuickEntryOverlay() -> impl IntoView {
+    let project_service = use_context::<Option<Arc<ProjectService>>>().flatten();
+    let tag_service = use_context::<Option<Arc<TagService>>>().flatten();
+    let account = use_account();
+    let account_for_projects = account.clone();
+    let projects = AsyncDerived::new(move || {
+        let service = project_service.clone();
+        let account = account_for_projects.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+    let tags = AsyncDerived::new(move || {
+        let service = tag_service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.list(account.account_id).await.unwrap_or_default()
+                }
+                _ => Vec::new(),
+            }
+        }
+    });
+    let location = leptos_router::hooks::use_location();
+    let return_to = move || location.pathname.get();
+    view! {
+        <div
+            id="quick-entry"
+            class="quick-entry"
+            data-testid="quick-entry"
+            role="dialog"
+            aria-label="Quick Entry"
+        >
+            <div class="quick-entry-panel">
+                <h2 class="section-heading">"Quick Entry"</h2>
+                <form
+                    method="post"
+                    action="/todos/quick"
+                    class="quick-entry-form"
+                    data-testid="quick-entry-form"
+                >
+                    <input type="hidden" name="return_to" value=return_to/>
+                    <input
+                        type="text"
+                        name="title"
+                        aria-label="Title"
+                        placeholder="Title"
+                        autocomplete="off"
+                        required=true
+                    />
+                    <textarea name="notes" aria-label="Notes" rows="2" placeholder="Notes"></textarea>
+                    <select name="schedule_kind" aria-label="When">
+                        <option value="none">"No date"</option>
+                        <option value="today">"Today"</option>
+                        <option value="evening">"This Evening"</option>
+                        <option value="tomorrow">"Tomorrow"</option>
+                        <option value="someday">"Someday"</option>
+                        <option value="anytime">"Anytime"</option>
+                        <option value="date">"On date"</option>
+                    </select>
+                    <input type="date" name="date" aria-label="Schedule date"/>
+                    <input type="date" name="deadline" aria-label="Deadline"/>
+                    <select name="destination" aria-label="Destination">
+                        <option value="">"Inbox"</option>
+                        {move || {
+                            projects
+                                .get()
+                                .unwrap_or_default()
+                                .into_iter()
+                                .map(|project| {
+                                    let value = format!("project:{}", project.id);
+                                    view! { <option value=value>{project.title}</option> }
+                                })
+                                .collect_view()
+                        }}
+                    </select>
+                    <select name="tag" aria-label="Tag">
+                        <option value="">"No tag"</option>
+                        {move || {
+                            tags.get()
+                                .unwrap_or_default()
+                                .into_iter()
+                                .map(|tag| {
+                                    view! { <option value=tag.id.to_string()>{tag.title}</option> }
+                                })
+                                .collect_view()
+                        }}
+                    </select>
+                    <textarea
+                        name="checklist"
+                        aria-label="Checklist"
+                        rows="2"
+                        placeholder="Checklist (one item per line)"
+                    ></textarea>
+                    <div class="quick-entry-actions">
+                        <button type="submit" class="button-primary">"Save"</button>
+                        <a href="#" class="row-action">"Cancel"</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+}
+
 /// Read-only calendar projection for one inclusive local date range.
 #[component]
 fn CalendarSection(

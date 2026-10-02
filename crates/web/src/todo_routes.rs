@@ -11,7 +11,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Extension, Form, Router};
 use momentum_app::bulk::{BulkAction, BulkService};
-use momentum_app::commands::{ReminderInput, ScheduleInput};
+use momentum_app::commands::{CommandError, ReminderInput, ScheduleInput};
 use momentum_app::movement::Destination;
 use momentum_app::reminders::SnoozeChoice;
 use momentum_app::session::SessionState;
@@ -28,6 +28,7 @@ use crate::server::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/todos", post(create_todo))
+        .route("/todos/quick", post(quick_entry))
         .route("/todos/{todo_id}", post(update_todo))
         .route("/todos/{todo_id}/complete", post(complete_todo))
         .route("/todos/{todo_id}/cancel", post(cancel_todo))
@@ -208,6 +209,138 @@ async fn create_todo(
         if result.is_err() {
             return redirect(&format!("{target}?error=position"));
         }
+    }
+    redirect(&target)
+}
+
+#[derive(Debug, Deserialize)]
+struct QuickEntryForm {
+    title: String,
+    #[serde(default)]
+    notes: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+    #[serde(default)]
+    schedule_kind: Option<String>,
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    deadline: Option<String>,
+    #[serde(default)]
+    destination: Option<String>,
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default)]
+    checklist: Option<String>,
+}
+
+async fn quick_entry(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionState>,
+    Form(form): Form<QuickEntryForm>,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(&state, &session) else {
+        return redirect("/login");
+    };
+    let QuickEntryForm {
+        title,
+        notes,
+        return_to,
+        schedule_kind,
+        date,
+        deadline,
+        destination,
+        tag,
+        checklist,
+    } = form;
+    let target = return_to
+        .filter(|value| value.starts_with('/'))
+        .unwrap_or_else(|| "/inbox".to_string());
+    let today = service.local_today();
+    // Validate every field before creating anything so invalid input cannot half-create an item.
+    let schedule = match schedule_kind.as_deref().unwrap_or("none") {
+        "none" => None,
+        "today" => Some(ScheduleInput::On(today)),
+        "evening" => Some(ScheduleInput::ThisEvening(today)),
+        "tomorrow" => Some(ScheduleInput::On(today.next_day())),
+        "someday" => Some(ScheduleInput::Someday),
+        "anytime" => Some(ScheduleInput::Anytime),
+        "date" => match date
+            .as_deref()
+            .and_then(|value| value.parse::<LocalDate>().ok())
+        {
+            Some(date) => Some(ScheduleInput::On(date)),
+            None => return redirect(&format!("{target}?error=quick")),
+        },
+        _ => return redirect(&format!("{target}?error=quick")),
+    };
+    let deadline = match deadline.as_deref() {
+        Some(value) if !value.trim().is_empty() => match value.parse::<LocalDate>() {
+            Ok(date) => Some(date),
+            Err(_) => return redirect(&format!("{target}?error=quick")),
+        },
+        _ => None,
+    };
+    let context = match destination.as_deref() {
+        Some(value) if !value.is_empty() => {
+            match value
+                .strip_prefix("project:")
+                .and_then(|raw| raw.parse::<EntityId>().ok())
+            {
+                Some(project) => momentum_domain::model::ContextRef::Project(project),
+                None => return redirect(&format!("{target}?error=quick")),
+            }
+        }
+        _ => momentum_domain::model::ContextRef::Inbox,
+    };
+    let tag = match tag.as_deref() {
+        Some(value) if !value.is_empty() => match value.parse::<EntityId>() {
+            Ok(tag) => Some(tag),
+            Err(_) => return redirect(&format!("{target}?error=quick")),
+        },
+        _ => None,
+    };
+    let tags_service = state.tags.clone();
+    if tag.is_some() && tags_service.is_none() {
+        return redirect(&format!("{target}?error=quick"));
+    }
+    let checklist: Vec<String> = checklist
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+
+    let outcome = match service.create_in(account_id, &title, notes, context).await {
+        Ok(outcome) => outcome,
+        Err(_) => return redirect(&format!("{target}?error=quick")),
+    };
+    let Some(id) = outcome.entity_id else {
+        return redirect(&format!("{target}?error=quick"));
+    };
+    // Metadata application is compensated: a failure deletes the fresh item instead of leaving a
+    // half-created canonical entity.
+    let applied = async {
+        if let Some(schedule) = schedule {
+            service.schedule(account_id, id, schedule).await?;
+        }
+        if let Some(deadline) = deadline {
+            service.set_deadline(account_id, id, Some(deadline)).await?;
+        }
+        if let Some(tag) = tag {
+            let tags = tags_service.ok_or(CommandError::NotFound)?;
+            tags.assign(account_id, id, tag).await?;
+        }
+        for item in &checklist {
+            service.add_checklist_item(account_id, id, item).await?;
+        }
+        Ok::<(), CommandError>(())
+    }
+    .await;
+    if applied.is_err() {
+        let _ = service.delete(account_id, id).await;
+        return redirect(&format!("{target}?error=quick"));
     }
     redirect(&target)
 }

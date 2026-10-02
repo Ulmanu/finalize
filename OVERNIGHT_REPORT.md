@@ -1393,6 +1393,32 @@ Agent: opencode (deepseek-v4.1-flash)
   local hint sink; leadership state never touches outbox data.
 - Live integrations not verified: browser BroadcastChannel adapter.
 
+### 53 — `add-quick-entry` — COMPLETE
+
+- Start: 2026-09-29 15:30 · End: 2026-09-29 17:00
+- Proposal validation: strict validation passed before archive.
+- Implementation: a `#quick-entry` overlay (CSS `:target` open/close, no handwritten JS) lives in
+  the authenticated layout with a topbar trigger carrying `aria-keyshortcuts` from the new
+  registry command `quick_entry` (`q`); the form captures title, notes, when
+  (none/today/evening/tomorrow/someday/anytime/on-date), schedule date, deadline, destination
+  (Inbox or project), tag, and checklist (one item per line), seeds `return_to` from the current
+  pathname, and cancels via `href="#"`; `POST /todos/quick` validates every field before
+  creating, applies schedule/deadline/tag/checklist in order, and deletes the fresh item on any
+  post-create failure (compensation) before redirecting with `?error=quick`.
+- Migrations: none.
+- Tests: 3 web tests (overlay/trigger markup on every page, full-metadata save verifying notes,
+  schedule, deadline, project context, tag, and two checklist items, and two pre-create rejection
+  paths proving no item is created for an invalid date or a tag request without a tag service);
+  full workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: the hydrated client's shortcut handling opens the overlay; the registry binding and
+  target overlay are ready for it.
+- Archive: `2026-10-01-add-quick-entry`; canonical `features/quick-entry` spec created.
+- Commit: `feat(53): add quick entry`
+- Decisions: `:target` overlay avoids JS dialogs; metadata application is compensated rather
+  than transactional across commands, guaranteeing no half-created item.
+- Live integrations not verified: hydrated overlay open shortcut.
+
 ## Run summary
 
 ### Completed changes
@@ -1451,9 +1477,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 50 | add-cloud-sync-protocol | COMPLETE | `feat(50)` |
 | 51 | add-realtime-sync | COMPLETE | `feat(51)` |
 | 52 | add-multitab-coordination | COMPLETE | `feat(52)` |
+| 53 | add-quick-entry | COMPLETE | `feat(53)` |
 
-- Completed proposal range: 01–52 (52 of 74).
-- Incomplete: 53–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–53 (53 of 74).
+- Incomplete: 54–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1522,13 +1549,13 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 53–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 54–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   cloud sync protocol, realtime hints, multi-tab coordination, read-store patterns, and test
-   harnesses are in place to make each one mechanical. Next: 53.
+   cloud sync protocol, realtime hints, multi-tab coordination and Quick Entry, read-store
+   patterns, and test harnesses are in place to make each one mechanical. Next: 54.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1546,7 +1573,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 52): all quality gates green
+- Current state at HEAD (change 53): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.
