@@ -1475,6 +1475,31 @@ Agent: opencode (deepseek-v4.1-flash)
   are distinguished from unknown tokens; notes reuse the capture sanitizer.
 - Live integrations not verified: real provider webhook delivery.
 
+### 56 — `add-command-urls` — COMPLETE
+
+- Start: 2026-09-30 20:50 · End: 2026-10-01 22:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: `GET/POST /add` reuses the extracted Quick Entry handler
+  (`apply_quick_entry`), so validation/compensation semantics match the UI; `GET /add-project`
+  parses an optional area id, creates the project, applies notes, and compensates by deleting the
+  fresh project on failure; `GET /update` applies only provided fields in a fixed order with
+  parse-before-write; `GET /show` requires exactly one of todo/project/area/list, verifies
+  entities through account-scoped services (foreign/missing → not-found redirect), maps lists
+  through a fixed allow-list, and `/search` remains the documented stable search URL.
+- Migrations: none.
+- Tests: 4 web tests (add with metadata, add-project with notes, update applying typed fields and
+  rejecting an unsupported `when` without partial writes, show redirects for lists and entities
+  plus malformed/conflicting/unsupported reference rejection, and search stability); full
+  workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: GET command URLs are intentionally non-idempotent for automation parity with
+  `/capture`; no URL signing (sessions authorize).
+- Archive: `2026-10-02-add-command-urls`; canonical `features/command-urls` spec created.
+- Commit: `feat(56): add command urls`
+- Decisions: one shared capture path for `/add` and `/todos/quick`; strict allow-lists for lists
+  and schedule kinds; entity scoping through services rather than a separate ACL check.
+- Live integrations not verified: none beyond normal HTTP behavior.
+
 ## Run summary
 
 ### Completed changes
@@ -1536,9 +1561,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 53 | add-quick-entry | COMPLETE | `feat(53)` |
 | 54 | add-browser-capture | COMPLETE | `feat(54)` |
 | 55 | add-mail-to-inbox | COMPLETE | `feat(55)` |
+| 56 | add-command-urls | COMPLETE | `feat(56)` |
 
-- Completed proposal range: 01–55 (55 of 74).
-- Incomplete: 56–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–56 (56 of 74).
+- Incomplete: 57–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1607,14 +1633,14 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 56–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 57–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture and
-   inbound mail, read-store patterns, and test harnesses are in place to make each one
-   mechanical. Next: 56.
+   cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
+   inbound mail and command URLs, read-store patterns, and test harnesses are in place to make
+   each one mechanical. Next: 57.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1632,7 +1658,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 55): all quality gates green
+- Current state at HEAD (change 56): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.
