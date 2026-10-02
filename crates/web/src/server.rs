@@ -30,6 +30,7 @@ use serde::Serialize;
 use crate::app::{shell, App};
 use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
+use crate::capture_routes;
 use crate::logbook_routes;
 use crate::notes_routes;
 use crate::project_routes;
@@ -254,6 +255,19 @@ pub fn router_with_session(options: LeptosOptions, resolver: Arc<dyn SessionReso
     ))
 }
 
+/// PWA manifest with the browser share target pointing at the capture command URL.
+const MANIFEST: &str = r#"{"name":"Momentum","short_name":"Momentum","start_url":"/today","display":"standalone","share_target":{"action":"/capture","method":"GET","params":{"title":"title","text":"text","url":"url"}}}"#;
+
+async fn manifest() -> impl IntoResponse {
+    (
+        [(
+            CONTENT_TYPE,
+            HeaderValue::from_static("application/manifest+json"),
+        )],
+        MANIFEST,
+    )
+}
+
 /// Builds the application router with explicit state.
 pub fn router_with_state(state: AppState) -> Router {
     init_runtime();
@@ -273,8 +287,10 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/static/app.css", get(app_css))
+        .route("/manifest.webmanifest", get(manifest))
         .route("/static/design.css", get(design_css))
         .merge(auth_routes::routes())
+        .merge(capture_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())
         .merge(project_routes::routes())

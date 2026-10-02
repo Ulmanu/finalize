@@ -1419,6 +1419,33 @@ Agent: opencode (deepseek-v4.1-flash)
   than transactional across commands, guaranteeing no half-created item.
 - Live integrations not verified: hydrated overlay open shortcut.
 
+### 54 — `add-browser-capture` — COMPLETE
+
+- Start: 2026-09-29 17:10 · End: 2026-09-29 18:40
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::capture` sanitizes untrusted shared data (`sanitize_url` keeps
+  http/https only, strips controls, caps at 2048; `sanitize_text` removes controls, collapses
+  whitespace, caps at 4000; `build_capture` falls back to "Captured page" and puts the URL first
+  in notes); `GET/POST /capture` authenticates, sanitizes, creates the Inbox to-do, and redirects
+  (`return_to` for POST adapters, `/login` without a session, `?error=capture` on write
+  failure); a PWA manifest at `/manifest.webmanifest` declares `share_target` action `/capture`
+  (GET, params title/text/url) and is linked from the shell — the documented command URL that an
+  optional extension/bookmarklet uses without duplicating domain logic.
+- Migrations: none.
+- Tests: 3 app unit tests (URL allow-list incl. javascript:/data:/file: rejection and length cap,
+  text control stripping/collapse/cap, draft composition with fallback) and 4 web tests (share
+  capture with sanitized notes, malicious URL dropped and controls stripped, manifest content
+  type and share target, unauthenticated rejection with no item); full workspace suite green plus
+  fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: a packaged browser extension is not shipped; the command URL is the documented
+  boundary and the PWA share target works natively.
+- Archive: `2026-10-02-add-browser-capture`; canonical `features/browser-capture` spec created.
+- Commit: `feat(54): add browser capture`
+- Decisions: GET share target (no script); invalid URLs dropped rather than failing the capture;
+  captures land in the Inbox and flow through the normal command/outbox path.
+- Live integrations not verified: OS share sheet on a device.
+
 ## Run summary
 
 ### Completed changes
@@ -1478,9 +1505,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 51 | add-realtime-sync | COMPLETE | `feat(51)` |
 | 52 | add-multitab-coordination | COMPLETE | `feat(52)` |
 | 53 | add-quick-entry | COMPLETE | `feat(53)` |
+| 54 | add-browser-capture | COMPLETE | `feat(54)` |
 
-- Completed proposal range: 01–53 (53 of 74).
-- Incomplete: 54–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–54 (54 of 74).
+- Incomplete: 55–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1549,13 +1577,13 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 54–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 55–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   cloud sync protocol, realtime hints, multi-tab coordination and Quick Entry, read-store
-   patterns, and test harnesses are in place to make each one mechanical. Next: 54.
+   cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry and browser capture,
+   read-store patterns, and test harnesses are in place to make each one mechanical. Next: 55.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1573,7 +1601,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 53): all quality gates green
+- Current state at HEAD (change 54): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

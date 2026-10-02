@@ -36,6 +36,7 @@ pub fn shell(options: leptos::config::LeptosOptions) -> impl IntoView {
                 <HydrationScripts options=options.clone()/>
                 <link rel="stylesheet" href="/static/design.css"/>
                 <link rel="stylesheet" href="/static/app.css"/>
+                <link rel="manifest" href="/manifest.webmanifest"/>
             </head>
             <body>
                 <App/>

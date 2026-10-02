@@ -17,6 +17,8 @@ pub mod area_routes;
 #[cfg(feature = "ssr")]
 pub mod auth_routes;
 pub mod boundaries;
+#[cfg(feature = "ssr")]
+pub mod capture_routes;
 pub mod design;
 pub mod layouts;
 #[cfg(feature = "ssr")]
