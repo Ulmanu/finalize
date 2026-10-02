@@ -12,6 +12,7 @@ use axum::{Json, Router};
 use leptos::config::LeptosOptions;
 use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
+use momentum_app::api_tokens::ApiTokenService;
 use momentum_app::areas::AreaService;
 use momentum_app::calendar::CalendarService;
 use momentum_app::inbound::InboundService;
@@ -28,6 +29,7 @@ use momentum_app::todos::TodoService;
 use momentum_infra::Database;
 use serde::Serialize;
 
+use crate::api_routes;
 use crate::app::{shell, App};
 use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
@@ -93,6 +95,8 @@ pub struct AppState {
     pub inbound: Option<Arc<InboundService>>,
     /// Shared secret expected from the mail provider webhook.
     pub inbound_secret: Option<String>,
+    /// Automation API token service, when configured.
+    pub api_tokens: Option<Arc<ApiTokenService>>,
 }
 
 impl AppState {
@@ -126,7 +130,15 @@ impl AppState {
             hints: None,
             inbound: None,
             inbound_secret: None,
+            api_tokens: None,
         }
+    }
+
+    /// Adds the automation API token service.
+    #[must_use]
+    pub fn with_api_tokens(mut self, api_tokens: Arc<ApiTokenService>) -> Self {
+        self.api_tokens = Some(api_tokens);
+        self
     }
 
     /// Adds the inbound mail service and its webhook secret.
@@ -300,6 +312,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let calendar = state.calendar.clone();
     let replica = state.replica.clone();
     let inbound = state.inbound.clone();
+    let api_tokens = state.api_tokens.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -310,6 +323,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(auth_routes::routes())
         .merge(capture_routes::routes())
         .merge(command_routes::routes())
+        .merge(api_routes::routes())
         .merge(inbound_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())
@@ -334,6 +348,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(calendar.clone());
                 provide_context(replica.clone());
                 provide_context(inbound.clone());
+                provide_context(api_tokens.clone());
             },
             move || shell(shell_options.clone()),
         )

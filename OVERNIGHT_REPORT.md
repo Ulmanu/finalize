@@ -1500,6 +1500,36 @@ Agent: opencode (deepseek-v4.1-flash)
   and schedule kinds; entity scoping through services rather than a separate ACL check.
 - Live integrations not verified: none beyond normal HTTP behavior.
 
+### 57 — `add-automation-api` — COMPLETE
+
+- Start: 2026-10-01 22:40 · End: 2026-10-02 21:15
+- Proposal validation: strict validation passed before archive.
+- Implementation: migration 0007 adds `api_tokens` (id, account, name, unique hash, scopes,
+  created/used/revoked timestamps); `momentum_app::api_tokens` provides `ApiScope` (write implies
+  read), view-once `CreatedApiToken`, `ApiTokenStore`, `ApiPrincipal`, and `ApiTokenService`
+  (create/list/revoke/rotate/authenticate) reusing the auth token generator so only deterministic
+  hashes persist; `PgApiTokenStore` implements the port; `/api/v1/todos` supports list (fixed
+  scope allow-list), create (with schedule/deadline and compensation), show, patch, and
+  complete/cancel/reopen/delete actions, all delegating to `TodoService` with typed JSON errors
+  (`unauthorized`, `forbidden`, `invalid_request`, `not_found`, `unavailable`, `internal`);
+  Settings gained token management with view-once display via redirect, listing with scopes and
+  revoked state, and revoke/rotate actions.
+- Migrations: 0007 `api-tokens` (additive, reversible).
+- Tests: 1 app unit test (scope parse and write-implies-read), 2 testkit tests (view-once
+  creation with last-used tracking and authentication; rotation invalidating the old token,
+  revocation blocking use, refused rotation of revoked tokens), 4 web tests (bearer enforcement
+  and read-vs-write scopes; CRUD/actions with typed errors incl. unsupported values/actions and
+  404s; rotation/revocation taking effect; settings view-once flow with plaintext absent from the
+  persisted list); full workspace suite green plus fmt, arch-check, clippy, WASM build (exit
+  checked directly). Clippy sort_by_key fixed.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: no OAuth client registration or webhook subscriptions; bearer tokens only.
+- Archive: `2026-10-02-add-automation-api`; canonical `features/automation-api` spec created.
+- Commit: `feat(57): add automation api`
+- Decisions: deterministic token hashing for lookup (entropy from the generator); view-once
+  plaintext via redirect parameter, never stored; write implies read.
+- Live integrations not verified: external automation clients.
+
 ## Run summary
 
 ### Completed changes
@@ -1562,9 +1592,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 54 | add-browser-capture | COMPLETE | `feat(54)` |
 | 55 | add-mail-to-inbox | COMPLETE | `feat(55)` |
 | 56 | add-command-urls | COMPLETE | `feat(56)` |
+| 57 | add-automation-api | COMPLETE | `feat(57)` |
 
-- Completed proposal range: 01–56 (56 of 74).
-- Incomplete: 57–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–57 (57 of 74).
+- Incomplete: 58–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1633,14 +1664,14 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 57–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 58–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
-   inbound mail and command URLs, read-store patterns, and test harnesses are in place to make
-   each one mechanical. Next: 57.
+   inbound mail, command URLs and the automation API, read-store patterns, and test harnesses are
+   in place to make each one mechanical. Next: 58.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1658,7 +1689,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 56): all quality gates green
+- Current state at HEAD (change 57): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

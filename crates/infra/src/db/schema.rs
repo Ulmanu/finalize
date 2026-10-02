@@ -288,3 +288,22 @@ pub const INBOUND_MAIL_DOWN: &str = "
 drop table if exists inbound_messages;
 drop table if exists inbound_aliases;
 ";
+
+/// Migration 0007: scoped personal automation API tokens.
+pub const API_TOKENS_UP: &str = r"
+create table if not exists api_tokens (
+    id uuid primary key,
+    account_id uuid not null references accounts(id) on delete cascade,
+    name text not null,
+    token_hash text not null unique,
+    scopes text[] not null default '{}',
+    created_at timestamptz not null default now(),
+    last_used_at timestamptz,
+    revoked_at timestamptz
+);
+
+create index if not exists api_tokens_account_idx on api_tokens (account_id);
+";
+
+/// Rollback SQL for migration 0007.
+pub const API_TOKENS_DOWN: &str = "drop table if exists api_tokens;";

@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod api_tokens;
 pub mod areas;
 pub mod auth;
 pub mod bulk;

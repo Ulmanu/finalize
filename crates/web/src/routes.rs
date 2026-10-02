@@ -1254,6 +1254,110 @@ fn SettingsView() -> impl IntoView {
                 <h1 class="list-title">"Settings"</h1>
                 <p class="list-description">"Preferences and account settings."</p>
             </header>
+            <section class="api-tokens" data-testid="api-tokens">
+                <h2 class="section-heading">"Automation tokens"</h2>
+                <p class="list-description">
+                    "Tokens authenticate the /api/v1 REST surface; the plaintext is shown once."
+                </p>
+                {move || {
+                    let service = use_context::<Option<Arc<momentum_app::api_tokens::ApiTokenService>>>()
+                        .flatten();
+                    let account = use_account();
+                    let query = use_query_map();
+                    let created = query.read().get("token").unwrap_or_default();
+                    view! {
+                        {(!created.is_empty())
+                            .then(|| {
+                                view! {
+                                    <p data-testid="api-token-view-once">
+                                        <strong>"Copy this token now: "</strong>
+                                        <code>{created}</code>
+                                    </p>
+                                }
+                            })}
+                        {match (service, account) {
+                            (Some(service), Some(account)) => {
+                                let tokens = AsyncDerived::new(move || {
+                                    let service = service.clone();
+                                    async move {
+                                        service.list(account.account_id).await.unwrap_or_default()
+                                    }
+                                });
+                                view! {
+                                    <Suspense fallback=|| view! { <Loading/> }>
+                                        {move || {
+                                            tokens
+                                                .get()
+                                                .unwrap_or_default()
+                                                .into_iter()
+                                                .map(|token| {
+                                                    let revoke = format!(
+                                                        "/settings/tokens/{}/revoke",
+                                                        token.id,
+                                                    );
+                                                    let rotate = format!(
+                                                        "/settings/tokens/{}/rotate",
+                                                        token.id,
+                                                    );
+                                                    let scopes = token
+                                                        .scopes
+                                                        .iter()
+                                                        .map(|scope| scope.as_str())
+                                                        .collect::<Vec<_>>()
+                                                        .join(", ");
+                                                    let revoked = token.revoked_at.is_some();
+                                                    view! {
+                                                        <div
+                                                            class="api-token-row"
+                                                            data-testid="api-token"
+                                                            data-token-id=token.id.to_string()
+                                                        >
+                                                            <span class="task-title">{token.name}</span>
+                                                            <span class="row-badge">{scopes}</span>
+                                                            {(revoked)
+                                                                .then(|| {
+                                                                    view! {
+                                                                        <span class="row-badge">"Revoked"</span>
+                                                                    }
+                                                                })}
+                                                            <form method="post" action=revoke>
+                                                                <button type="submit" class="row-action">
+                                                                    "Revoke"
+                                                                </button>
+                                                            </form>
+                                                            <form method="post" action=rotate>
+                                                                <button type="submit" class="row-action">
+                                                                    "Rotate"
+                                                                </button>
+                                                            </form>
+                                                        </div>
+                                                    }
+                                                })
+                                                .collect_view()
+                                        }}
+                                    </Suspense>
+                                }
+                                    .into_any()
+                            }
+                            _ => ().into_any(),
+                        }}
+                        <form method="post" action="/settings/tokens" data-testid="api-token-form">
+                            <input
+                                type="text"
+                                name="name"
+                                placeholder="Token name"
+                                aria-label="Token name"
+                                required=true
+                            />
+                            <select name="scopes" aria-label="Token scopes">
+                                <option value="read">"Read only"</option>
+                                <option value="read,write">"Read and write"</option>
+                            </select>
+                            <button type="submit" class="button-primary">"Create token"</button>
+                        </form>
+                    }
+                }}
+            </section>
             <section class="inbound-mail" data-testid="inbound-mail">
                 <h2 class="section-heading">"Email to Inbox"</h2>
                 <p class="list-description">

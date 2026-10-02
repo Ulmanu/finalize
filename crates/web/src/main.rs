@@ -3,6 +3,7 @@
 use std::error::Error;
 use std::sync::Arc;
 
+use momentum_app::api_tokens::ApiTokenService;
 use momentum_app::areas::AreaService;
 use momentum_app::auth::AuthService;
 use momentum_app::commands::CommandDispatcher;
@@ -14,6 +15,7 @@ use momentum_app::recurring::RecurringService;
 use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
+use momentum_infra::PgApiTokenStore;
 use momentum_infra::PgChangeLogReader;
 use momentum_infra::PgInboundStore;
 use momentum_infra::{
@@ -169,6 +171,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     let state = match hints {
         Some(hints) => state.with_hints(hints),
+        None => state,
+    };
+    let state = match &inbound_pool {
+        Some(pool) => state.with_api_tokens(Arc::new(ApiTokenService::new(
+            Arc::new(PgApiTokenStore::new(pool.clone())),
+            Arc::new(RandomTokenGenerator),
+        ))),
         None => state,
     };
     let state = match (inbound_pool, todos_for_inbound) {

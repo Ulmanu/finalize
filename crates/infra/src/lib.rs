@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod api_tokens;
 pub mod areas;
 pub mod auth;
 pub mod commands;
@@ -21,6 +22,7 @@ pub mod sync;
 pub mod tags;
 pub mod todos;
 
+pub use api_tokens::PgApiTokenStore;
 pub use areas::PgAreaReadStore;
 pub use auth::{Argon2Hasher, PgAuthStore, RandomTokenGenerator, SystemClock};
 pub use commands::PgUnitOfWorkFactory;

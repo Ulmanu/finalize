@@ -68,6 +68,13 @@ pub const MIGRATIONS: &[Migration] = &[
         down: Some(schema::INBOUND_MAIL_DOWN),
         irreversible_reason: None,
     },
+    Migration {
+        version: 7,
+        name: "api-tokens",
+        up: schema::API_TOKENS_UP,
+        down: Some(schema::API_TOKENS_DOWN),
+        irreversible_reason: None,
+    },
 ];
 
 /// Migration failures.
