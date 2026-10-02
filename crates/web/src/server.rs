@@ -32,6 +32,7 @@ use crate::app::{shell, App};
 use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
 use crate::capture_routes;
+use crate::command_routes;
 use crate::inbound_routes;
 use crate::logbook_routes;
 use crate::notes_routes;
@@ -308,6 +309,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/static/design.css", get(design_css))
         .merge(auth_routes::routes())
         .merge(capture_routes::routes())
+        .merge(command_routes::routes())
         .merge(inbound_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())

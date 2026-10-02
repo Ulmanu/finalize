@@ -214,24 +214,24 @@ async fn create_todo(
 }
 
 #[derive(Debug, Deserialize)]
-struct QuickEntryForm {
-    title: String,
+pub(crate) struct QuickEntryForm {
+    pub(crate) title: String,
     #[serde(default)]
-    notes: Option<String>,
+    pub(crate) notes: Option<String>,
     #[serde(default)]
-    return_to: Option<String>,
+    pub(crate) return_to: Option<String>,
     #[serde(default)]
-    schedule_kind: Option<String>,
+    pub(crate) schedule_kind: Option<String>,
     #[serde(default)]
-    date: Option<String>,
+    pub(crate) date: Option<String>,
     #[serde(default)]
-    deadline: Option<String>,
+    pub(crate) deadline: Option<String>,
     #[serde(default)]
-    destination: Option<String>,
+    pub(crate) destination: Option<String>,
     #[serde(default)]
-    tag: Option<String>,
+    pub(crate) tag: Option<String>,
     #[serde(default)]
-    checklist: Option<String>,
+    pub(crate) checklist: Option<String>,
 }
 
 async fn quick_entry(
@@ -239,7 +239,16 @@ async fn quick_entry(
     Extension(session): Extension<SessionState>,
     Form(form): Form<QuickEntryForm>,
 ) -> Response {
-    let Some((service, account_id)) = service_and_account(&state, &session) else {
+    apply_quick_entry(&state, &session, form).await
+}
+
+/// Shared capture logic used by `/todos/quick` and the `/add` command URL.
+pub(crate) async fn apply_quick_entry(
+    state: &AppState,
+    session: &SessionState,
+    form: QuickEntryForm,
+) -> Response {
+    let Some((service, account_id)) = service_and_account(state, session) else {
         return redirect("/login");
     };
     let QuickEntryForm {
