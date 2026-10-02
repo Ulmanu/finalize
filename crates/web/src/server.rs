@@ -14,6 +14,7 @@ use leptos::context::provide_context;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 use momentum_app::areas::AreaService;
 use momentum_app::calendar::CalendarService;
+use momentum_app::inbound::InboundService;
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::realtime::HintHub;
@@ -31,6 +32,7 @@ use crate::app::{shell, App};
 use crate::area_routes;
 use crate::auth_routes::{self, AuthContext};
 use crate::capture_routes;
+use crate::inbound_routes;
 use crate::logbook_routes;
 use crate::notes_routes;
 use crate::project_routes;
@@ -86,6 +88,10 @@ pub struct AppState {
     pub sync: Option<Arc<SyncService>>,
     /// Realtime invalidation hint hub, when realtime sync is enabled.
     pub hints: Option<Arc<HintHub>>,
+    /// Inbound mail service, when configured.
+    pub inbound: Option<Arc<InboundService>>,
+    /// Shared secret expected from the mail provider webhook.
+    pub inbound_secret: Option<String>,
 }
 
 impl AppState {
@@ -117,7 +123,17 @@ impl AppState {
             replica: None,
             sync: None,
             hints: None,
+            inbound: None,
+            inbound_secret: None,
         }
+    }
+
+    /// Adds the inbound mail service and its webhook secret.
+    #[must_use]
+    pub fn with_inbound(mut self, inbound: Arc<InboundService>, secret: Option<String>) -> Self {
+        self.inbound = Some(inbound);
+        self.inbound_secret = secret;
+        self
     }
 
     /// Adds the realtime hint hub.
@@ -282,6 +298,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let recents = state.recents.clone();
     let calendar = state.calendar.clone();
     let replica = state.replica.clone();
+    let inbound = state.inbound.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -291,6 +308,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/static/design.css", get(design_css))
         .merge(auth_routes::routes())
         .merge(capture_routes::routes())
+        .merge(inbound_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())
         .merge(project_routes::routes())
@@ -313,6 +331,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(recents.clone());
                 provide_context(calendar.clone());
                 provide_context(replica.clone());
+                provide_context(inbound.clone());
             },
             move || shell(shell_options.clone()),
         )

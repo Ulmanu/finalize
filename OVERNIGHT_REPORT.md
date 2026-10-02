@@ -1446,6 +1446,35 @@ Agent: opencode (deepseek-v4.1-flash)
   captures land in the Inbox and flow through the normal command/outbox path.
 - Live integrations not verified: OS share sheet on a device.
 
+### 55 — `add-mail-to-inbox` — COMPLETE
+
+- Start: 2026-09-29 18:50 · End: 2026-09-30 20:40
+- Proposal validation: strict validation passed before archive.
+- Implementation: migration 0006 adds `inbound_aliases` (token pk, account, enabled) and
+  `inbound_messages` (account+message_id pk ledger); `momentum_app::inbound` provides the
+  `AliasStore`/`MessageLedger` ports, CSPRNG `RandomTokenSource` (Uuid v4, 32 hex chars),
+  deterministic `map_mail` (quoted lines dropped, whitespace collapsed, "Email" fallback,
+  bounded), `InboundLimits`, and `InboundService` (`ensure_alias`, `rotate`, `disable`, `ingest`
+  with size checks, enabled-state distinction, persisted dedupe, and a sliding hourly rate
+  limit); `PgInboundStore` implements both ports; `POST /inbound/mail` (secret-guarded webhook)
+  maps outcomes to deterministic statuses; Settings shows the private address with rotate/disable
+  actions; `AppState::with_inbound` wires service + `MOMENTUM_INBOUND_SECRET`.
+- Migrations: 0006 `inbound-mail` (additive, reversible).
+- Tests: 2 app unit tests (deterministic mapping incl. quote stripping/fallback; subject bound)
+  and 3 testkit tests (alias lifecycle with rotation invalidating the old token and disable
+  blocking; mapping + message-id dedupe with a persisted ledger; oversized rejection and rate
+  limiting with window recovery) and 3 web tests (webhook delivery/duplicate/disabled, secret
+  enforcement incl. missing header, settings address + rotate/disable flows); full workspace
+  suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: no mail transfer agent is run; the provider webhook plus shared secret is the
+  documented boundary, and HTML mail is not rendered (plain text only).
+- Archive: `2026-10-02-add-mail-to-inbox`; canonical `features/mail-to-inbox` spec created.
+- Commit: `feat(55): add mail to inbox`
+- Decisions: aliases are 128-bit random tokens; duplicates bypass rate charges; disabled aliases
+  are distinguished from unknown tokens; notes reuse the capture sanitizer.
+- Live integrations not verified: real provider webhook delivery.
+
 ## Run summary
 
 ### Completed changes
@@ -1506,9 +1535,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 52 | add-multitab-coordination | COMPLETE | `feat(52)` |
 | 53 | add-quick-entry | COMPLETE | `feat(53)` |
 | 54 | add-browser-capture | COMPLETE | `feat(54)` |
+| 55 | add-mail-to-inbox | COMPLETE | `feat(55)` |
 
-- Completed proposal range: 01–54 (54 of 74).
-- Incomplete: 55–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–55 (55 of 74).
+- Incomplete: 56–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1577,13 +1607,14 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 55–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 56–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry and browser capture,
-   read-store patterns, and test harnesses are in place to make each one mechanical. Next: 55.
+   cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture and
+   inbound mail, read-store patterns, and test harnesses are in place to make each one
+   mechanical. Next: 56.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1601,7 +1632,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 54): all quality gates green
+- Current state at HEAD (change 55): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

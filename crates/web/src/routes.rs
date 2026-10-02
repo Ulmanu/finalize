@@ -1254,6 +1254,65 @@ fn SettingsView() -> impl IntoView {
                 <h1 class="list-title">"Settings"</h1>
                 <p class="list-description">"Preferences and account settings."</p>
             </header>
+            <section class="inbound-mail" data-testid="inbound-mail">
+                <h2 class="section-heading">"Email to Inbox"</h2>
+                <p class="list-description">
+                    "Forward mail to your private address; subject becomes the title."
+                </p>
+                {move || {
+                    let inbound = use_context::<Option<Arc<momentum_app::inbound::InboundService>>>()
+                        .flatten();
+                    let account = use_account();
+                    view! {
+                        {match (inbound, account) {
+                            (Some(service), Some(account)) => {
+                                let alias = AsyncDerived::new(move || {
+                                    let service = service.clone();
+                                    async move {
+                                        service.ensure_alias(account.account_id).await.ok()
+                                    }
+                                });
+                                view! {
+                                    <Suspense fallback=|| view! { <Loading/> }>
+                                        {move || {
+                                            alias
+                                                .get()
+                                                .flatten()
+                                                .map(|alias| {
+                                                    view! {
+                                                        <p data-testid="inbound-alias">
+                                                            <code>{alias.address()}</code>
+                                                            {(!alias.enabled)
+                                                                .then(|| {
+                                                                    view! {
+                                                                        <span class="row-badge">
+                                                                            "Disabled"
+                                                                        </span>
+                                                                    }
+                                                                })}
+                                                        </p>
+                                                    }
+                                                })
+                                        }}
+                                    </Suspense>
+                                    <form method="post" action="/settings/inbound/rotate">
+                                        <button type="submit" class="row-action">
+                                            "Rotate address"
+                                        </button>
+                                    </form>
+                                    <form method="post" action="/settings/inbound/disable">
+                                        <button type="submit" class="row-action">
+                                            "Disable address"
+                                        </button>
+                                    </form>
+                                }
+                                    .into_any()
+                            }
+                            _ => ().into_any(),
+                        }}
+                    }
+                }}
+            </section>
             <section class="keyboard-shortcuts" data-testid="shortcut-registry">
                 <h2 class="section-heading">"Keyboard shortcuts"</h2>
                 <p class="list-description">

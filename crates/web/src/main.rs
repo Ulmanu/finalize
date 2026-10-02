@@ -6,6 +6,7 @@ use std::sync::Arc;
 use momentum_app::areas::AreaService;
 use momentum_app::auth::AuthService;
 use momentum_app::commands::CommandDispatcher;
+use momentum_app::inbound::{InboundLimits, InboundService, RandomTokenSource};
 use momentum_app::logbook::LogbookService;
 use momentum_app::projects::ProjectService;
 use momentum_app::realtime::HintHub;
@@ -14,6 +15,7 @@ use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
 use momentum_infra::PgChangeLogReader;
+use momentum_infra::PgInboundStore;
 use momentum_infra::{
     Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgLoggingPolicyStore, PgProjectReadStore,
     PgRecurrenceReadStore, PgTagReadStore, PgTodoReadStore, PgUnitOfWorkFactory,
@@ -138,6 +140,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         ),
     };
 
+    let inbound_pool = database.as_ref().map(|database| database.pool().clone());
+    let todos_for_inbound = todos.clone();
     let state = AppState::new(
         server::leptos_options(),
         database,
@@ -166,6 +170,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let state = match hints {
         Some(hints) => state.with_hints(hints),
         None => state,
+    };
+    let state = match (inbound_pool, todos_for_inbound) {
+        (Some(pool), Some(todos)) => {
+            let service = Arc::new(InboundService::new(
+                Arc::new(PgInboundStore::new(pool.clone())),
+                Arc::new(PgInboundStore::new(pool)),
+                todos,
+                Arc::new(RandomTokenSource),
+                InboundLimits::default(),
+            ));
+            let secret = std::env::var("MOMENTUM_INBOUND_SECRET").ok();
+            state.with_inbound(service, secret)
+        }
+        _ => state,
     };
     let router = server::router_with_state(state);
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;

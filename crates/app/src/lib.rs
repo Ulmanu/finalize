@@ -13,6 +13,7 @@ pub mod calendar;
 pub mod capture;
 pub mod commands;
 pub mod gestures;
+pub mod inbound;
 pub mod keyboard;
 pub mod logbook;
 pub mod materializer;

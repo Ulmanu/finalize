@@ -61,6 +61,13 @@ pub const MIGRATIONS: &[Migration] = &[
         down: Some(schema::PROJECTION_SCOPE_EVENING_DOWN),
         irreversible_reason: None,
     },
+    Migration {
+        version: 6,
+        name: "inbound-mail",
+        up: schema::INBOUND_MAIL_UP,
+        down: Some(schema::INBOUND_MAIL_DOWN),
+        irreversible_reason: None,
+    },
 ];
 
 /// Migration failures.

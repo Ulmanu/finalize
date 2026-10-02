@@ -20,6 +20,8 @@ pub mod boundaries;
 #[cfg(feature = "ssr")]
 pub mod capture_routes;
 pub mod design;
+#[cfg(feature = "ssr")]
+pub mod inbound_routes;
 pub mod layouts;
 #[cfg(feature = "ssr")]
 pub mod logbook_routes;

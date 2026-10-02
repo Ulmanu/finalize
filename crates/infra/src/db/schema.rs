@@ -263,3 +263,28 @@ alter table placements drop constraint if exists placements_scope_check;
 alter table placements add constraint placements_scope_check
     check (scope in ('context', 'today'));
 ";
+
+/// Migration 0006: inbound mail aliases and the message ledger.
+pub const INBOUND_MAIL_UP: &str = r"
+create table if not exists inbound_aliases (
+    token text primary key,
+    account_id uuid not null references accounts(id) on delete cascade,
+    enabled boolean not null default true,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists inbound_aliases_account_idx on inbound_aliases (account_id);
+
+create table if not exists inbound_messages (
+    account_id uuid not null references accounts(id) on delete cascade,
+    message_id text not null,
+    received_at timestamptz not null default now(),
+    primary key (account_id, message_id)
+);
+";
+
+/// Rollback SQL for migration 0006.
+pub const INBOUND_MAIL_DOWN: &str = "
+drop table if exists inbound_messages;
+drop table if exists inbound_aliases;
+";
