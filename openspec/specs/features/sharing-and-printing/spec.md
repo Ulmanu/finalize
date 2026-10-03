@@ -1,7 +1,11 @@
 # features/sharing-and-printing Specification
 
 ## Purpose
-Deterministic share and print render models.
+
+Define deterministic share and print rendering: markdown/text models derived only from read
+models (never interactive markup), dedicated print-only HTML documents with their own layouts
+plus print media rules that hide shell chrome, and content safety through markdown/HTML escaping
+and account-scoped visibility.
 
 ## Requirements
 
