@@ -29,6 +29,7 @@ pub mod replica;
 pub mod search;
 pub mod selection;
 pub mod session;
+pub mod share;
 pub mod sync;
 pub mod tabs;
 pub mod tags;

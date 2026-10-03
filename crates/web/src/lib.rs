@@ -44,6 +44,8 @@ pub mod routes;
 pub mod search_routes;
 pub mod session;
 #[cfg(feature = "ssr")]
+pub mod share_routes;
+#[cfg(feature = "ssr")]
 pub mod sync_routes;
 #[cfg(feature = "ssr")]
 pub mod tag_routes;

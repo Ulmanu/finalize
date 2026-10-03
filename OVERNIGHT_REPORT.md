@@ -1638,6 +1638,33 @@ Agent: opencode (deepseek-v4.1-flash)
   layout.
 - Live integrations not verified: none beyond normal HTTP behavior.
 
+### 62 — `add-sharing-and-printing` — COMPLETE
+
+- Start: 2026-10-04 21:15 · End: 2026-10-05 21:40
+- Proposal validation: strict validation passed before archive. (A first gate run was interrupted
+  externally; the clean re-run passed, EXIT=0.)
+- Implementation: `momentum_app::share` provides `escape_markdown`/`escape_html` and deterministic
+  models (`share_todo_markdown` with notes/when/deadline/status/checklist, `share_project_markdown`
+  with counts, `share_list_markdown` with checkbox rows) plus standalone print documents
+  (`print_list_html`, `print_project_html`) with inlined styles and escaped content; routes
+  `GET /share/todos/{id}`, `/share/projects/{id}`, `/share/lists/{list}` (text/markdown) and
+  `GET /print/lists/{list}`, `/print/projects/{id}` (text/html) with a fixed list allow-list and
+  session enforcement; `@media print` rules hide chrome/actions/editors/overlays on interactive
+  pages.
+- Migrations: none.
+- Tests: 2 app unit tests (deterministic markdown with escaped controls; print HTML escaping of
+  script tags and entities) and 2 web tests (share markdown determinism for todos/lists/projects
+  and 404s; print HTML titles and escaping, project print, 404s, and session enforcement); full
+  workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: no anonymous/public share links (session required) and no PDF generation.
+- Archive: `2026-10-05-add-sharing-and-printing`; canonical `features/sharing-and-printing` spec
+  created.
+- Commit: `feat(62): add sharing and printing`
+- Decisions: render models live in the app crate (pure/deterministic); print pages are dedicated
+  documents; visibility comes from account-scoped open scopes.
+- Live integrations not verified: real print rendering.
+
 ## Run summary
 
 ### Completed changes
@@ -1705,9 +1732,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 59 | add-web-companion-views | COMPLETE | `feat(59)` |
 | 60 | add-multiple-window-support | COMPLETE | `feat(60)` |
 | 61 | add-import-export | COMPLETE | `feat(61)` |
+| 62 | add-sharing-and-printing | COMPLETE | `feat(62)` |
 
-- Completed proposal range: 01–61 (61 of 74).
-- Incomplete: 62–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–62 (62 of 74).
+- Incomplete: 63–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1776,15 +1804,15 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 62–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 63–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
-   inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows
-   and import/export, read-store patterns, and test harnesses are in place to make each one
-   mechanical. Next: 62.
+   inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
+   import/export and share/print models, read-store patterns, and test harnesses are in place to
+   make each one mechanical. Next: 63.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1802,7 +1830,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 61): all quality gates green
+- Current state at HEAD (change 62): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

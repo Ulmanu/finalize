@@ -44,6 +44,7 @@ use crate::project_routes;
 use crate::push_routes;
 use crate::search_routes;
 use crate::session::{AnonymousSessionResolver, SessionResolver};
+use crate::share_routes;
 use crate::sync_routes;
 use crate::tag_routes;
 use crate::todo_routes;
@@ -352,6 +353,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(command_routes::routes())
         .merge(api_routes::routes())
         .merge(export_import_routes::routes())
+        .merge(share_routes::routes())
         .merge(inbound_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())

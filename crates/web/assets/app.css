@@ -680,3 +680,28 @@ h3 {
     padding: 0.5rem 1rem;
     border-bottom: 1px solid rgb(148 163 184 / 30%);
 }
+
+
+/* Dedicated print rules: never print the interactive shell chrome. */
+@media print {
+    .app-topbar,
+    .app-sidebar,
+    .drawer-scrim,
+    .bottom-nav,
+    .app-footer,
+    .task-row-actions,
+    .bulk-actions,
+    .insert-here,
+    .row-editor,
+    .quick-entry,
+    .popout-header,
+    .nav-toggle {
+        display: none !important;
+    }
+    .app-main {
+        padding: 0;
+    }
+    body {
+        background: #ffffff;
+    }
+}
