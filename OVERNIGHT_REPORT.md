@@ -1694,6 +1694,32 @@ Agent: opencode (deepseek-v4.1-flash)
   persisted server-side.
 - Live integrations not verified: client-side preference application.
 
+### 64 — `add-theme-and-text-sizing` — COMPLETE
+
+- Start: 2026-10-05 23:40 · End: 2026-10-06 00:40
+- Proposal validation: strict validation passed before archive.
+- Implementation: the registry gained `appearance.text_size` (normal/large/extra_large) and
+  `appearance.reduced_motion` (bool) alongside `appearance.theme`, all browser-local; design.css
+  gained explicit `[data-theme="dark"]`/`[data-theme="light"]` token sets with the system media
+  query scoped to `:root:not([data-theme="light"])`, rem-based `html[data-text-size]` scaling,
+  `prefers-contrast: more` strengthening for both themes, and an app-level
+  `[data-reduced-motion="true"]` override layered on the existing system reduced-motion queries.
+- Migrations: none.
+- Tests: registry unit tests cover the new definitions automatically, and 2 web tests assert the
+  rendered preference keys/scopes (including extra_large) with browser-scope acknowledgement
+  without server storage, plus the presence of theme/text-size/contrast/reduced-motion rules in
+  the served stylesheets; full workspace suite green plus fmt, arch-check, clippy, WASM build
+  (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: the hydrated client applies the root attributes from browser-local preferences; the
+  server ships the complete CSS contract.
+- Archive: `2026-10-06-add-theme-and-text-sizing`; canonical `features/theme-and-text-sizing`
+  spec created with an expanded Purpose.
+- Commit: `feat(64): add theme and text sizing`
+- Decisions: forced light wins over a dark OS preference; text size scales the root only;
+  contrast/motion remain system-compatible with an explicit opt-in override.
+- Live integrations not verified: client-side theme application and OS preference following.
+
 ## Run summary
 
 ### Completed changes
@@ -1763,9 +1789,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 61 | add-import-export | COMPLETE | `feat(61)` |
 | 62 | add-sharing-and-printing | COMPLETE | `feat(62)` |
 | 63 | add-settings | COMPLETE | `feat(63)` |
+| 64 | add-theme-and-text-sizing | COMPLETE | `feat(64)` |
 
-- Completed proposal range: 01–63 (63 of 74).
-- Incomplete: 64–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–64 (64 of 74).
+- Incomplete: 65–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1834,15 +1861,15 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 64–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 65–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
-   import/export, share/print models and the typed settings registry, read-store patterns, and
-   test harnesses are in place to make each one mechanical. Next: 64.
+   import/export, share/print models, the typed settings registry and appearance theming,
+   read-store patterns, and test harnesses are in place to make each one mechanical. Next: 65.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1860,7 +1887,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 63): all quality gates green
+- Current state at HEAD (change 64): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

@@ -166,6 +166,22 @@ const REGISTRY: &[PreferenceDefinition] = &[
         choices: &["comfortable", "compact"],
     },
     PreferenceDefinition {
+        key: "appearance.text_size",
+        title: "Text size",
+        domain: PreferenceDomain::Appearance,
+        scope: PreferenceScope::Browser,
+        default: PreferenceDefault::Choice("normal"),
+        choices: &["normal", "large", "extra_large"],
+    },
+    PreferenceDefinition {
+        key: "appearance.reduced_motion",
+        title: "Reduce motion (follow system when off)",
+        domain: PreferenceDomain::Appearance,
+        scope: PreferenceScope::Browser,
+        default: PreferenceDefault::Bool(false),
+        choices: &[],
+    },
+    PreferenceDefinition {
         key: "today.show_evening",
         title: "Show This Evening",
         domain: PreferenceDomain::Today,
