@@ -14,6 +14,7 @@ pub mod fixtures;
 pub mod inbound;
 pub mod logbook;
 pub mod materializer;
+pub mod preferences;
 pub mod projects;
 pub mod recurring;
 pub mod reminders;

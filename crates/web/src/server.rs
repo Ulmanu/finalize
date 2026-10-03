@@ -18,6 +18,7 @@ use momentum_app::areas::AreaService;
 use momentum_app::calendar::CalendarService;
 use momentum_app::inbound::InboundService;
 use momentum_app::logbook::LogbookService;
+use momentum_app::preferences::PreferenceStore;
 use momentum_app::projects::ProjectService;
 use momentum_app::realtime::HintHub;
 use momentum_app::recurring::RecurringService;
@@ -40,6 +41,7 @@ use crate::export_import_routes;
 use crate::inbound_routes;
 use crate::logbook_routes;
 use crate::notes_routes;
+use crate::preferences_routes;
 use crate::project_routes;
 use crate::push_routes;
 use crate::search_routes;
@@ -100,6 +102,8 @@ pub struct AppState {
     pub inbound_secret: Option<String>,
     /// Automation API token service, when configured.
     pub api_tokens: Option<Arc<ApiTokenService>>,
+    /// Preference store for account-synced settings.
+    pub preferences: Option<Arc<dyn PreferenceStore>>,
 }
 
 impl AppState {
@@ -134,7 +138,15 @@ impl AppState {
             inbound: None,
             inbound_secret: None,
             api_tokens: None,
+            preferences: None,
         }
+    }
+
+    /// Adds the account preference store.
+    #[must_use]
+    pub fn with_preferences(mut self, preferences: Arc<dyn PreferenceStore>) -> Self {
+        self.preferences = Some(preferences);
+        self
     }
 
     /// Adds the automation API token service.
@@ -339,6 +351,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let replica = state.replica.clone();
     let inbound = state.inbound.clone();
     let api_tokens = state.api_tokens.clone();
+    let preferences = state.preferences.clone();
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -354,6 +367,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(api_routes::routes())
         .merge(export_import_routes::routes())
         .merge(share_routes::routes())
+        .merge(preferences_routes::routes())
         .merge(inbound_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())
@@ -379,6 +393,7 @@ pub fn router_with_state(state: AppState) -> Router {
                 provide_context(replica.clone());
                 provide_context(inbound.clone());
                 provide_context(api_tokens.clone());
+                provide_context(preferences.clone());
             },
             move || shell(shell_options.clone()),
         )

@@ -18,6 +18,7 @@ use momentum_app::todos::TodoService;
 use momentum_infra::PgApiTokenStore;
 use momentum_infra::PgChangeLogReader;
 use momentum_infra::PgInboundStore;
+use momentum_infra::PgPreferenceStore;
 use momentum_infra::{
     Argon2Hasher, Database, PgAreaReadStore, PgAuthStore, PgLoggingPolicyStore, PgProjectReadStore,
     PgRecurrenceReadStore, PgTagReadStore, PgTodoReadStore, PgUnitOfWorkFactory,
@@ -178,6 +179,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Arc::new(PgApiTokenStore::new(pool.clone())),
             Arc::new(RandomTokenGenerator),
         ))),
+        None => state,
+    };
+    let state = match &inbound_pool {
+        Some(pool) => state.with_preferences(Arc::new(PgPreferenceStore::new(pool.clone()))),
         None => state,
     };
     let state = match (inbound_pool, todos_for_inbound) {

@@ -21,6 +21,7 @@ pub mod logbook;
 pub mod materializer;
 pub mod movement;
 pub mod ordering;
+pub mod preferences;
 pub mod projects;
 pub mod realtime;
 pub mod recurring;

@@ -1665,6 +1665,35 @@ Agent: opencode (deepseek-v4.1-flash)
   documents; visibility comes from account-scoped open scopes.
 - Live integrations not verified: real print rendering.
 
+### 63 — `add-settings` — COMPLETE
+
+- Start: 2026-10-05 21:50 · End: 2026-10-05 23:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::preferences` declares 12 preferences across all nine domains
+  (general, appearance, today, calendar, notifications, quick_entry, logbook, account_sync,
+  data) with typed values (bool/choice), defaults, choice allow-lists, and scopes
+  (account/device/browser); `parse_value` rejects unknown keys/values, `sanitize` falls back to
+  the typed default, and `effective` resolves account-scoped values through the new
+  `PreferenceStore` port (PG implementation over the existing `preferences` table; memory for
+  tests); Settings renders a Preferences section grouped by domain with scope badges,
+  current/default selects, and validated submission; `POST /settings/preferences` persists
+  account-scoped values and acknowledges device/browser scopes for the hydrated client.
+- Migrations: none (`preferences` already had the account/device/browser scope constraint).
+- Tests: 2 app unit tests (registry uniqueness/defaults/domain coverage/scope declarations;
+  parsing rejection and sanitize fallbacks) and 3 web tests (all domains and scopes rendered;
+  account persistence with display, invalid and unknown rejection without writes; browser-scope
+  acknowledgement without server storage); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: the hydrated client applies browser/device preferences (theme, density) locally; the
+  server validates and stores only account-scoped values.
+- Archive: `2026-10-05-add-settings`; canonical `features/settings` spec created (Purpose expanded
+  after a validation warning about brevity).
+- Commit: `feat(63): add settings`
+- Decisions: typed registry as the single source; sanitize-on-read; device/browser scopes never
+  persisted server-side.
+- Live integrations not verified: client-side preference application.
+
 ## Run summary
 
 ### Completed changes
@@ -1733,9 +1762,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 60 | add-multiple-window-support | COMPLETE | `feat(60)` |
 | 61 | add-import-export | COMPLETE | `feat(61)` |
 | 62 | add-sharing-and-printing | COMPLETE | `feat(62)` |
+| 63 | add-settings | COMPLETE | `feat(63)` |
 
-- Completed proposal range: 01–62 (62 of 74).
-- Incomplete: 63–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–63 (63 of 74).
+- Incomplete: 64–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1804,15 +1834,15 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 63–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 64–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
-   import/export and share/print models, read-store patterns, and test harnesses are in place to
-   make each one mechanical. Next: 63.
+   import/export, share/print models and the typed settings registry, read-store patterns, and
+   test harnesses are in place to make each one mechanical. Next: 64.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1830,7 +1860,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 62): all quality gates green
+- Current state at HEAD (change 63): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

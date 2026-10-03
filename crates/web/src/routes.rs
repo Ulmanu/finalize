@@ -540,6 +540,120 @@ pub fn QuickEntryOverlay() -> impl IntoView {
     }
 }
 
+/// Typed settings registry rendered with declared scopes and validated submission.
+#[component]
+fn PreferencesSection() -> impl IntoView {
+    let store =
+        use_context::<Option<Arc<dyn momentum_app::preferences::PreferenceStore>>>().flatten();
+    let account = use_account();
+    let stored = AsyncDerived::new(move || {
+        let store = store.clone();
+        let account = account.clone();
+        async move {
+            match (store, account) {
+                (Some(store), Some(account)) => store
+                    .load_all(account.account_id)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect::<std::collections::HashMap<String, String>>(),
+                _ => std::collections::HashMap::new(),
+            }
+        }
+    });
+    view! {
+        <section class="preferences" data-testid="preferences">
+            <h2 class="section-heading">"Preferences"</h2>
+            <p class="list-description">
+                "Each preference declares whether it is account-synced, device-local, or browser-local."
+            </p>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let stored = stored.get().unwrap_or_default();
+                    momentum_app::preferences::PreferenceDomain::ALL
+                        .into_iter()
+                        .map(|domain| {
+                            let rows = momentum_app::preferences::registry()
+                                .iter()
+                                .filter(|definition| definition.domain == domain)
+                                .map(|definition| {
+                                    let current = momentum_app::preferences::sanitize(
+                                        definition.key,
+                                        stored.get(definition.key).map(String::as_str),
+                                    )
+                                    .unwrap_or_else(|| {
+                                        momentum_app::preferences::default_value(definition)
+                                    });
+                                    let current_raw = current.as_str();
+                                    let options: Vec<String> = if definition.choices.is_empty() {
+                                        vec!["true".to_string(), "false".to_string()]
+                                    } else {
+                                        definition
+                                            .choices
+                                            .iter()
+                                            .map(|choice| (*choice).to_string())
+                                            .collect()
+                                    };
+                                    view! {
+                                        <div
+                                            class="preference-row"
+                                            data-testid="preference"
+                                            data-preference-key=definition.key
+                                            data-scope=definition.scope.as_str()
+                                        >
+                                            <span class="task-title">{definition.title}</span>
+                                            <span class="row-badge">
+                                                {definition.scope.as_str()}
+                                            </span>
+                                            <form
+                                                method="post"
+                                                action="/settings/preferences"
+                                                class="inline-form"
+                                            >
+                                                <input
+                                                    type="hidden"
+                                                    name="key"
+                                                    value=definition.key
+                                                />
+                                                <select
+                                                    name="value"
+                                                    aria-label=definition.title
+                                                >
+                                                    {options
+                                                        .into_iter()
+                                                        .map(|option| {
+                                                            let selected = option == current_raw;
+                                                            let label = option.clone();
+                                                            view! {
+                                                                <option value=option selected=selected>
+                                                                    {label}
+                                                                </option>
+                                                            }
+                                                        })
+                                                        .collect_view()}
+                                                </select>
+                                                <button type="submit" class="row-action">
+                                                    "Save"
+                                                </button>
+                                            </form>
+                                        </div>
+                                    }
+                                })
+                                .collect_view();
+                            view! {
+                                <div class="preference-domain" data-domain=domain.as_str()>
+                                    <h3 class="section-heading">{domain.as_str()}</h3>
+                                    {rows}
+                                </div>
+                            }
+                        })
+                        .collect_view()
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
 /// Read-only calendar projection for one inclusive local date range.
 #[component]
 fn CalendarSection(
@@ -1396,6 +1510,7 @@ fn SettingsView() -> impl IntoView {
                 <h1 class="list-title">"Settings"</h1>
                 <p class="list-description">"Preferences and account settings."</p>
             </header>
+            {move || view! { <PreferencesSection/> }}
             <section class="api-tokens" data-testid="api-tokens">
                 <h2 class="section-heading">"Automation tokens"</h2>
                 <p class="list-description">
