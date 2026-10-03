@@ -1560,6 +1560,29 @@ Agent: opencode (deepseek-v4.1-flash)
   cached; SVG icon avoids bitmap assets.
 - Live integrations not verified: real browser install prompt and offline start.
 
+### 59 — `add-web-companion-views` — COMPLETE
+
+- Start: 2026-10-03 20:50 · End: 2026-10-03 21:50
+- Proposal validation: strict validation passed before archive.
+- Implementation: `/companion` renders a compact single-column surface with Today rows carrying
+  the canonical completion form, derived `today_progress` values exposed as
+  `data-completed`/`data-total` plus a "N of M done" line, a quick-add form posting to the normal
+  create route (Inbox), the read-only calendar section, and an empty state; compact CSS adds
+  large tap targets and a narrow layout.
+- Migrations: none.
+- Tests: 2 web tests (compact markup with progress matching the derived calculation after one of
+  two scheduled items is completed; canonical completion posting and quick-add creating an Inbox
+  item, plus the empty state); full workspace suite green plus fmt, arch-check, clippy, WASM
+  build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: no separate installable companion app or OS widget integration.
+- Archive: `2026-10-03-add-web-companion-views`; canonical `features/web-companion-views` spec
+  created.
+- Commit: `feat(59): add web companion views`
+- Decisions: the companion is presentation-only over existing reads/commands; completion keeps
+  the canonical item-page redirect rather than a companion-specific response.
+- Live integrations not verified: real small-screen rendering.
+
 ## Run summary
 
 ### Completed changes
@@ -1624,9 +1647,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 56 | add-command-urls | COMPLETE | `feat(56)` |
 | 57 | add-automation-api | COMPLETE | `feat(57)` |
 | 58 | add-pwa | COMPLETE | `feat(58)` |
+| 59 | add-web-companion-views | COMPLETE | `feat(59)` |
 
-- Completed proposal range: 01–58 (58 of 74).
-- Incomplete: 59–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–59 (59 of 74).
+- Incomplete: 60–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1695,14 +1719,14 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 59–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 60–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
-   inbound mail, command URLs, the automation API and the PWA shell, read-store patterns, and
-   test harnesses are in place to make each one mechanical. Next: 59.
+   inbound mail, command URLs, the automation API, the PWA shell and companion views, read-store
+   patterns, and test harnesses are in place to make each one mechanical. Next: 60.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1720,7 +1744,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 58): all quality gates green
+- Current state at HEAD (change 59): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

@@ -53,6 +53,7 @@ pub fn AppRoutes() -> impl IntoView {
                 <Route path=path!("/projects/logged") view=LoggedProjectsPage/>
                 <Route path=path!("/settings") view=SettingsPage/>
                 <Route path=path!("/search") view=SearchPage/>
+                <Route path=path!("/companion") view=CompanionPage/>
                 <Route path=path!("/areas/:area_id") view=AreaPage/>
                 <Route path=path!("/projects/:project_id") view=ProjectPage/>
                 <Route path=path!("/todos/:todo_id") view=TodoPage/>
@@ -601,6 +602,147 @@ fn CalendarSection(
                     }
                 }}
             </Suspense>
+        </section>
+    }
+}
+
+/// Compact companion surface: Today, progress, and quick add for small screens.
+#[component]
+pub fn CompanionPage() -> impl IntoView {
+    view! {
+        <Protected>
+            {move || view! { <CompanionView/> }}
+        </Protected>
+    }
+}
+
+#[component]
+fn CompanionView() -> impl IntoView {
+    let service = use_context::<Option<Arc<TodoService>>>().flatten();
+    let account = use_account();
+    let account_for_progress = account.clone();
+    let service_for_progress = service.clone();
+    let today = service.as_ref().map(|service| service.local_today());
+    let todos = AsyncDerived::new(move || {
+        let service = service.clone();
+        let account = account.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => service
+                    .list(account.account_id, TodoScope::Today)
+                    .await
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        }
+    });
+    let progress = AsyncDerived::new(move || {
+        let service = service_for_progress.clone();
+        let account = account_for_progress.clone();
+        async move {
+            match (service, account) {
+                (Some(service), Some(account)) => {
+                    service.today_progress(account.account_id).await.ok()
+                }
+                _ => None,
+            }
+        }
+    });
+    view! {
+        <section class="companion" data-testid="companion">
+            <header class="companion-header">
+                <h1 class="list-title">"Today"</h1>
+                <a href="/today" class="row-action">"Open full app"</a>
+            </header>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    progress
+                        .get()
+                        .flatten()
+                        .map(|progress| {
+                            view! {
+                                <p
+                                    class="companion-progress"
+                                    data-testid="companion-progress"
+                                    data-completed=progress.completed.to_string()
+                                    data-total=progress.total.to_string()
+                                >
+                                    {format!(
+                                        "{} of {} done",
+                                        progress.completed,
+                                        progress.total,
+                                    )}
+                                </p>
+                            }
+                        })
+                }}
+            </Suspense>
+            <form
+                method="post"
+                action="/todos"
+                class="companion-add"
+                data-testid="companion-add"
+            >
+                <input type="hidden" name="return_to" value="/companion"/>
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="Quick add"
+                    aria-label="Quick add"
+                    autocomplete="off"
+                    required=true
+                />
+                <button type="submit" class="button-primary">"Add"</button>
+            </form>
+            <Suspense fallback=|| view! { <Loading/> }>
+                {move || {
+                    let items = todos.get().unwrap_or_default();
+                    if items.is_empty() {
+                        return view! {
+                            <p class="list-empty" data-testid="companion-empty">
+                                "Nothing scheduled for today."
+                            </p>
+                        }
+                            .into_any();
+                    }
+                    view! {
+                        <ul class="companion-list" data-testid="companion-today-list">
+                            {items
+                                .into_iter()
+                                .map(|todo| {
+                                    let complete = format!("/todos/{}/complete", todo.id);
+                                    view! {
+                                        <li
+                                            class="companion-row"
+                                            data-testid="companion-row"
+                                            data-todo-id=todo.id.to_string()
+                                        >
+                                            <span class="task-title">{todo.title}</span>
+                                            <form method="post" action=complete>
+                                                <input
+                                                    type="hidden"
+                                                    name="return_to"
+                                                    value="/companion"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    class="row-action"
+                                                    aria-label="Complete to-do"
+                                                >
+                                                    "Done"
+                                                </button>
+                                            </form>
+                                        </li>
+                                    }
+                                })
+                                .collect_view()}
+                        </ul>
+                    }
+                        .into_any()
+                }}
+            </Suspense>
+            {today
+                .map(|today| view! { <CalendarSection range_start=today range_end=today/> })}
         </section>
     }
 }
