@@ -1530,6 +1530,36 @@ Agent: opencode (deepseek-v4.1-flash)
   plaintext via redirect parameter, never stored; write implies read.
 - Live integrations not verified: external automation clients.
 
+### 58 — `add-pwa` — COMPLETE
+
+- Start: 2026-10-02 21:25 · End: 2026-10-03 20:40
+- Proposal validation: strict validation passed before archive.
+- Implementation: the manifest gained `theme_color`, `background_color`, an SVG icon
+  (`sizes: any`, maskable), and shortcuts over command URLs (`/add`, `/search`, `/today`) while
+  keeping the share target; `momentum-web::pwa` generates the service worker from Rust
+  (versioned `momentum-shell-<version>` cache precaching `/`, `/today`, styles, WASM package,
+  manifest, and icon; cache-first static assets with refresh-on-miss; network-first navigations
+  with a cached-shell fallback; `/sync` and `/api/` excluded) and the registration snippet
+  (register after load, reload once on `controllerchange`); the worker skips waiting and claims
+  clients on activation while deleting older caches; routes serve `/service-worker.js`
+  (uncached, application/javascript) and `/static/icon.svg`; the shell links the manifest and
+  icon and embeds the registration.
+- Migrations: none.
+- Tests: 2 Rust unit tests (versioned worker with precache, skipWaiting/claim, cache deletion,
+  endpoint exclusions, and version isolation; registration reload guard) and 4 web tests
+  (manifest installability fields, shortcuts, share target; worker headers/content; icon content
+  type; shell manifest/icon/registration links); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: Web Push via service workers and background sync are not wired (the server-side
+  push plumbing and the replica/outbox cover those needs); the worker/registration are generated
+  from Rust per the no-handwritten-JS rule.
+- Archive: `2026-10-03-add-pwa`; canonical `features/pwa` spec created.
+- Commit: `feat(58): add pwa`
+- Decisions: versioned cache with activation cleanup and one-time reload; live endpoints never
+  cached; SVG icon avoids bitmap assets.
+- Live integrations not verified: real browser install prompt and offline start.
+
 ## Run summary
 
 ### Completed changes
@@ -1593,9 +1623,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 55 | add-mail-to-inbox | COMPLETE | `feat(55)` |
 | 56 | add-command-urls | COMPLETE | `feat(56)` |
 | 57 | add-automation-api | COMPLETE | `feat(57)` |
+| 58 | add-pwa | COMPLETE | `feat(58)` |
 
-- Completed proposal range: 01–57 (57 of 74).
-- Incomplete: 58–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–58 (58 of 74).
+- Incomplete: 59–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1664,14 +1695,14 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 58–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 59–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
-   inbound mail, command URLs and the automation API, read-store patterns, and test harnesses are
-   in place to make each one mechanical. Next: 58.
+   inbound mail, command URLs, the automation API and the PWA shell, read-store patterns, and
+   test harnesses are in place to make each one mechanical. Next: 59.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1689,7 +1720,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 57): all quality gates green
+- Current state at HEAD (change 58): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

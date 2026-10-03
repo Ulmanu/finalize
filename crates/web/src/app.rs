@@ -37,6 +37,9 @@ pub fn shell(options: leptos::config::LeptosOptions) -> impl IntoView {
                 <link rel="stylesheet" href="/static/design.css"/>
                 <link rel="stylesheet" href="/static/app.css"/>
                 <link rel="manifest" href="/manifest.webmanifest"/>
+                <link rel="icon" href="/static/icon.svg" type="image/svg+xml"/>
+                <meta name="theme-color" content="#1d4ed8"/>
+                <script inner_html=crate::pwa::REGISTRATION_SNIPPET></script>
             </head>
             <body>
                 <App/>

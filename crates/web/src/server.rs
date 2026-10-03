@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use axum::extract::{FromRef, Request, State};
+use axum::http::header;
 use axum::http::header::CONTENT_TYPE;
 use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
@@ -284,8 +285,31 @@ pub fn router_with_session(options: LeptosOptions, resolver: Arc<dyn SessionReso
     ))
 }
 
-/// PWA manifest with the browser share target pointing at the capture command URL.
-const MANIFEST: &str = r#"{"name":"Momentum","short_name":"Momentum","start_url":"/today","display":"standalone","share_target":{"action":"/capture","method":"GET","params":{"title":"title","text":"text","url":"url"}}}"#;
+/// PWA manifest: installable shell, share target, and app shortcuts over command URLs.
+const MANIFEST: &str = r##"{"name":"Momentum","short_name":"Momentum","start_url":"/today","display":"standalone","theme_color":"#1d4ed8","background_color":"#ffffff","icons":[{"src":"/static/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}],"share_target":{"action":"/capture","method":"GET","params":{"title":"title","text":"text","url":"url"}},"shortcuts":[{"name":"New to-do","url":"/add"},{"name":"Quick Find","url":"/search"},{"name":"Today","url":"/today"}]}"##;
+
+async fn service_worker() -> impl IntoResponse {
+    (
+        [
+            (
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/javascript"),
+            ),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+            ),
+        ],
+        crate::pwa::service_worker_script(crate::pwa::SHELL_VERSION),
+    )
+}
+
+async fn icon() -> impl IntoResponse {
+    (
+        [(CONTENT_TYPE, HeaderValue::from_static("image/svg+xml"))],
+        crate::pwa::ICON_SVG,
+    )
+}
 
 async fn manifest() -> impl IntoResponse {
     (
@@ -319,6 +343,8 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .route("/static/app.css", get(app_css))
         .route("/manifest.webmanifest", get(manifest))
+        .route("/service-worker.js", get(service_worker))
+        .route("/static/icon.svg", get(icon))
         .route("/static/design.css", get(design_css))
         .merge(auth_routes::routes())
         .merge(capture_routes::routes())

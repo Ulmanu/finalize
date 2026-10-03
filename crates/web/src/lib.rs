@@ -35,6 +35,7 @@ pub mod notes_routes;
 pub mod project_routes;
 #[cfg(feature = "ssr")]
 pub mod push_routes;
+pub mod pwa;
 pub mod responsive;
 pub mod routes;
 #[cfg(feature = "ssr")]
