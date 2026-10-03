@@ -1583,6 +1583,30 @@ Agent: opencode (deepseek-v4.1-flash)
   the canonical item-page redirect rather than a companion-specific response.
 - Live integrations not verified: real small-screen rendering.
 
+### 60 — `add-multiple-window-support` — COMPLETE
+
+- Start: 2026-10-03 22:00 · End: 2026-10-03 23:20
+- Proposal validation: strict validation passed before archive.
+- Implementation: `AppLayout` reads `?popout=1`; in popout mode the topbar, sidebar, drawer scrim,
+  bottom navigation, and footer are omitted (real omission) and a minimal exit header links back
+  to the full app; the root exposes `data-window`; the full layout adds an "Open in window" anchor
+  (`target="_blank"`, noopener) appending the parameter to the current pathname; commands remain
+  stateless HTTP forms shared by all windows.
+- Migrations: none.
+- Tests: 2 web tests (popout omits chrome, shows shared data and the exit link, full layout keeps
+  chrome and the open-in-window link; project popout renders; a completion issued from a popout is
+  reflected on the next read in every window); full workspace suite green plus fmt, arch-check,
+  clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: no `window.open` scripting (native `target="_blank"` links suffice) and no
+  per-window preferences.
+- Archive: `2026-10-03-add-multiple-window-support`; canonical `features/multiple-window-support`
+  spec created.
+- Commit: `feat(60): add multiple window support`
+- Decisions: popout is a query parameter on existing routes (every destination works); windows are
+  ordinary tabs using the multi-tab/replica mechanisms.
+- Live integrations not verified: real browser window behavior.
+
 ## Run summary
 
 ### Completed changes
@@ -1648,9 +1672,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 57 | add-automation-api | COMPLETE | `feat(57)` |
 | 58 | add-pwa | COMPLETE | `feat(58)` |
 | 59 | add-web-companion-views | COMPLETE | `feat(59)` |
+| 60 | add-multiple-window-support | COMPLETE | `feat(60)` |
 
-- Completed proposal range: 01–59 (59 of 74).
-- Incomplete: 60–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–60 (60 of 74).
+- Incomplete: 61–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1719,14 +1744,15 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 60–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 61–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
-   inbound mail, command URLs, the automation API, the PWA shell and companion views, read-store
-   patterns, and test harnesses are in place to make each one mechanical. Next: 60.
+   inbound mail, command URLs, the automation API, the PWA shell, companion views and popout
+   windows, read-store patterns, and test harnesses are in place to make each one mechanical.
+   Next: 61.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1744,7 +1770,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 59): all quality gates green
+- Current state at HEAD (change 60): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

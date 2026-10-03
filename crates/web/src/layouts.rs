@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos_router::components::A;
+use leptos_router::hooks::{use_location, use_query_map};
 
 use crate::responsive::LayoutState;
 use crate::session::{use_account, use_session};
@@ -124,6 +125,9 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     let account_label = signed_in_label.clone();
     let layout = LayoutState::use_state();
     let drawer_open = layout.drawer_open;
+    let query = use_query_map();
+    let location = use_location();
+    let popout = move || query.read().get("popout").is_some();
     #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
     let pull_state = StoredValue::new(None::<(f64, f64, std::time::Instant, bool)>);
     let replica = use_context::<Option<Arc<momentum_app::replica::OfflineCoordinator>>>().flatten();
@@ -228,6 +232,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
             class="app-layout"
             data-testid="app-layout"
             data-layout=move || layout.mode.get().as_str()
+            data-window=move || if popout() { "popout" } else { "full" }
             data-drawer=move || if drawer_open.get() { "open" } else { "closed" }
             on:keydown=move |event| {
                 if event.key() == "Escape" {
@@ -235,121 +240,169 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                 }
             }
         >
-            <header class="app-topbar">
-                <button
-                    type="button"
-                    class="nav-toggle"
-                    aria-label="Toggle navigation"
-                    aria-controls="app-sidebar"
-                    aria-expanded=move || if drawer_open.get() { "true" } else { "false" }
-                    on:click=move |_| layout.toggle_drawer()
-                >
-                    <span class="nav-toggle-icon" aria-hidden="true"></span>
-                </button>
-                <A href="/today" attr:class="brand">{product}</A>
-                <form
-                    method="get"
-                    action="/search"
-                    class="topbar-search"
-                    data-testid="quick-find-link"
-                >
-                    <input
-                        type="text"
-                        name="q"
-                        placeholder="Quick Find"
-                        aria-label="Quick Find"
-                        autocomplete="off"
-                    />
-                </form>
-                <a
-                    href="#quick-entry"
-                    class="quick-entry-trigger"
-                    data-testid="quick-entry-trigger"
-                    aria-keyshortcuts=momentum_app::keyboard::keys_for("quick_entry")
-                        .unwrap_or_default()
-                >
-                    "Quick Entry"
-                </a>
-                <span class="topbar-account">{signed_in_label}</span>
-            </header>
+            {popout()
+                .then(|| {
+                    view! {
+                        <header class="popout-header" data-testid="popout-header">
+                            <a
+                                href=move || location.pathname.get()
+                                class="row-action"
+                                data-testid="popout-exit"
+                            >
+                                "Open full app"
+                            </a>
+                        </header>
+                    }
+                })}
+            {(!popout())
+                .then(|| {
+                    view! {
+                <header class="app-topbar">
+                    <button
+                        type="button"
+                        class="nav-toggle"
+                        aria-label="Toggle navigation"
+                        aria-controls="app-sidebar"
+                        aria-expanded=move || if drawer_open.get() { "true" } else { "false" }
+                        on:click=move |_| layout.toggle_drawer()
+                    >
+                        <span class="nav-toggle-icon" aria-hidden="true"></span>
+                    </button>
+                    <A href="/today" attr:class="brand">{product}</A>
+                    <form
+                        method="get"
+                        action="/search"
+                        class="topbar-search"
+                        data-testid="quick-find-link"
+                    >
+                        <input
+                            type="text"
+                            name="q"
+                            placeholder="Quick Find"
+                            aria-label="Quick Find"
+                            autocomplete="off"
+                        />
+                    </form>
+                    <a
+                        href="#quick-entry"
+                        class="quick-entry-trigger"
+                        data-testid="quick-entry-trigger"
+                        aria-keyshortcuts=momentum_app::keyboard::keys_for("quick_entry")
+                            .unwrap_or_default()
+                    >
+                        "Quick Entry"
+                    </a>
+                    <a
+                        href=move || format!("{}?popout=1", location.pathname.get())
+                        target="_blank"
+                        rel="noopener"
+                        class="row-action"
+                        data-testid="popout-link"
+                    >
+                        "Open in window"
+                    </a>
+                    <span class="topbar-account">{signed_in_label}</span>
+                </header>
+                    }
+                })}
 
-            <nav id="app-sidebar" class="app-sidebar" aria-label="Primary">
-                <ul class="nav-list">
-                    {PRIMARY_DESTINATIONS
-                        .iter()
-                        .map(|destination| {
-                            let is_inbox = destination.href == "/inbox";
-                            view! {
-                                <li class="nav-item">
-                                    <A href=destination.href attr:class="nav-link">
-                                        {destination.label}
-                                        {is_inbox.then(|| view! { <InboxBadge/> })}
-                                    </A>
-                                </li>
-                            }
-                        })
-                        .collect_view()}
-                </ul>
-                <div class="nav-secondary">
+            {(!popout())
+                .then(|| {
+                    view! {
+                <nav id="app-sidebar" class="app-sidebar" aria-label="Primary">
                     <ul class="nav-list">
-                        {SECONDARY_DESTINATIONS
+                        {PRIMARY_DESTINATIONS
                             .iter()
                             .map(|destination| {
+                                let is_inbox = destination.href == "/inbox";
                                 view! {
                                     <li class="nav-item">
                                         <A href=destination.href attr:class="nav-link">
                                             {destination.label}
+                                            {is_inbox.then(|| view! { <InboxBadge/> })}
                                         </A>
                                     </li>
                                 }
                             })
                             .collect_view()}
                     </ul>
-                </div>
-            </nav>
+                    <div class="nav-secondary">
+                        <ul class="nav-list">
+                            {SECONDARY_DESTINATIONS
+                                .iter()
+                                .map(|destination| {
+                                    view! {
+                                        <li class="nav-item">
+                                            <A href=destination.href attr:class="nav-link">
+                                                {destination.label}
+                                            </A>
+                                        </li>
+                                    }
+                                })
+                                .collect_view()}
+                        </ul>
+                    </div>
+                </nav>
+                    }
+                })}
 
-            <button
-                type="button"
-                class="drawer-scrim"
-                aria-label="Close navigation"
-                tabindex="-1"
-                on:click=move |_| layout.close_drawer()
-            ></button>
+            {(!popout())
+                .then(|| {
+                    view! {
+                <button
+                    type="button"
+                    class="drawer-scrim"
+                    aria-label="Close navigation"
+                    tabindex="-1"
+                    on:click=move |_| layout.close_drawer()
+                ></button>
 
+                    }
+                })}
             <main class="app-main" data-testid="app-main">
                 {children()}
             </main>
 
-            <nav class="bottom-nav" aria-label="Destinations">
-                {MOBILE_BAR_DESTINATIONS
-                    .iter()
-                    .map(|destination| {
-                        view! {
-                            <A href=destination.href attr:class="bottom-nav-link">
-                                {destination.label}
-                            </A>
-                        }
-                    })
-                    .collect_view()}
-            </nav>
-
-            {move || view! { <crate::routes::QuickEntryOverlay/> }}
-            <footer class="app-footer" aria-label="Account">
-                {move || {
-                    pending
-                        .get()
-                        .flatten()
-                        .filter(|count| *count > 0)
-                        .map(|count| {
+            {(!popout())
+                .then(|| {
+                    view! {
+                <nav class="bottom-nav" aria-label="Destinations">
+                    {MOBILE_BAR_DESTINATIONS
+                        .iter()
+                        .map(|destination| {
                             view! {
-                                <span data-testid="outbox-pending">
-                                    {format!("{count} pending")}
-                                </span>
+                                <A href=destination.href attr:class="bottom-nav-link">
+                                    {destination.label}
+                                </A>
                             }
                         })
-                }}
-                <span class="account-label">{account_label}</span>
-            </footer>
+                        .collect_view()}
+                </nav>
+                    }
+                })}
+
+            {move || view! { <crate::routes::QuickEntryOverlay/> }}
+            {(!popout())
+                .then(|| {
+                    view! {
+                <footer class="app-footer" aria-label="Account">
+                    {move || {
+                        pending
+                            .get()
+                            .flatten()
+                            .filter(|count| *count > 0)
+                            .map(|count| {
+                                view! {
+                                    <span data-testid="outbox-pending">
+                                        {format!("{count} pending")}
+                                    </span>
+                                }
+                            })
+                    }}
+                    <span class="account-label">{account_label}</span>
+                </footer>
+                    }
+                })}
         </div>
     }
 }

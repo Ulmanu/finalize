@@ -671,3 +671,12 @@ h3 {
     min-height: 2.5rem;
     min-width: 3.5rem;
 }
+
+
+/* Popout windows: chrome is omitted; a single exit link remains. */
+.popout-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid rgb(148 163 184 / 30%);
+}
