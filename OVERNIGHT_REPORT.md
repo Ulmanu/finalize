@@ -1607,6 +1607,37 @@ Agent: opencode (deepseek-v4.1-flash)
   ordinary tabs using the multi-tab/replica mechanisms.
 - Live integrations not verified: real browser window behavior.
 
+### 61 — `add-import-export` — COMPLETE
+
+- Start: 2026-10-03 23:30 · End: 2026-10-04 21:05
+- Proposal validation: strict validation passed before archive. (A first gate run was interrupted
+  externally; the clean re-run passed, EXIT=0.)
+- Implementation: `momentum_app::backup` provides `BACKUP_VERSION` (1), the layout-independent
+  `BackupDocument` (areas/projects/tags/to-dos with status, schedule, evening, deadline,
+  checklist), `build_backup` over open+logged+trashed reads, deterministic `todos_to_csv` (RFC
+  4180 quoting) and `todos_to_markdown` (checkbox rows with when/deadline and nested checklist),
+  `validate_backup` (wholesale version rejection plus per-record planning and skip reporting), and
+  `apply_import` (additive creation through the normal commands, restoring schedule/deadline/
+  checklist and terminal statuses); routes `GET /export/backup.json`, `GET /export/todos.csv`,
+  `GET /export/todos.md`, and `POST /import/backup.json` with a typed `unsupported_version`
+  error before any application.
+- Migrations: none.
+- Tests: 3 app unit tests (version rejection, plan validation with skip reporting, deterministic
+  CSV/Markdown mapping), 2 testkit tests (additive import preserving existing data and restoring
+  completed/deleted states with unsupported-record reporting; export→import round trip preserving
+  schedule, deadline, and checklist), and 2 web tests (all three export endpoints with content
+  types and deterministic content; import summary plus typed version error); full workspace suite
+  green plus fmt, arch-check, clippy, WASM build (exit checked directly). Clippy double-must-use
+  fixed.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: this version imports to-dos only and reports areas/projects/tags as unsupported
+  records; replace-mode imports are deliberately absent so imports are never destructive.
+- Archive: `2026-10-04-add-import-export`; canonical `features/import-export` spec created.
+- Commit: `feat(61): add import export`
+- Decisions: validate-then-apply; additive-only; deterministic exports independent of database
+  layout.
+- Live integrations not verified: none beyond normal HTTP behavior.
+
 ## Run summary
 
 ### Completed changes
@@ -1673,9 +1704,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 58 | add-pwa | COMPLETE | `feat(58)` |
 | 59 | add-web-companion-views | COMPLETE | `feat(59)` |
 | 60 | add-multiple-window-support | COMPLETE | `feat(60)` |
+| 61 | add-import-export | COMPLETE | `feat(61)` |
 
-- Completed proposal range: 01–60 (60 of 74).
-- Incomplete: 61–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–61 (61 of 74).
+- Incomplete: 62–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1744,15 +1776,15 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 61–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 62–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
-   inbound mail, command URLs, the automation API, the PWA shell, companion views and popout
-   windows, read-store patterns, and test harnesses are in place to make each one mechanical.
-   Next: 61.
+   inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows
+   and import/export, read-store patterns, and test harnesses are in place to make each one
+   mechanical. Next: 62.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1770,7 +1802,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 60): all quality gates green
+- Current state at HEAD (change 61): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

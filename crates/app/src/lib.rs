@@ -9,6 +9,7 @@
 pub mod api_tokens;
 pub mod areas;
 pub mod auth;
+pub mod backup;
 pub mod bulk;
 pub mod calendar;
 pub mod capture;

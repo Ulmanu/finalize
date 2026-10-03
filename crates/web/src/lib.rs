@@ -25,6 +25,8 @@ pub mod capture_routes;
 pub mod command_routes;
 pub mod design;
 #[cfg(feature = "ssr")]
+pub mod export_import_routes;
+#[cfg(feature = "ssr")]
 pub mod inbound_routes;
 pub mod layouts;
 #[cfg(feature = "ssr")]
