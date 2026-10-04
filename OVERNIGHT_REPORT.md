@@ -1776,6 +1776,33 @@ Agent: opencode (deepseek-v4.1-flash)
   contract with an automated audit.
 - Live integrations not verified: real assistive-technology behavior.
 
+### 67 — `add-animation-system` — COMPLETE
+
+- Start: 2026-10-07 05:50 · End: 2026-10-07 07:10
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::motion` declares six primitives (insert, remove, editor,
+  popover, drag, navigation) with stable ids, CSS classes, design-token durations, and
+  essential flags, with `primitive`/`class_for`/`nonessential` lookups; app.css defines the
+  keyframes/transitions once and wires classes into markup (rows carry `motion-insert
+  motion-drag`, expanded editors `motion-editor`, the Quick Entry panel `motion-popover`, main
+  content `motion-nav`; `motion-remove` is applied by the client as rows leave); reduced motion
+  suppresses every nonessential primitive via both the media query and the explicit
+  `[data-reduced-motion="true"]` override, and motion remains presentation-only with no gating.
+- Migrations: none.
+- Tests: 2 app unit tests (registry uniqueness/token prefixes/lookups; suppression coverage) and
+  2 web tests (markup carries every primitive class except client-only removal; stylesheet
+  declares all rules plus reduced-motion suppression); full workspace suite green plus fmt,
+  arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: JS-driven layout animations and spring physics are out of scope; all primitives are
+  nonessential and therefore removed under reduced motion.
+- Archive: `2026-10-07-add-animation-system`; canonical `features/animation-system` spec created
+  with an expanded Purpose.
+- Commit: `feat(67): add animation system`
+- Decisions: one registry and one CSS source; reduced-motion sets are enforced by tests;
+  removal motion stays client-applied but centrally declared.
+- Live integrations not verified: real browser animation behavior.
+
 ## Run summary
 
 ### Completed changes
@@ -1848,9 +1875,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 64 | add-theme-and-text-sizing | COMPLETE | `feat(64)` |
 | 65 | add-localization | COMPLETE | `feat(65)` |
 | 66 | add-accessibility | COMPLETE | `feat(66)` |
+| 67 | add-animation-system | COMPLETE | `feat(67)` |
 
-- Completed proposal range: 01–66 (66 of 74).
-- Incomplete: 67–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–67 (67 of 74).
+- Incomplete: 68–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1919,7 +1947,7 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 67–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 68–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
@@ -1927,8 +1955,8 @@ openspec validate --archived --strict --no-interactive
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
    import/export, share/print models, the typed settings registry, appearance theming,
-   localization and the accessibility audit, read-store patterns, and test harnesses are in place
-   to make each one mechanical. Next: 67.
+   localization, the accessibility audit and the motion system, read-store patterns, and test
+   harnesses are in place to make each one mechanical. Next: 68.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1946,7 +1974,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 66): all quality gates green
+- Current state at HEAD (change 67): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

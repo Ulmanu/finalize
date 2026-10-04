@@ -360,7 +360,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
 
                     }
                 })}
-            <main id="app-main" class="app-main" data-testid="app-main">
+            <main id="app-main" class="app-main motion-nav" data-testid="app-main">
                 {children()}
             </main>
 

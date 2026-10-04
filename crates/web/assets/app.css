@@ -740,3 +740,107 @@ h3 {
         min-height: 44px;
     }
 }
+
+
+/* Centralized motion primitives (registry: momentum_app::motion). */
+@keyframes momentum-insert {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes momentum-remove {
+    from {
+        opacity: 1;
+        transform: none;
+    }
+    to {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
+@keyframes momentum-popover {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes momentum-nav {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.motion-insert {
+    animation: momentum-insert var(--motion-base, 200ms) var(--ease-decelerate, ease-out) both;
+}
+
+.motion-remove {
+    animation: momentum-remove var(--motion-base, 200ms) var(--ease-standard, ease) both;
+}
+
+.motion-editor[open] > * {
+    animation: momentum-insert var(--motion-base, 200ms) var(--ease-decelerate, ease-out) both;
+}
+
+.motion-popover {
+    animation: momentum-popover var(--motion-fast, 120ms) var(--ease-decelerate, ease-out) both;
+}
+
+.motion-drag {
+    transition: transform var(--motion-fast, 120ms) var(--ease-standard, ease),
+        box-shadow var(--motion-fast, 120ms) var(--ease-standard, ease);
+}
+
+.motion-drag:active {
+    transform: scale(1.01);
+}
+
+.motion-nav {
+    animation: momentum-nav var(--motion-slow, 320ms) var(--ease-standard, ease) both;
+}
+
+/* Reduced motion: every nonessential primitive is suppressed. */
+@media (prefers-reduced-motion: reduce) {
+    .motion-insert,
+    .motion-remove,
+    .motion-editor[open] > *,
+    .motion-popover,
+    .motion-nav {
+        animation: none !important;
+    }
+
+    .motion-drag,
+    .motion-drag:active {
+        transition: none !important;
+        transform: none !important;
+    }
+}
+
+[data-reduced-motion="true"] .motion-insert,
+[data-reduced-motion="true"] .motion-remove,
+[data-reduced-motion="true"] .motion-editor[open] > *,
+[data-reduced-motion="true"] .motion-popover,
+[data-reduced-motion="true"] .motion-nav {
+    animation: none !important;
+}
+
+[data-reduced-motion="true"] .motion-drag,
+[data-reduced-motion="true"] .motion-drag:active {
+    transition: none !important;
+    transform: none !important;
+}

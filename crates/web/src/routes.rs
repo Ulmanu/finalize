@@ -470,7 +470,7 @@ pub fn QuickEntryOverlay() -> impl IntoView {
             aria-modal="true"
             aria-label="Quick Entry"
         >
-            <div class="quick-entry-panel">
+            <div class="quick-entry-panel motion-popover">
                 <h2 class="section-heading">"Quick Entry"</h2>
                 <form
                     method="post"
@@ -2315,7 +2315,7 @@ fn TodoRow(
 
     view! {
         <li
-            class=row_class
+            class=format!("{row_class} motion-insert motion-drag")
             data-testid="task-row"
             data-todo-id=id.to_string()
             draggable=drag_index.map(|_| "true")
@@ -2605,7 +2605,7 @@ fn TodoRow(
                         })
                         .collect_view();
                     view! {
-                        <details class="row-editor" data-testid="row-editor">
+                        <details class="row-editor motion-editor" data-testid="row-editor">
                             <summary aria-label=format!("Edit {title_value}")>"Edit"</summary>
                             <div class="editor-body">
                                 <form
