@@ -1750,6 +1750,32 @@ Agent: opencode (deepseek-v4.1-flash)
   date-only values never gain time components.
 - Live integrations not verified: localized formatting in the hydrated client.
 
+### 66 — `add-accessibility` — COMPLETE
+
+- Start: 2026-10-07 03:55 · End: 2026-10-07 05:40
+- Proposal validation: strict validation passed before archive.
+- Implementation: the layout gained a skip link (`href="#app-main"`) as the first focusable
+  element and `id="app-main"` on the main landmark; CSS gained `.skip-link` reveal-on-focus,
+  `:focus-visible` accent outlines, and 44px minimum targets under `pointer: coarse` (reduced
+  motion and contrast rules already existed from 64); the companion progress exposes
+  `role="progressbar"` with aria-valuemin/max/now, Today keeps its native labeled `<progress>`,
+  the Quick Entry overlay declares `aria-modal="true"`, and the audit suite verifies nav
+  landmark/current semantics plus labeled inputs/selects/textareas/buttons on core pages.
+- Migrations: none.
+- Tests: 3 web audit tests (skip link/landmark/labels across /inbox, /today, /companion,
+  /settings with a markup-scanning helper for unlabeled controls; progress/dialog/nav semantics;
+  CSS contract for focus, coarse targets, reduced motion, and contrast); full workspace suite
+  green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: no scripted focus trap on the CSS `:target` dialog (aria-modal documents intent and
+  the hydrated client can add trapping without markup changes); no lab screen-reader testing.
+- Archive: `2026-10-07-add-accessibility`; canonical `features/accessibility` spec created with an
+  expanded Purpose.
+- Commit: `feat(66): add accessibility`
+- Decisions: prefer native semantics (progress, landmarks, labels) over ARIA patches; enforce the
+  contract with an automated audit.
+- Live integrations not verified: real assistive-technology behavior.
+
 ## Run summary
 
 ### Completed changes
@@ -1821,9 +1847,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 63 | add-settings | COMPLETE | `feat(63)` |
 | 64 | add-theme-and-text-sizing | COMPLETE | `feat(64)` |
 | 65 | add-localization | COMPLETE | `feat(65)` |
+| 66 | add-accessibility | COMPLETE | `feat(66)` |
 
-- Completed proposal range: 01–65 (65 of 74).
-- Incomplete: 66–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–66 (66 of 74).
+- Incomplete: 67–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1892,16 +1919,16 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 66–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 67–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
    registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
-   import/export, share/print models, the typed settings registry, appearance theming and
-   localization, read-store patterns, and test harnesses are in place to make each one mechanical.
-   Next: 66.
+   import/export, share/print models, the typed settings registry, appearance theming,
+   localization and the accessibility audit, read-store patterns, and test harnesses are in place
+   to make each one mechanical. Next: 67.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1919,7 +1946,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 65): all quality gates green
+- Current state at HEAD (change 66): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

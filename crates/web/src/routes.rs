@@ -467,6 +467,7 @@ pub fn QuickEntryOverlay() -> impl IntoView {
             class="quick-entry"
             data-testid="quick-entry"
             role="dialog"
+            aria-modal="true"
             aria-label="Quick Entry"
         >
             <div class="quick-entry-panel">
@@ -801,6 +802,11 @@ fn CompanionView() -> impl IntoView {
                                     data-testid="companion-progress"
                                     data-completed=progress.completed.to_string()
                                     data-total=progress.total.to_string()
+                                    role="progressbar"
+                                    aria-valuemin="0"
+                                    aria-valuemax=progress.total.to_string()
+                                    aria-valuenow=progress.completed.to_string()
+                                    aria-label="Today progress"
                                 >
                                     {format!(
                                         "{} of {} done",

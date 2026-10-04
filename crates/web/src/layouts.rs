@@ -228,6 +228,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     }
 
     view! {
+        <a href="#app-main" class="skip-link">"Skip to content"</a>
         <div
             class="app-layout"
             data-testid="app-layout"
@@ -359,7 +360,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
 
                     }
                 })}
-            <main class="app-main" data-testid="app-main">
+            <main id="app-main" class="app-main" data-testid="app-main">
                 {children()}
             </main>
 

@@ -705,3 +705,38 @@ h3 {
         background: #ffffff;
     }
 }
+
+
+/* Accessibility: keyboard focus visibility, skip link, and touch targets. */
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+    padding: 0.5rem 1rem;
+    background: var(--surface-raised, #ffffff);
+    color: var(--color-text, #1d1d1f);
+    border: 1px solid var(--color-border, #d8d8de);
+    border-radius: 0 0 var(--radius-sm, 6px) 0;
+}
+
+.skip-link:focus {
+    left: 0;
+}
+
+:focus-visible {
+    outline: 2px solid var(--color-accent, #0a66c2);
+    outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+    button,
+    a.row-action,
+    .button-primary,
+    input,
+    select,
+    textarea,
+    summary {
+        min-height: 44px;
+    }
+}
