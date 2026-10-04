@@ -75,6 +75,13 @@ pub const MIGRATIONS: &[Migration] = &[
         down: Some(schema::API_TOKENS_DOWN),
         irreversible_reason: None,
     },
+    Migration {
+        version: 8,
+        name: "large-list-indexes",
+        up: schema::LARGE_LIST_INDEXES_UP,
+        down: Some(schema::LARGE_LIST_INDEXES_DOWN),
+        irreversible_reason: None,
+    },
 ];
 
 /// Migration failures.

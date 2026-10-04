@@ -307,3 +307,18 @@ create index if not exists api_tokens_account_idx on api_tokens (account_id);
 
 /// Rollback SQL for migration 0007.
 pub const API_TOKENS_DOWN: &str = "drop table if exists api_tokens;";
+
+/// Migration 0008: indexes for large accounts.
+pub const LARGE_LIST_INDEXES_UP: &str = r"
+create index if not exists entities_account_kind_created_idx
+    on entities (account_id, kind, created_at desc, id desc);
+
+create index if not exists change_log_account_created_idx
+    on change_log (account_id, created_at desc);
+";
+
+/// Rollback SQL for migration 0008.
+pub const LARGE_LIST_INDEXES_DOWN: &str = "
+drop index if exists entities_account_kind_created_idx;
+drop index if exists change_log_account_created_idx;
+";

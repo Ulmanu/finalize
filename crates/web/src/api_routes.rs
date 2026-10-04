@@ -11,6 +11,7 @@ use axum::routing::{get, post};
 use axum::{Extension, Form, Json, Router};
 use momentum_app::api_tokens::{ApiPrincipal, ApiScope};
 use momentum_app::commands::ScheduleInput;
+use momentum_app::performance::{window, DEFAULT_PAGE_LIMIT};
 use momentum_app::session::SessionState;
 use momentum_app::todos::{TodoScope, TodoSummary};
 use momentum_domain::time::LocalDate;
@@ -179,6 +180,10 @@ impl ApiTodo {
 struct ListQuery {
     #[serde(default)]
     scope: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    offset: Option<usize>,
 }
 
 fn parse_scope(value: Option<&str>) -> Result<TodoScope, ApiError> {
@@ -214,7 +219,15 @@ async fn list_todos(
     };
     match service.list(principal.account_id, scope).await {
         Ok(todos) => {
-            Json(todos.iter().map(ApiTodo::from_summary).collect::<Vec<_>>()).into_response()
+            let limit = query.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
+            let offset = query.offset.unwrap_or(0);
+            Json(
+                window(todos, offset, limit)
+                    .iter()
+                    .map(ApiTodo::from_summary)
+                    .collect::<Vec<_>>(),
+            )
+            .into_response()
         }
         Err(_) => ApiError::internal().into_response(),
     }

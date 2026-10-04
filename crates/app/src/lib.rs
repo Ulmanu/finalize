@@ -22,6 +22,7 @@ pub mod materializer;
 pub mod motion;
 pub mod movement;
 pub mod ordering;
+pub mod performance;
 pub mod preferences;
 pub mod projects;
 pub mod realtime;

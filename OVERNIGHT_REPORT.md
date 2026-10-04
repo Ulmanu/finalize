@@ -1803,6 +1803,34 @@ Agent: opencode (deepseek-v4.1-flash)
   removal motion stays client-applied but centrally declared.
 - Live integrations not verified: real browser animation behavior.
 
+### 68 — `add-large-list-performance` — COMPLETE
+
+- Start: 2026-10-07 07:20 · End: 2026-10-07 08:50
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::performance` declares six budgets (initial render, search,
+  reorder, sync apply, scroll, replica startup) with dataset sizes and server-measured flags,
+  page-limit constants (default 100, max 500), and deterministic `window` slicing; testkit
+  benchmarks seed 2,000 items and enforce list, deep search, 100 reorders, and a 100-operation
+  sync apply within budgets using a documented debug factor (release runs meet raw targets);
+  `/api/v1/todos` gained `limit`/`offset` windowing with clamped limits and typed rejection of
+  invalid values; migration 0008 adds `entities(account_id, kind, created_at desc)` and
+  `change_log(account_id, created_at desc)` indexes.
+- Migrations: 0008 `large-list-indexes` (additive, reversible).
+- Tests: 2 app unit tests (budget registry integrity; window clamping/slicing) and 2 testkit
+  benchmarks (list+search; reorder+sync apply) passing in both debug (~2s total) and release
+  (~0.2s), plus 1 web test for windowed API reads with clamping and invalid-parameter rejection;
+  full workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation verification and record; every requirement
+  scenario covered.
+- Known gap: PG queries still materialize before windowing (covered by the new indexes);
+  scroll virtualization remains the hydrated client's concern with the declared scroll budget.
+- Archive: `2026-10-07-add-large-list-performance`; canonical `features/large-list-performance`
+  spec created with an expanded Purpose.
+- Commit: `feat(68): add large list performance`
+- Decisions: budgets in one registry with a debug factor; API windowing without changing page
+  semantics; composite indexes for the common list/change order.
+- Live integrations not verified: real 10k-item accounts and browser scroll.
+
 ## Run summary
 
 ### Completed changes
@@ -1876,9 +1904,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 65 | add-localization | COMPLETE | `feat(65)` |
 | 66 | add-accessibility | COMPLETE | `feat(66)` |
 | 67 | add-animation-system | COMPLETE | `feat(67)` |
+| 68 | add-large-list-performance | COMPLETE | `feat(68)` |
 
-- Completed proposal range: 01–67 (67 of 74).
-- Incomplete: 68–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–68 (68 of 74).
+- Incomplete: 69–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1947,7 +1976,7 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 68–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 69–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
@@ -1955,8 +1984,8 @@ openspec validate --archived --strict --no-interactive
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
    import/export, share/print models, the typed settings registry, appearance theming,
-   localization, the accessibility audit and the motion system, read-store patterns, and test
-   harnesses are in place to make each one mechanical. Next: 68.
+   localization, the accessibility audit, the motion system and performance budgets, read-store
+   patterns, and test harnesses are in place to make each one mechanical. Next: 69.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -1974,7 +2003,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 67): all quality gates green
+- Current state at HEAD (change 68): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.
