@@ -45,6 +45,7 @@ use crate::preferences_routes;
 use crate::project_routes;
 use crate::push_routes;
 use crate::search_routes;
+use crate::security::{headers as security_headers, origin_guard, LoginThrottle};
 use crate::session::{AnonymousSessionResolver, SessionResolver};
 use crate::share_routes;
 use crate::sync_routes;
@@ -104,6 +105,8 @@ pub struct AppState {
     pub api_tokens: Option<Arc<ApiTokenService>>,
     /// Preference store for account-synced settings.
     pub preferences: Option<Arc<dyn PreferenceStore>>,
+    /// Per-account login attempt throttle.
+    pub login_throttle: Arc<LoginThrottle>,
 }
 
 impl AppState {
@@ -139,7 +142,15 @@ impl AppState {
             inbound_secret: None,
             api_tokens: None,
             preferences: None,
+            login_throttle: Arc::new(LoginThrottle::default()),
         }
+    }
+
+    /// Replaces the login throttle (tests use small windows).
+    #[must_use]
+    pub fn with_login_throttle(mut self, throttle: Arc<LoginThrottle>) -> Self {
+        self.login_throttle = throttle;
+        self
     }
 
     /// Adds the account preference store.
@@ -402,6 +413,8 @@ pub fn router_with_state(state: AppState) -> Router {
             state.clone(),
             session_middleware,
         ))
+        .layer(middleware::from_fn(origin_guard))
+        .layer(middleware::from_fn(security_headers))
         .with_state(state)
 }
 

@@ -1831,6 +1831,35 @@ Agent: opencode (deepseek-v4.1-flash)
   semantics; composite indexes for the common list/change order.
 - Live integrations not verified: real 10k-item accounts and browser scroll.
 
+### 69 — `add-security-hardening` — COMPLETE
+
+- Start: 2026-10-07 09:00 · End: 2026-10-07 11:10
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum-web::security` adds a headers middleware (restrictive CSP with no
+  external origins, `frame-ancestors 'none'`, `object-src 'none'`, nosniff, referrer policy,
+  frame denial, permissions policy), an origin guard rejecting mutating requests whose Origin
+  host differs from Host (defense-in-depth over the existing HttpOnly + SameSite=Lax session
+  cookie), and a per-account `LoginThrottle` (sliding window, clear-on-success) wired into the
+  login handler with `?error=throttled`; `AppState` exposes the throttle for tests; explicit
+  cross-account isolation tests cover to-dos, projects, areas, tags, preferences, and API
+  tokens (empty reads, not-found gets, rejected mutations, unchanged owner state).
+- Migrations: none.
+- Tests: 1 unit test (throttle window/clear), 2 testkit isolation tests, and 3 web tests
+  (security headers; foreign-origin 403 with matching/absent origins passing; throttling after
+  the budget including a correct password staying throttled); full workspace suite green plus
+  fmt, arch-check, clippy, WASM build (exit checked directly). The first WASM build failed
+  because `security` was declared without an `ssr` gate (axum is ssr-only); the module is now
+  gated and the wasm client builds, with a clean full gate re-run afterwards.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gaps: nonce-based CSP awaits hydration nonce wiring (inline bootstrap currently
+  allowed), HSTS belongs to TLS termination, throttling is in-process.
+- Archive: `2026-10-07-add-security-hardening`; canonical `features/security-hardening` spec
+  created with an expanded Purpose.
+- Commit: `feat(69): add security hardening`
+- Decisions: SameSite=Lax plus origin guard; throttle before touching auth; isolation proven by
+  tests per family.
+- Live integrations not verified: TLS/HSTS deployment behavior.
+
 ## Run summary
 
 ### Completed changes
@@ -1905,9 +1934,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 66 | add-accessibility | COMPLETE | `feat(66)` |
 | 67 | add-animation-system | COMPLETE | `feat(67)` |
 | 68 | add-large-list-performance | COMPLETE | `feat(68)` |
+| 69 | add-security-hardening | COMPLETE | `feat(69)` |
 
-- Completed proposal range: 01–68 (68 of 74).
-- Incomplete: 69–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–69 (69 of 74).
+- Incomplete: 70–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -1976,7 +2006,7 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 69–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 70–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
@@ -1984,8 +2014,9 @@ openspec validate --archived --strict --no-interactive
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
    import/export, share/print models, the typed settings registry, appearance theming,
-   localization, the accessibility audit, the motion system and performance budgets, read-store
-   patterns, and test harnesses are in place to make each one mechanical. Next: 69.
+   localization, the accessibility audit, the motion system, performance budgets and security
+   hardening, read-store patterns, and test harnesses are in place to make each one mechanical.
+   Next: 70.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -2003,7 +2034,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 68): all quality gates green
+- Current state at HEAD (change 69): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

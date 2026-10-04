@@ -138,9 +138,13 @@ async fn login(State(state): State<AppState>, Form(form): Form<LoginForm>) -> Re
     let Some(auth) = auth_context(&state) else {
         return redirect("/login?error=unavailable");
     };
+    if !state.login_throttle.check_and_record(&form.email) {
+        return redirect("/login?error=throttled");
+    }
 
     match auth.service.login(&form.email, &form.password).await {
         Ok(outcome) => {
+            state.login_throttle.clear(&form.email);
             let max_age = (outcome.expires_at - chrono::Utc::now())
                 .num_seconds()
                 .max(0);

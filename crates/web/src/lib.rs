@@ -44,6 +44,8 @@ pub mod responsive;
 pub mod routes;
 #[cfg(feature = "ssr")]
 pub mod search_routes;
+#[cfg(feature = "ssr")]
+pub mod security;
 pub mod session;
 #[cfg(feature = "ssr")]
 pub mod share_routes;
