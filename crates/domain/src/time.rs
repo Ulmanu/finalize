@@ -42,6 +42,12 @@ pub fn parse_local_datetime(text: &str) -> Result<NaiveDateTime, TimeError> {
         .map_err(|_| TimeError::InvalidFormat)
 }
 
+/// Whether a name resolves to an IANA timezone.
+#[must_use]
+pub fn is_valid_timezone(name: &str) -> bool {
+    name.parse::<chrono_tz::Tz>().is_ok()
+}
+
 /// The local wall-clock time of an instant in a named timezone (UTC fallback).
 #[must_use]
 pub fn local_time_in(timezone: &str, instant: DateTime<Utc>) -> NaiveTime {
@@ -285,6 +291,14 @@ mod tests {
             next_local_day_at("Mars/Olympus", now, time),
             Err(TimeError::InvalidTimezone)
         );
+    }
+
+    #[test]
+    fn validates_iana_timezone_names() {
+        assert!(is_valid_timezone("Europe/Berlin"));
+        assert!(is_valid_timezone("UTC"));
+        assert!(!is_valid_timezone("Mars/Olympus"));
+        assert!(!is_valid_timezone(""));
     }
 
     #[test]

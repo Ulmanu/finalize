@@ -13,6 +13,7 @@ use axum::{Extension, Form, Router};
 use momentum_app::bulk::{BulkAction, BulkService};
 use momentum_app::commands::{CommandError, ReminderInput, ScheduleInput};
 use momentum_app::movement::Destination;
+use momentum_app::preferences::{effective, PreferenceValue};
 use momentum_app::reminders::SnoozeChoice;
 use momentum_app::session::SessionState;
 use momentum_app::todos::{QuickSchedule, TodoService};
@@ -718,7 +719,8 @@ async fn schedule_todo(
         }
         "natural" => {
             let expression = form.text.as_deref().unwrap_or_default();
-            match parse_natural_date(expression, service.local_today(), Some(Locale::EnUs)) {
+            let locale = parser_locale(&state, account_id).await;
+            match parse_natural_date(expression, service.local_today(), Some(locale)) {
                 Ok(parsed) => {
                     service
                         .schedule(account_id, id, ScheduleInput::On(parsed.date))
@@ -803,6 +805,28 @@ async fn move_todo(
     }
 }
 
+/// Resolves the configured natural-date parser locale (independent of storage representation).
+async fn parser_locale(state: &AppState, account_id: AccountId) -> Locale {
+    let Some(store) = state.preferences.clone() else {
+        return Locale::EnUs;
+    };
+    match effective(&*store, account_id, "general.parser_locale").await {
+        Ok(Some(PreferenceValue::Choice(value))) if value == "en-GB" => Locale::EnGb,
+        _ => Locale::EnUs,
+    }
+}
+
+/// Resolves the configured display timezone used as the reminder default.
+async fn default_timezone(state: &AppState, account_id: AccountId) -> String {
+    let Some(store) = state.preferences.clone() else {
+        return "UTC".to_string();
+    };
+    match effective(&*store, account_id, "general.timezone").await {
+        Ok(Some(PreferenceValue::Text(value))) => value,
+        _ => "UTC".to_string(),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct SnoozeForm {
     option: String,
@@ -872,10 +896,10 @@ async fn set_reminder(
         .filter(|value| !value.is_empty())
     {
         Some(text) => {
-            let timezone = form
-                .timezone
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| "UTC".to_string());
+            let timezone = match form.timezone.filter(|value| !value.trim().is_empty()) {
+                Some(timezone) => timezone,
+                None => default_timezone(&state, account_id).await,
+            };
             match parse_local_datetime(text)
                 .and_then(|local| local_datetime_to_utc(local, &timezone))
             {

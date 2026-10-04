@@ -93,6 +93,8 @@ pub enum PreferenceValue {
     Bool(bool),
     /// A choice from the definition's allow-list.
     Choice(String),
+    /// Free-form validated text.
+    Text(String),
 }
 
 impl PreferenceValue {
@@ -101,7 +103,7 @@ impl PreferenceValue {
     pub fn as_str(&self) -> String {
         match self {
             Self::Bool(value) => value.to_string(),
-            Self::Choice(value) => value.clone(),
+            Self::Choice(value) | Self::Text(value) => value.clone(),
         }
     }
 }
@@ -130,6 +132,8 @@ pub enum PreferenceDefault {
     Bool(bool),
     /// Choice default (must be in `choices`).
     Choice(&'static str),
+    /// Validated free-form text default.
+    Text(&'static str),
 }
 
 const REGISTRY: &[PreferenceDefinition] = &[
@@ -140,6 +144,38 @@ const REGISTRY: &[PreferenceDefinition] = &[
         scope: PreferenceScope::Account,
         default: PreferenceDefault::Choice("monday"),
         choices: &["monday", "sunday"],
+    },
+    PreferenceDefinition {
+        key: "general.locale",
+        title: "Date formatting locale",
+        domain: PreferenceDomain::General,
+        scope: PreferenceScope::Account,
+        default: PreferenceDefault::Choice("en-US"),
+        choices: &["en-US", "en-GB", "de-DE", "fr-FR"],
+    },
+    PreferenceDefinition {
+        key: "general.hour_format",
+        title: "Hour format",
+        domain: PreferenceDomain::General,
+        scope: PreferenceScope::Account,
+        default: PreferenceDefault::Choice("h24"),
+        choices: &["h24", "h12"],
+    },
+    PreferenceDefinition {
+        key: "general.timezone",
+        title: "Timezone",
+        domain: PreferenceDomain::General,
+        scope: PreferenceScope::Account,
+        default: PreferenceDefault::Text("UTC"),
+        choices: &[],
+    },
+    PreferenceDefinition {
+        key: "general.parser_locale",
+        title: "Natural date parser locale",
+        domain: PreferenceDomain::General,
+        scope: PreferenceScope::Account,
+        default: PreferenceDefault::Choice("en-US"),
+        choices: &["en-US", "en-GB"],
     },
     PreferenceDefinition {
         key: "general.default_list",
@@ -265,6 +301,7 @@ pub fn default_value(definition: &PreferenceDefinition) -> PreferenceValue {
     match definition.default {
         PreferenceDefault::Bool(value) => PreferenceValue::Bool(value),
         PreferenceDefault::Choice(value) => PreferenceValue::Choice(value.to_string()),
+        PreferenceDefault::Text(value) => PreferenceValue::Text(value.to_string()),
     }
 }
 
@@ -282,6 +319,18 @@ pub fn parse_value(key: &str, raw: &str) -> Option<PreferenceValue> {
             .choices
             .contains(&raw)
             .then(|| PreferenceValue::Choice(raw.to_string())),
+        PreferenceDefault::Text(_) => {
+            validate_text(key, raw).then(|| PreferenceValue::Text(raw.to_string()))
+        }
+    }
+}
+
+/// Validates free-form text preferences.
+#[must_use]
+pub fn validate_text(key: &str, raw: &str) -> bool {
+    match key {
+        "general.timezone" => momentum_domain::time::is_valid_timezone(raw),
+        _ => !raw.trim().is_empty(),
     }
 }
 
@@ -360,6 +409,13 @@ mod tests {
                         definition.key
                     );
                 }
+                super::PreferenceDefault::Text(value) => {
+                    assert!(
+                        super::validate_text(definition.key, value),
+                        "{} default fails validation",
+                        definition.key
+                    );
+                }
             }
             assert!(!definition.title.is_empty());
         }
@@ -396,6 +452,11 @@ mod tests {
         );
         assert_eq!(parse_value("today.progress", "yes"), None);
         assert_eq!(parse_value("nope", "true"), None);
+        assert_eq!(
+            parse_value("general.timezone", "Europe/Berlin"),
+            Some(PreferenceValue::Text("Europe/Berlin".to_string()))
+        );
+        assert_eq!(parse_value("general.timezone", "Mars/Olympus"), None);
 
         assert_eq!(
             sanitize("appearance.theme", Some("neon")),

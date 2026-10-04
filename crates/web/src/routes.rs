@@ -585,7 +585,13 @@ fn PreferencesSection() -> impl IntoView {
                                         momentum_app::preferences::default_value(definition)
                                     });
                                     let current_raw = current.as_str();
-                                    let options: Vec<String> = if definition.choices.is_empty() {
+                                    let is_text = matches!(
+                                        definition.default,
+                                        momentum_app::preferences::PreferenceDefault::Text(_)
+                                    );
+                                    let options: Vec<String> = if is_text {
+                                        Vec::new()
+                                    } else if definition.choices.is_empty() {
                                         vec!["true".to_string(), "false".to_string()]
                                     } else {
                                         definition
@@ -615,23 +621,38 @@ fn PreferencesSection() -> impl IntoView {
                                                     name="key"
                                                     value=definition.key
                                                 />
-                                                <select
-                                                    name="value"
-                                                    aria-label=definition.title
-                                                >
-                                                    {options
-                                                        .into_iter()
-                                                        .map(|option| {
-                                                            let selected = option == current_raw;
-                                                            let label = option.clone();
-                                                            view! {
-                                                                <option value=option selected=selected>
-                                                                    {label}
-                                                                </option>
-                                                            }
-                                                        })
-                                                        .collect_view()}
-                                                </select>
+                                                {if is_text {
+                                                    view! {
+                                                        <input
+                                                            type="text"
+                                                            name="value"
+                                                            value=current_raw
+                                                            aria-label=definition.title
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    view! {
+                                                        <select
+                                                            name="value"
+                                                            aria-label=definition.title
+                                                        >
+                                                            {options
+                                                                .into_iter()
+                                                                .map(|option| {
+                                                                    let selected = option == current_raw;
+                                                                    let label = option.clone();
+                                                                    view! {
+                                                                        <option value=option selected=selected>
+                                                                            {label}
+                                                                        </option>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </select>
+                                                    }
+                                                        .into_any()
+                                                }}
                                                 <button type="submit" class="row-action">
                                                     "Save"
                                                 </button>
