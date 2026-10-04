@@ -1860,6 +1860,35 @@ Agent: opencode (deepseek-v4.1-flash)
   tests per family.
 - Live integrations not verified: TLS/HSTS deployment behavior.
 
+### 70 — `add-observability` — COMPLETE
+
+- Start: 2026-10-07 11:20 · End: 2026-10-07 13:00
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_app::metrics` declares eleven label-free counters (HTTP, sync
+  operations/conflicts, reminders delivered/failed, recurrence instances, inbound
+  delivered/rejected, calendar success/failure, push sent) with an in-process store, unknown-name
+  rejection, and Prometheus-style text exposition; sync, reminder, and inbound services accept
+  optional metrics via `with_metrics` and increment their counters; `momentum-web::observability`
+  assigns/propagates `x-request-id`, traces each request with only method/path/id, echoes the id,
+  counts served responses, and exposes `GET /metrics`; `AppState` carries one shared registry used
+  by the HTTP layer and services.
+- Migrations: none.
+- Tests: 2 app unit tests (registry integrity; increments/render/unknown rejection with privacy
+  assertions), 2 testkit tests (sync counters; reminder and inbound counters), and 2 web tests
+  (request-id assignment and propagation; privacy-safe metrics output lacking titles, emails, and
+  `@`); full workspace suite green plus fmt, arch-check, clippy, WASM build (exit checked
+  directly). A missed sync-counter insertion (silent no-op replace) was caught by the new testkit
+  assertion and fixed.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: counters are in-process (reset on restart) and no external metrics backend is wired;
+  label-free by design for privacy.
+- Archive: `2026-10-07-add-observability`; canonical `features/observability` spec created with an
+  expanded Purpose.
+- Commit: `feat(70): add observability`
+- Decisions: privacy over cardinality (no labels), correlation via request ids, declared counters
+  only.
+- Live integrations not verified: metrics scraping and trace export.
+
 ## Run summary
 
 ### Completed changes
@@ -1935,9 +1964,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 67 | add-animation-system | COMPLETE | `feat(67)` |
 | 68 | add-large-list-performance | COMPLETE | `feat(68)` |
 | 69 | add-security-hardening | COMPLETE | `feat(69)` |
+| 70 | add-observability | COMPLETE | `feat(70)` |
 
-- Completed proposal range: 01–69 (69 of 74).
-- Incomplete: 70–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–70 (70 of 74).
+- Incomplete: 71–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -2006,7 +2036,7 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 70–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 71–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
@@ -2014,9 +2044,9 @@ openspec validate --archived --strict --no-interactive
    cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
    import/export, share/print models, the typed settings registry, appearance theming,
-   localization, the accessibility audit, the motion system, performance budgets and security
-   hardening, read-store patterns, and test harnesses are in place to make each one mechanical.
-   Next: 70.
+   localization, the accessibility audit, the motion system, performance budgets, security
+   hardening and observability, read-store patterns, and test harnesses are in place to make each
+   one mechanical. Next: 71.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -2034,7 +2064,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 69): all quality gates green
+- Current state at HEAD (change 70): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

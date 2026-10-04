@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use momentum_domain::{AccountId, EntityId};
 
 use crate::commands::CommandError;
+use crate::metrics::Metrics;
 use crate::todos::TodoService;
 
 /// A reminder that is due for delivery.
@@ -62,6 +63,7 @@ pub struct ReminderScheduler {
     todos: Arc<TodoService>,
     source: Arc<dyn ReminderSource>,
     notifier: Arc<dyn ReminderNotifier>,
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl ReminderScheduler {
@@ -76,7 +78,15 @@ impl ReminderScheduler {
             todos,
             source,
             notifier,
+            metrics: None,
         }
+    }
+
+    /// Records privacy-safe reminder counters.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// Runs one delivery pass.
@@ -106,6 +116,16 @@ impl ReminderScheduler {
                 },
                 Err(reason) => run.failed.push((reminder.todo_id, reason)),
             }
+        }
+        if let Some(metrics) = &self.metrics {
+            metrics.add(
+                "momentum_reminders_delivered_total",
+                u64::try_from(run.delivered.len()).unwrap_or(u64::MAX),
+            );
+            metrics.add(
+                "momentum_reminders_failed_total",
+                u64::try_from(run.failed.len()).unwrap_or(u64::MAX),
+            );
         }
         Ok(run)
     }

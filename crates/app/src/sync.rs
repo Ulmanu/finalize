@@ -18,6 +18,7 @@ use crate::auth::Clock;
 use crate::commands::{
     ChangeRecord, Command, CommandDispatcher, CommandEnvelope, CommandError, DomainEvent,
 };
+use crate::metrics::Metrics;
 use crate::realtime::HintHub;
 use crate::todos::TodoService;
 
@@ -179,6 +180,7 @@ pub struct SyncService {
     changes: Arc<dyn ChangeLogReader>,
     clock: Arc<dyn Clock>,
     hints: Option<Arc<HintHub>>,
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl std::fmt::Debug for SyncService {
@@ -202,7 +204,15 @@ impl SyncService {
             changes,
             clock,
             hints: None,
+            metrics: None,
         }
+    }
+
+    /// Records privacy-safe sync counters.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// Publishes coalesced invalidation hints after successful pushes.
@@ -266,6 +276,16 @@ impl SyncService {
                     &error,
                 )),
             }
+        }
+        if let Some(metrics) = &self.metrics {
+            metrics.add(
+                "momentum_sync_operations_total",
+                u64::try_from(acknowledged.len()).unwrap_or(u64::MAX),
+            );
+            metrics.add(
+                "momentum_sync_conflicts_total",
+                u64::try_from(conflicts.len()).unwrap_or(u64::MAX),
+            );
         }
         let changes = self
             .changes

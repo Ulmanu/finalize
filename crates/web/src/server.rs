@@ -18,6 +18,7 @@ use momentum_app::areas::AreaService;
 use momentum_app::calendar::CalendarService;
 use momentum_app::inbound::InboundService;
 use momentum_app::logbook::LogbookService;
+use momentum_app::metrics::Metrics;
 use momentum_app::preferences::PreferenceStore;
 use momentum_app::projects::ProjectService;
 use momentum_app::realtime::HintHub;
@@ -41,6 +42,7 @@ use crate::export_import_routes;
 use crate::inbound_routes;
 use crate::logbook_routes;
 use crate::notes_routes;
+use crate::observability;
 use crate::preferences_routes;
 use crate::project_routes;
 use crate::push_routes;
@@ -107,6 +109,8 @@ pub struct AppState {
     pub preferences: Option<Arc<dyn PreferenceStore>>,
     /// Per-account login attempt throttle.
     pub login_throttle: Arc<LoginThrottle>,
+    /// Privacy-safe operational metrics.
+    pub metrics: Arc<Metrics>,
 }
 
 impl AppState {
@@ -143,7 +147,15 @@ impl AppState {
             api_tokens: None,
             preferences: None,
             login_throttle: Arc::new(LoginThrottle::default()),
+            metrics: Arc::new(Metrics::new()),
         }
+    }
+
+    /// Replaces the metrics registry.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = metrics;
+        self
     }
 
     /// Replaces the login throttle (tests use small windows).
@@ -379,6 +391,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .merge(export_import_routes::routes())
         .merge(share_routes::routes())
         .merge(preferences_routes::routes())
+        .merge(observability::routes())
         .merge(inbound_routes::routes())
         .merge(todo_routes::routes())
         .merge(area_routes::routes())
@@ -415,6 +428,11 @@ pub fn router_with_state(state: AppState) -> Router {
         ))
         .layer(middleware::from_fn(origin_guard))
         .layer(middleware::from_fn(security_headers))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            observability::count_requests,
+        ))
+        .layer(middleware::from_fn(observability::request_id))
         .with_state(state)
 }
 

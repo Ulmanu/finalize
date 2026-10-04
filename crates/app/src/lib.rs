@@ -19,6 +19,7 @@ pub mod inbound;
 pub mod keyboard;
 pub mod logbook;
 pub mod materializer;
+pub mod metrics;
 pub mod motion;
 pub mod movement;
 pub mod ordering;

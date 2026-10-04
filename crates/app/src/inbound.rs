@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::capture::sanitize_text;
 use crate::commands::CommandError;
+use crate::metrics::Metrics;
 use crate::todos::TodoService;
 
 /// Domain used for alias addresses.
@@ -165,6 +166,7 @@ pub struct InboundService {
     tokens: Arc<dyn TokenSource>,
     limits: InboundLimits,
     recent: Mutex<HashMap<AccountId, Vec<DateTime<Utc>>>>,
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl std::fmt::Debug for InboundService {
@@ -190,7 +192,15 @@ impl InboundService {
             tokens,
             limits,
             recent: Mutex::new(HashMap::new()),
+            metrics: None,
         }
+    }
+
+    /// Records privacy-safe inbound counters.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// Returns the account's alias, creating one on first use.
@@ -238,9 +248,15 @@ impl InboundService {
             return Ok(IngestOutcome::TooLarge);
         }
         let Some((account_id, enabled)) = self.aliases.lookup_token(token).await? else {
+            if let Some(metrics) = &self.metrics {
+                metrics.increment("momentum_inbound_rejected_total");
+            }
             return Ok(IngestOutcome::UnknownToken);
         };
         if !enabled {
+            if let Some(metrics) = &self.metrics {
+                metrics.increment("momentum_inbound_rejected_total");
+            }
             return Ok(IngestOutcome::Disabled);
         }
         if self.ledger.seen(account_id, &mail.message_id).await? {
@@ -267,6 +283,9 @@ impl InboundService {
             )
             .await?;
         self.ledger.record(account_id, &mail.message_id).await?;
+        if let Some(metrics) = &self.metrics {
+            metrics.increment("momentum_inbound_delivered_total");
+        }
         Ok(IngestOutcome::Delivered {
             todo: outcome.entity_id.unwrap_or_default(),
         })

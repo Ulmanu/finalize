@@ -34,6 +34,8 @@ pub mod logbook_routes;
 #[cfg(feature = "ssr")]
 pub mod notes_routes;
 #[cfg(feature = "ssr")]
+pub mod observability;
+#[cfg(feature = "ssr")]
 pub mod preferences_routes;
 #[cfg(feature = "ssr")]
 pub mod project_routes;

@@ -9,6 +9,7 @@ use momentum_app::auth::AuthService;
 use momentum_app::commands::CommandDispatcher;
 use momentum_app::inbound::{InboundLimits, InboundService, RandomTokenSource};
 use momentum_app::logbook::LogbookService;
+use momentum_app::metrics::Metrics;
 use momentum_app::projects::ProjectService;
 use momentum_app::realtime::HintHub;
 use momentum_app::recurring::RecurringService;
@@ -40,6 +41,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let config = ServerConfig::from_env()?;
     let database = connect_database(&config).await?;
+    let metrics = Arc::new(Metrics::new());
 
     let (session_resolver, auth, todos, areas, projects, tags, logbook, recurring, sync, hints): (
         Arc<dyn SessionResolver>,
@@ -110,7 +112,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Arc::new(PgChangeLogReader::new(database.pool().clone())),
                     clock.clone(),
                 )
-                .with_hints(hints.clone()),
+                .with_hints(hints.clone())
+                .with_metrics(metrics.clone()),
             );
 
             let tag_reader = Arc::new(PgTagReadStore::new(database.pool().clone()));
@@ -153,7 +156,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         todos,
         areas,
         projects,
-    );
+    )
+    .with_metrics(metrics.clone());
     let state = match tags {
         Some(tags) => state.with_tags(tags),
         None => state,
@@ -187,13 +191,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     let state = match (inbound_pool, todos_for_inbound) {
         (Some(pool), Some(todos)) => {
-            let service = Arc::new(InboundService::new(
-                Arc::new(PgInboundStore::new(pool.clone())),
-                Arc::new(PgInboundStore::new(pool)),
-                todos,
-                Arc::new(RandomTokenSource),
-                InboundLimits::default(),
-            ));
+            let service = Arc::new(
+                InboundService::new(
+                    Arc::new(PgInboundStore::new(pool.clone())),
+                    Arc::new(PgInboundStore::new(pool)),
+                    todos,
+                    Arc::new(RandomTokenSource),
+                    InboundLimits::default(),
+                )
+                .with_metrics(metrics.clone()),
+            );
             let secret = std::env::var("MOMENTUM_INBOUND_SECRET").ok();
             state.with_inbound(service, secret)
         }
