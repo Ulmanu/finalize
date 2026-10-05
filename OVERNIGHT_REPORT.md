@@ -1978,6 +1978,31 @@ Agent: opencode (deepseek-v4.1-flash)
   process; ids/timestamps only in worker logs.
 - Live integrations not verified: real Docker build/compose run (no Docker in this environment).
 
+### 74 — `things-web-parity-hardening` — COMPLETE (final change)
+
+- Start: 2026-10-05 06:00 · End: 2026-10-05 08:30
+- Proposal validation: strict validation passed before archive.
+- Implementation: `PARITY_MATRIX.md` audits all 74 roadmap capabilities with status, canonical
+  spec, and archived change, and classifies eight unresolved findings
+  (hydration-harness/browser-adapter/deployment-integration/out-of-web-scope/environment) with
+  rationale and evidence; the gap audit found zero TODO/FIXME markers in Rust sources, zero
+  ignored tests, and no in-scope capability without implemented, tested scenarios; release
+  validation passed strict OpenSpec (specs + archived), fmt, arch-check, clippy `-D warnings`,
+  the full workspace suite (including behavior and visual parity), the WASM client build, and
+  `cargo check --release` for the server and worker binaries.
+- Migrations: none.
+- Tests: the validation battery itself; all suites green (99 test binaries) plus release
+  binaries and WASM artifact.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Classification summary: all remaining findings are external integrations (push transport,
+  calendar providers, mail provider), browser/hydration adapters (IndexedDB, BroadcastChannel,
+  gestures, pixel screenshots), out-of-web-scope distribution (extension), or environment
+  (Docker runtime). None is an unimplemented in-scope capability.
+- Archive: `2026-10-05-things-web-parity-hardening`; canonical `features/parity-hardening` spec
+  created with an expanded Purpose.
+- Commit: `feat(74): parity hardening`
+- Live integrations not verified: the classified deployment/browser items above.
+
 ## Run summary
 
 ### Completed changes
@@ -2057,9 +2082,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 71 | add-visual-parity-suite | COMPLETE | `feat(71)` |
 | 72 | add-behavior-parity-suite | COMPLETE | `feat(72)` |
 | 73 | add-production-deployment | COMPLETE | `feat(73)` |
+| 74 | things-web-parity-hardening | COMPLETE | `feat(74)` |
 
-- Completed proposal range: 01–73 (73 of 74).
-- Incomplete: 74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–74 (74 of 74) — ROADMAP COMPLETE.
+- Incomplete: none.
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -2128,12 +2154,8 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Change 74, the final roadmap item; the workspace, command layer, projection scopes, move
-   engine, drop targets, selection/bulk, Magic Plus, editor/pickers/natural dates, reminders,
-   recurrence, search, keyboard registry, Type Travel, touch gestures, calendar, replica/outbox,
-   sync/realtime/multi-tab, capture/entry/inbound/command URLs/API, PWA, companion/popout,
-   import/export, share/print, settings/theme/localization/accessibility/motion, performance,
-   security, observability, parity suites and production deployment are all in place. Next: 74.
+1. Roadmap complete: all 74 changes are implemented, tested, archived, and committed. Remaining
+   work is the classified external/browser/deployment integration list in `PARITY_MATRIX.md`.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -2151,7 +2173,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 73): all quality gates green
+- Current state at HEAD (change 74): all quality gates green; roadmap complete
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.
