@@ -1,0 +1,49 @@
+# Production topology: PostgreSQL, a one-shot migration step, the web server, and the worker.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: momentum
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: momentum
+    volumes:
+      - momentum-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U momentum -d momentum"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build: .
+    entrypoint: ["momentum-server", "migrate"]
+    environment:
+      DATABASE_URL: postgres://momentum:${POSTGRES_PASSWORD}@postgres:5432/momentum
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  server:
+    build: .
+    environment:
+      DATABASE_URL: postgres://momentum:${POSTGRES_PASSWORD}@postgres:5432/momentum
+      MOMENTUM_BIND: 0.0.0.0:3000
+      MOMENTUM_SECURE_COOKIES: "true"
+      MOMENTUM_INBOUND_SECRET: ${MOMENTUM_INBOUND_SECRET:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    entrypoint: ["momentum-worker"]
+    environment:
+      DATABASE_URL: postgres://momentum:${POSTGRES_PASSWORD}@postgres:5432/momentum
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  momentum-data:

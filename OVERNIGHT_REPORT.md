@@ -1947,6 +1947,37 @@ Agent: opencode (deepseek-v4.1-flash)
   just projection membership.
 - Live integrations not verified: real device/tab interaction.
 
+### 73 — `add-production-deployment` — COMPLETE
+
+- Start: 2026-10-05 03:50 · End: 2026-10-05 05:50
+- Proposal validation: strict validation passed before archive.
+- Implementation: a multi-stage Dockerfile builds release server/worker binaries plus the WASM
+  client, and `docker-compose.yml` wires PostgreSQL → one-shot `migrate` → health-gated
+  server/worker with documented ingress requirements for `/pkg/*`; `DEPLOYMENT.md` documents the
+  topology, environment, migration procedure, backup/recovery, and observability; a
+  `momentum-worker` binary runs reminder scheduling and recurrence materialization per account
+  every 60s with graceful shutdown and privacy-safe logging; `momentum-server migrate` applies
+  migrations explicitly and both binaries refuse to start with pending migrations (startup guard
+  replacing auto-apply); `scripts/backup.sh` writes custom-format dumps with retention and a
+  restore-verification mode checking account/migration counts in a scratch database;
+  `Database::account_ids` enumerates accounts for worker passes.
+- Migrations: none (procedure only).
+- Tests: 2 web deployment tests (liveness payload, readiness persistence/authentication fields
+  without a database, and no session required) plus fmt/arch-check/clippy/workspace/WASM gates
+  green (exit checked directly). The existing probes were kept (a duplicate route attempt was
+  removed) and their payload schema documented. Clippy double-must-use from a misplaced attribute
+  was fixed.
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gaps: Kubernetes manifests and CI/CD are out of scope; the worker logs deliveries until a
+  push transport is configured; backup verification requires PostgreSQL and is exercised in
+  environments that have it.
+- Archive: `2026-10-05-add-production-deployment`; canonical `features/production-deployment`
+  spec created with an expanded Purpose.
+- Commit: `feat(73): add production deployment`
+- Decisions: explicit migrate step with startup refusal over auto-apply; worker as a separate
+  process; ids/timestamps only in worker logs.
+- Live integrations not verified: real Docker build/compose run (no Docker in this environment).
+
 ## Run summary
 
 ### Completed changes
@@ -2025,9 +2056,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 70 | add-observability | COMPLETE | `feat(70)` |
 | 71 | add-visual-parity-suite | COMPLETE | `feat(71)` |
 | 72 | add-behavior-parity-suite | COMPLETE | `feat(72)` |
+| 73 | add-production-deployment | COMPLETE | `feat(73)` |
 
-- Completed proposal range: 01–72 (72 of 74).
-- Incomplete: 73–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–73 (73 of 74).
+- Incomplete: 74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -2096,17 +2128,12 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 73–74, strictly in order; the workspace, command layer, projection scopes,
-   move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
-   composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
-   plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
-   registry, Type Travel, touch gesture machines, calendar projection, offline replica/outbox,
-   cloud sync protocol, realtime hints, multi-tab coordination, Quick Entry, browser capture,
-   inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
-   import/export, share/print models, the typed settings registry, appearance theming,
-   localization, the accessibility audit, the motion system, performance budgets, security
-   hardening, observability, the visual parity suite and the behavior parity suite, read-store
-   patterns, and test harnesses are in place to make each one mechanical. Next: 73.
+1. Change 74, the final roadmap item; the workspace, command layer, projection scopes, move
+   engine, drop targets, selection/bulk, Magic Plus, editor/pickers/natural dates, reminders,
+   recurrence, search, keyboard registry, Type Travel, touch gestures, calendar, replica/outbox,
+   sync/realtime/multi-tab, capture/entry/inbound/command URLs/API, PWA, companion/popout,
+   import/export, share/print, settings/theme/localization/accessibility/motion, performance,
+   security, observability, parity suites and production deployment are all in place. Next: 74.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -2124,7 +2151,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 72): all quality gates green
+- Current state at HEAD (change 73): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

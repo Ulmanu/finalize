@@ -10,7 +10,7 @@ pub mod schema;
 use std::time::Duration;
 
 use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use thiserror::Error;
 
 pub use migrations::{
@@ -49,6 +49,22 @@ impl Database {
             .await
             .map_err(DbError::Connect)?;
         Ok(Self { pool })
+    }
+
+    /// Every account id (worker loops iterate accounts).
+    ///
+    /// # Errors
+    ///
+    /// Propagates query failures.
+    pub async fn account_ids(&self) -> Result<Vec<momentum_domain::AccountId>, DbError> {
+        let rows = sqlx::query("select id from accounts order by created_at asc, id asc")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(DbError::Health)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| momentum_domain::AccountId::from_uuid(row.get("id")))
+            .collect())
     }
 
     /// Returns the underlying pool for repositories.

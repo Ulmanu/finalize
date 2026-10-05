@@ -32,6 +32,10 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("migrate") {
+        return migrate_command().await;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -218,6 +222,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Applies pending migrations and exits (the deployment migration step).
+async fn migrate_command() -> Result<(), Box<dyn Error>> {
+    let config = ServerConfig::from_env()?;
+    let Some(url) = config.database_url.as_deref() else {
+        return Err("DATABASE_URL is required for migrations".into());
+    };
+    let database = Database::connect(url).await?;
+    let applied = database.migrate().await?;
+    if applied.is_empty() {
+        println!("database schema is up to date");
+    } else {
+        println!("applied migrations: {applied:?}");
+    }
+    Ok(())
+}
+
 async fn connect_database(config: &ServerConfig) -> Result<Option<Database>, Box<dyn Error>> {
     let Some(url) = config.database_url.as_deref() else {
         tracing::info!("DATABASE_URL is not set; starting without persistence");
@@ -225,11 +245,14 @@ async fn connect_database(config: &ServerConfig) -> Result<Option<Database>, Box
     };
 
     let database = Database::connect(url).await?;
-    let applied = database.migrate().await?;
-    if applied.is_empty() {
-        tracing::info!("database schema is up to date");
-    } else {
-        tracing::info!(versions = ?applied, "applied database migrations");
+    // Safe migrations: never serve with pending migrations; operators run
+    // `momentum-server migrate` as a separate deployment step.
+    let pending = momentum_infra::db::migrations::pending(database.pool()).await?;
+    if !pending.is_empty() {
+        return Err(format!(
+            "pending database migrations {pending:?}; run `momentum-server migrate` first"
+        )
+        .into());
     }
     Ok(Some(database))
 }
