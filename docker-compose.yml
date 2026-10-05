@@ -27,7 +27,7 @@ services:
     build: .
     environment:
       DATABASE_URL: postgres://momentum:${POSTGRES_PASSWORD}@postgres:5432/momentum
-      MOMENTUM_BIND: 0.0.0.0:3000
+      MOMENTUM_BIND_ADDR: 0.0.0.0:3000
       MOMENTUM_SECURE_COOKIES: "true"
       MOMENTUM_INBOUND_SECRET: ${MOMENTUM_INBOUND_SECRET:-}
     ports:

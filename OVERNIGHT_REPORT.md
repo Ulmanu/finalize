@@ -2179,3 +2179,15 @@ openspec validate --archived --strict --no-interactive
   46/46 passing; `git status` clean.
 
 
+
+
+## Post-roadmap fixes (operator feedback)
+
+- **Auth is now optional in local mode.** With `DATABASE_URL` unset, the server boots with
+  in-memory services and a fixed local account (`local@finalize`), so the app is immediately
+  usable without sign-in or PostgreSQL. A warning is logged and data is not persisted; production
+  (which always sets `DATABASE_URL`) is unaffected. Implemented as the `local` feature (default)
+  in `crates/web` plus a local-mode branch in `server` and the `local_mode` web tests.
+- **Product renamed to Finalize.** `PRODUCT_NAME`, the PWA manifest, and the icon label now say
+  "Finalize" to match the repository name. Crate names remain `momentum-*` (a full crate rename
+  is a mechanical follow-up if wanted).

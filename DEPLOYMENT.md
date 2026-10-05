@@ -14,12 +14,20 @@
   server. The server itself serves `/static/*` (styles, icon), `/manifest.webmanifest`,
   `/service-worker.js`, and all application/API routes.
 
+## Local mode (no database, no sign-in)
+
+With `DATABASE_URL` unset, the server runs in **local mode**: in-memory storage, a fixed local
+account, and no sign-in — useful for trying the app or developing. A warning is logged and data
+is not persisted. The `local` feature (enabled by default in `crates/web`) provides the in-memory
+services; disable it with `--no-default-features --features ssr` for a build that requires a
+database. Production always sets `DATABASE_URL`, so local mode never applies there.
+
 ## Environment
 
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string (required in production). |
-| `MOMENTUM_BIND` | Server bind address (default `127.0.0.1:3000`). |
+| `MOMENTUM_BIND_ADDR` | Server bind address (default `127.0.0.1:3000`). |
 | `MOMENTUM_SECURE_COOKIES` | `true` behind HTTPS so session cookies carry `Secure`. |
 | `MOMENTUM_INBOUND_SECRET` | Shared secret expected from the mail provider webhook. |
 

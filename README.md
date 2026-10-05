@@ -1,10 +1,11 @@
-# Momentum
+# Finalize
 
-Momentum is an original-branding, Things-style personal task manager implemented as a
+Finalize is an original-branding, Things-style personal task manager implemented as a
 full-stack Rust web application. It is developed in this repository as a sequence of
-OpenSpec-governed changes; see `openspec/` for the canonical specifications.
+OpenSpec-governed changes; see `openspec/` for the canonical specifications. (Crate names
+remain `momentum-*`; the product name shown in the UI is Finalize.)
 
-> Momentum is an independent project. It does not use Cultured Code trademarks, logos,
+> Finalize is an independent project. It does not use Cultured Code trademarks, logos,
 > marketing artwork, or proprietary icon assets. Observable workflow and information
 > architecture are used as a behavioral reference only, with original branding and assets.
 
@@ -35,6 +36,10 @@ cargo build --workspace
 cargo run -p momentum-web --bin momentum-server
 # server listens on http://127.0.0.1:3000 (override with MOMENTUM_BIND_ADDR)
 ```
+
+With `DATABASE_URL` unset the server runs in **local mode**: in-memory storage and a fixed local
+account, so there is no sign-in and no PostgreSQL requirement. Data is not persisted; set
+`DATABASE_URL` for real storage (see `DEPLOYMENT.md`).
 
 Endpoints:
 

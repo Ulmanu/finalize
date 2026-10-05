@@ -1,4 +1,4 @@
-//! Momentum HTTP server binary.
+//! Finalize HTTP server binary.
 
 use std::error::Error;
 use std::sync::Arc;
@@ -13,9 +13,13 @@ use momentum_app::metrics::Metrics;
 use momentum_app::projects::ProjectService;
 use momentum_app::realtime::HintHub;
 use momentum_app::recurring::RecurringService;
+#[cfg(feature = "local")]
+use momentum_app::session::{AccountSession, SessionState};
 use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
+#[cfg(feature = "local")]
+use momentum_domain::AccountId;
 use momentum_infra::PgApiTokenStore;
 use momentum_infra::PgChangeLogReader;
 use momentum_infra::PgInboundStore;
@@ -27,7 +31,11 @@ use momentum_infra::{
 };
 use momentum_web::auth_routes::AuthContext;
 use momentum_web::server::{self, AppState};
-use momentum_web::session::{AnonymousSessionResolver, CookieSessionResolver, SessionResolver};
+#[cfg(not(feature = "local"))]
+use momentum_web::session::AnonymousSessionResolver;
+#[cfg(feature = "local")]
+use momentum_web::session::FixedSessionResolver;
+use momentum_web::session::{CookieSessionResolver, SessionResolver};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -136,18 +144,105 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(hints),
             )
         }
-        None => (
-            Arc::new(AnonymousSessionResolver),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ),
+        None => {
+            #[cfg(feature = "local")]
+            {
+                use momentum_testkit::areas::MemoryAreaReadStore;
+                use momentum_testkit::commands::MemoryDatabase;
+                use momentum_testkit::logbook::MemoryLoggingPolicyStore;
+                use momentum_testkit::projects::MemoryProjectReadStore;
+                use momentum_testkit::recurring::MemoryRecurrenceReadStore;
+                use momentum_testkit::sync::MemoryChangeLogReader;
+                use momentum_testkit::tags::MemoryTagReadStore;
+                use momentum_testkit::todos::MemoryTodoReadStore;
+
+                tracing::warn!(
+                    "DATABASE_URL is not set: running in local mode with in-memory storage; \
+                     data is not persisted"
+                );
+                let database = MemoryDatabase::new();
+                let clock = Arc::new(SystemClock);
+                let dispatcher = Arc::new(CommandDispatcher::new(
+                    Arc::new(database.clone()),
+                    clock.clone(),
+                ));
+                let todo_service = Arc::new(TodoService::new(
+                    dispatcher.clone(),
+                    Arc::new(MemoryTodoReadStore::new(database.clone())),
+                    clock.clone(),
+                ));
+                let area_service = Arc::new(AreaService::new(
+                    dispatcher.clone(),
+                    Arc::new(MemoryAreaReadStore::new(database.clone())),
+                    clock.clone(),
+                ));
+                let project_service = Arc::new(ProjectService::new(
+                    dispatcher.clone(),
+                    Arc::new(MemoryProjectReadStore::new(database.clone())),
+                    clock.clone(),
+                ));
+                let tag_service = Arc::new(TagService::new(
+                    dispatcher.clone(),
+                    Arc::new(MemoryTagReadStore::new(database.clone())),
+                    clock.clone(),
+                ));
+                let recurring = Arc::new(RecurringService::new(Arc::new(
+                    MemoryRecurrenceReadStore::new(),
+                )));
+                let logbook_service = Arc::new(LogbookService::new(
+                    dispatcher.clone(),
+                    todo_service.clone(),
+                    project_service.clone(),
+                    Arc::new(MemoryLoggingPolicyStore::new()),
+                    clock.clone(),
+                ));
+                let hints = Arc::new(HintHub::new());
+                let sync = Arc::new(
+                    SyncService::new(
+                        dispatcher,
+                        todo_service.clone(),
+                        Arc::new(MemoryChangeLogReader::new(database)),
+                        clock,
+                    )
+                    .with_hints(hints.clone()),
+                );
+                let local_account = AccountId::from_uuid(
+                    uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001")
+                        .expect("local account uuid"),
+                );
+                let session: Arc<dyn SessionResolver> =
+                    Arc::new(FixedSessionResolver(SessionState::Authenticated(
+                        AccountSession::new(local_account, "local@finalize"),
+                    )));
+                (
+                    session,
+                    None,
+                    Some(todo_service),
+                    Some(area_service),
+                    Some(project_service),
+                    Some(tag_service),
+                    Some(logbook_service),
+                    Some(recurring),
+                    Some(sync),
+                    Some(hints),
+                )
+            }
+            #[cfg(not(feature = "local"))]
+            {
+                (
+                    Arc::new(AnonymousSessionResolver) as Arc<dyn SessionResolver>,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
+        }
     };
 
     let inbound_pool = database.as_ref().map(|database| database.pool().clone());

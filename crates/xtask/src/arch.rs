@@ -240,22 +240,34 @@ fn check_section(
         spec.allowed_deps
     };
 
-    for dependency in table.keys() {
+    for (dependency, value) in table {
         if !member_names.contains(dependency.as_str()) {
             continue;
         }
-        if !allowed.contains(&dependency.as_str()) {
-            violations.push(Violation {
-                member: spec.name.to_string(),
-                dependency: dependency.clone(),
-                dev,
-                detail: format!(
-                    "not in the allowed {} set {:?} for this crate",
-                    if dev { "dev-dependency" } else { "dependency" },
-                    allowed
-                ),
-            });
+        if allowed.contains(&dependency.as_str()) {
+            continue;
         }
+        // Optional dependencies that appear in the dev set are feature-gated adapters
+        // (for example the in-memory stores behind `local` mode): they are allowed because
+        // they never become hard production edges.
+        let optional = value
+            .as_table()
+            .and_then(|entry| entry.get("optional"))
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false);
+        if !dev && optional && spec.allowed_dev_deps.contains(&dependency.as_str()) {
+            continue;
+        }
+        violations.push(Violation {
+            member: spec.name.to_string(),
+            dependency: dependency.clone(),
+            dev,
+            detail: format!(
+                "not in the allowed {} set {:?} for this crate",
+                if dev { "dev-dependency" } else { "dependency" },
+                allowed
+            ),
+        });
     }
 }
 

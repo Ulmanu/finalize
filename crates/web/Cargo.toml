@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [features]
-default = ["ssr"]
+default = ["ssr", "local"]
 ssr = [
     "dep:axum",
     "dep:tokio",
@@ -31,6 +31,7 @@ ssr = [
     "leptos_meta/ssr",
     "leptos_router/ssr",
 ]
+local = ["dep:momentum-testkit"]
 hydrate = [
     "dep:wasm-bindgen",
     "dep:console_error_panic_hook",
@@ -63,9 +64,9 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+momentum-testkit = { workspace = true, optional = true }
 
 [dev-dependencies]
-momentum-testkit.workspace = true
 uuid.workspace = true
 tokio.workspace = true
 tower = { workspace = true, features = ["util"] }

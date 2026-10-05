@@ -1,4 +1,4 @@
-//! Pure domain model for Momentum.
+//! Pure domain model for Finalize.
 //!
 //! This crate holds entities, value objects, and invariants. It deliberately has no
 //! dependency on UI frameworks, database drivers, or browser APIs so that domain rules can
@@ -25,9 +25,9 @@ pub use password::{Password, PasswordError};
 
 /// Original product name used for all user-visible branding.
 ///
-/// Momentum is an original product; it does not use Cultured Code trademarks, logos, or
+/// Finalize is an original product; it does not use Cultured Code trademarks, logos, or
 /// proprietary assets.
-pub const PRODUCT_NAME: &str = "Momentum";
+pub const PRODUCT_NAME: &str = "Finalize";
 
 /// Build and product identity shared by application, infrastructure, and web layers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

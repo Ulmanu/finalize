@@ -323,7 +323,7 @@ pub fn router_with_session(options: LeptosOptions, resolver: Arc<dyn SessionReso
 }
 
 /// PWA manifest: installable shell, share target, and app shortcuts over command URLs.
-const MANIFEST: &str = r##"{"name":"Momentum","short_name":"Momentum","start_url":"/today","display":"standalone","theme_color":"#1d4ed8","background_color":"#ffffff","icons":[{"src":"/static/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}],"share_target":{"action":"/capture","method":"GET","params":{"title":"title","text":"text","url":"url"}},"shortcuts":[{"name":"New to-do","url":"/add"},{"name":"Quick Find","url":"/search"},{"name":"Today","url":"/today"}]}"##;
+const MANIFEST: &str = r##"{"name":"Finalize","short_name":"Finalize","start_url":"/today","display":"standalone","theme_color":"#1d4ed8","background_color":"#ffffff","icons":[{"src":"/static/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}],"share_target":{"action":"/capture","method":"GET","params":{"title":"title","text":"text","url":"url"}},"shortcuts":[{"name":"New to-do","url":"/add"},{"name":"Quick Find","url":"/search"},{"name":"Today","url":"/today"}]}"##;
 
 async fn service_worker() -> impl IntoResponse {
     (

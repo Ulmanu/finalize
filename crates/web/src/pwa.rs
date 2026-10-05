@@ -96,7 +96,7 @@ pub const REGISTRATION_SNIPPET: &str = r#"(function () {
 })();"#;
 
 /// The application icon (SVG, `sizes: any`), installable without bitmap assets.
-pub const ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Momentum">
+pub const ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Finalize">
   <rect width="512" height="512" rx="96" fill="#1d4ed8"/>
   <path d="M128 336V176l96 96 96-96v160" fill="none" stroke="#ffffff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"##;
