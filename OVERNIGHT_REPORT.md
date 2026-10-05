@@ -1889,6 +1889,35 @@ Agent: opencode (deepseek-v4.1-flash)
   only.
 - Live integrations not verified: metrics scraping and trace export.
 
+### 71 — `add-visual-parity-suite` — COMPLETE
+
+- Start: 2026-10-05 00:20 · End: 2026-10-05 02:00
+- Proposal validation: strict validation passed before archive.
+- Implementation: `momentum_testkit::visual` provides fixed desktop/tablet/mobile viewports,
+  fixture naming, deterministic `normalize_html` (hydration/resource scripts stripped; UUIDs,
+  emails, 32-hex tokens, nonces, and crossorigin values replaced with placeholders; quote-aware
+  attribute sorting; whitespace collapse), versioned baseline JSON load/save, threshold-based
+  `compare`, and expected/actual/diff artifact writing; the web parity suite renders
+  /inbox, /today, /companion, and /settings at three viewports each (12 fixtures) with seeded
+  data and a fixed clock, asserts normalization idempotence per render, compares against
+  `crates/web/tests/visual-baselines.json`, regenerates with `UPDATE_VISUAL_BASELINES=1`,
+  honors `VISUAL_DIFF_THRESHOLD`, and writes artifacts to `target/visual-artifacts`.
+- Migrations: none.
+- Tests: 3 testkit unit tests (normalization determinism/placeholders/attribute sorting;
+  diff/artifacts; baseline round-trip and fixture naming) and the parity suite itself (12
+  committed snapshots, re-run green); full workspace suite green plus fmt, arch-check, clippy,
+  WASM build (exit checked directly).
+- Verification: manual artifact-to-implementation pass; every requirement scenario covered.
+- Known gap: pixel-level browser screenshots require a browser harness the workspace lacks;
+  structural snapshots are the deterministic equivalent today (hydrated visual layer remains the
+  documented gap).
+- Archive: `2026-10-05-add-visual-parity-suite`; canonical `features/visual-parity-suite` spec
+  created with an expanded Purpose.
+- Commit: `feat(71): add visual parity suite`
+- Decisions: canonicalized structural snapshots over pixels; committed baselines with explicit
+  regeneration; idempotence asserted per render.
+- Live integrations not verified: real browser rendering.
+
 ## Run summary
 
 ### Completed changes
@@ -1965,9 +1994,10 @@ Agent: opencode (deepseek-v4.1-flash)
 | 68 | add-large-list-performance | COMPLETE | `feat(68)` |
 | 69 | add-security-hardening | COMPLETE | `feat(69)` |
 | 70 | add-observability | COMPLETE | `feat(70)` |
+| 71 | add-visual-parity-suite | COMPLETE | `feat(71)` |
 
-- Completed proposal range: 01–70 (70 of 74).
-- Incomplete: 71–74 (not started; sequential order means each depends on the previous state).
+- Completed proposal range: 01–71 (71 of 74).
+- Incomplete: 72–74 (not started; sequential order means each depends on the previous state).
 - Blocked: none. Change 14 was next and unblocked when the session's working context ended.
 - Total commits on `agent/things-web-overnight`: 67 through change 46 (bootstrap, 46 numbered
   changes, spec/report docs commits; HEAD will be the change-46 commit).
@@ -2036,7 +2066,7 @@ openspec validate --archived --strict --no-interactive
 
 ### Remaining real follow-ups
 
-1. Changes 71–74, strictly in order; the workspace, command layer, projection scopes,
+1. Changes 72–74, strictly in order; the workspace, command layer, projection scopes,
    move engine, drag/drop drop-target operations, selection/bulk layer, Magic Plus creation
    composition, inline editor/picker/natural-date composition, reminder scheduling/snoozing/push
    plumbing, recurrence model/materializer/exceptions, Quick Find and deep search, keyboard
@@ -2045,8 +2075,8 @@ openspec validate --archived --strict --no-interactive
    inbound mail, command URLs, the automation API, the PWA shell, companion views, popout windows,
    import/export, share/print models, the typed settings registry, appearance theming,
    localization, the accessibility audit, the motion system, performance budgets, security
-   hardening and observability, read-store patterns, and test harnesses are in place to make each
-   one mechanical. Next: 71.
+   hardening, observability and the visual parity suite, read-store patterns, and test harnesses
+   are in place to make each one mechanical. Next: 72.
 2. Wire browser hydration glue (wasm-bindgen CLI) when the PWA/hydration changes arrive; the
    Rust hydration entry point and session bootstrap element already exist.
 3. Execute the conditional PostgreSQL suites against a real database.
@@ -2064,7 +2094,7 @@ openspec validate --archived --strict --no-interactive
   `$HOME/.cargo/bin`.
 - Networking: crates.io downloads work; cargo is run with `CARGO_NET_OFFLINE=true` when the
   index would otherwise stall.
-- Current state at HEAD (change 70): all quality gates green
+- Current state at HEAD (change 71): all quality gates green
   (`cargo fmt --check`, `xtask arch-check`, `clippy -D warnings`, `cargo test --workspace
   --all-features`, WASM client build); `openspec validate --specs/--archived --strict` reports
   46/46 passing; `git status` clean.

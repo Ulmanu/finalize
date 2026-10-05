@@ -1620,6 +1620,8 @@ dependencies = [
  "momentum-app",
  "momentum-domain",
  "momentum-xtask",
+ "serde",
+ "serde_json",
  "tokio",
  "uuid",
 ]

@@ -21,3 +21,4 @@ pub mod reminders;
 pub mod sync;
 pub mod tags;
 pub mod todos;
+pub mod visual;
