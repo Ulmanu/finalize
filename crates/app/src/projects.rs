@@ -14,7 +14,7 @@ use crate::commands::{
 };
 
 /// Summary of a heading inside a project.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HeadingSummary {
     /// Canonical identity.
     pub id: EntityId,
@@ -27,7 +27,7 @@ pub struct HeadingSummary {
 }
 
 /// An item in a project's top-level order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ProjectOrderItem {
     /// A heading.
     Heading(EntityId),
@@ -36,7 +36,7 @@ pub enum ProjectOrderItem {
 }
 
 /// Read model for a project.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectSummary {
     /// Canonical identity.
     pub id: EntityId,

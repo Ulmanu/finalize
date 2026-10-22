@@ -9,7 +9,7 @@ use momentum_domain::{AccountId, EntityId};
 use crate::commands::CommandError;
 
 /// Read model for a recurrence template.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RecurrenceTemplateSummary {
     /// Canonical identity of the recurring entity.
     pub id: EntityId,

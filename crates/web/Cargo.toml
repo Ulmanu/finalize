@@ -76,3 +76,8 @@ http-body-util.workspace = true
 name = "momentum-server"
 path = "src/main.rs"
 required-features = ["ssr"]
+
+[[bin]]
+name = "momentum-worker"
+path = "src/worker.rs"
+required-features = ["ssr"]

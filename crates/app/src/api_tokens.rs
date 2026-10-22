@@ -16,7 +16,9 @@ use crate::auth::TokenGenerator;
 use crate::commands::CommandError;
 
 /// Permission granted to an automation token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum ApiScope {
     /// Read access to list and show endpoints.
     Read,
@@ -49,7 +51,7 @@ impl ApiScope {
 }
 
 /// A token as shown to its owner (never includes the plaintext or hash).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApiTokenSummary {
     /// Token identity.
     pub id: EntityId,

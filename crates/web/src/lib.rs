@@ -66,7 +66,7 @@ pub mod server;
 /// This is compiled only for `wasm32-unknown-unknown` with the `hydrate` feature, so native
 /// `--all-features` builds stay linkable.
 #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
-#[wasm_bindgen::prelude::wasm_bindgen(start)]
+#[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {
     console_error_panic_hook::set_once();
     leptos::mount::hydrate_body(app::App);

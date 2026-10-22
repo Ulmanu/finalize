@@ -5,7 +5,7 @@
 //! application build so a new deployment activates cleanly without trapping running clients.
 
 /// Current shell cache version; bumping it invalidates old caches on activation.
-pub const SHELL_VERSION: &str = "2026-10-03";
+pub const SHELL_VERSION: &str = "2026-10-21-local";
 
 /// Assets precached for the offline application shell.
 pub const PRECACHE: &[&str] = &[

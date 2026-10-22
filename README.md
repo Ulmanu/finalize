@@ -31,6 +31,18 @@ Dependency direction is one-way (`domain ← app ← infra ← web`) and enforce
 
 ## Build and run
 
+### Docker (no login)
+
+```bash
+docker compose up --build -d
+```
+
+Open **http://localhost:3000** to create tasks immediately, without signing up or signing in.
+This is local, in-memory mode: tasks reset when the server restarts. The database-backed
+deployment is explicitly selected with `docker-compose.production.yml` (see `DEPLOYMENT.md`).
+
+### Native
+
 ```bash
 cargo build --workspace
 cargo run -p momentum-web --bin momentum-server

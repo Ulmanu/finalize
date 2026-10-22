@@ -1,6 +1,29 @@
 # Deployment
 
-## Topology
+## Docker for local testing (no login)
+
+```bash
+docker compose up --build -d
+```
+
+Open **http://localhost:3000**. The default Compose configuration starts only the local web
+server and explicitly clears `DATABASE_URL`. You can create and complete tasks immediately;
+there is no account registration or login. Tasks are in memory and reset on server restart.
+The image includes the generated browser JavaScript/WASM assets and serves them at `/pkg/*`.
+
+Stop the local app with `docker compose stop`.
+
+## Production topology
+
+The database-backed deployment is opt-in:
+
+```bash
+export POSTGRES_PASSWORD=your-database-password
+docker compose -f docker-compose.production.yml up --build -d
+```
+
+Use `-f docker-compose.production.yml` for the production migration, backup, and lifecycle
+commands below. Stop the local server before using production on the same port.
 
 - **PostgreSQL 16** — canonical storage; the only stateful service.
 - **`momentum-server migrate`** — one-shot migration step; runs before server/worker start.
@@ -9,9 +32,8 @@
 - **`momentum-worker`** — background passes every 60s: reminder delivery scheduling and
   recurrence materialization per account; graceful shutdown on SIGINT/SIGTERM; logs only ids and
   timestamps.
-- **Ingress** — must serve `/pkg/*` from the built WASM client artifacts
-  (`target/wasm32-unknown-unknown/debug` from `cargo xtask web-build`) and route `/` to the
-  server. The server itself serves `/static/*` (styles, icon), `/manifest.webmanifest`,
+- **Ingress** — routes requests to the server, which serves `/pkg/*` from the packaged
+  `target/site/pkg` browser artifacts. The server also serves `/static/*` (styles, icon), `/manifest.webmanifest`,
   `/service-worker.js`, and all application/API routes.
 
 ## Local mode (no database, no sign-in)

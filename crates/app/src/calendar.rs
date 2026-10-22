@@ -14,7 +14,7 @@ use momentum_domain::time::LocalDate;
 use momentum_domain::AccountId;
 
 /// A calendar event as exposed to the application (always read-only).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CalendarEvent {
     /// Provider-stable event identity.
     pub id: String,
@@ -119,7 +119,7 @@ impl std::fmt::Debug for CalendarService {
 }
 
 /// Result of a projection read.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct CalendarProjection {
     /// Events overlapping the range (possibly cached after a failure).
     pub events: Vec<CalendarEvent>,

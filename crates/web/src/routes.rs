@@ -2,7 +2,8 @@
 //!
 //! Feature content (task rows, projections, editors) is added by later roadmap changes; this
 //! module establishes the stable, bookmarkable destinations and the session boundary each
-//! protected destination uses.
+//! protected destination uses. Read models use blocking resources so the browser hydrates the
+//! server's data. Links use native document navigation to fetch fresh server-backed projections.
 
 use std::sync::Arc;
 
@@ -74,8 +75,8 @@ pub fn LandingPage() -> impl IntoView {
                     "A calm, keyboard-first task manager with Today, Upcoming, projects, areas, and tags."
                 </p>
                 <div class="landing-actions">
-                    <a class="button-primary" href="/signup">"Create an account"</a>
-                    <a class="button-secondary" href="/login">"Sign in"</a>
+                    <a rel="external" class="button-primary" href="/signup">"Create an account"</a>
+                    <a rel="external" class="button-secondary" href="/login">"Sign in"</a>
                 </div>
             </section>
         </PublicLayout>
@@ -152,7 +153,7 @@ pub fn LoginPage() -> impl IntoView {
                     <button type="submit" class="button-primary">"Sign in"</button>
                 </form>
                 <p class="auth-secondary">
-                    <a href="/signup">"Create an account"</a>
+                    <a rel="external" href="/signup">"Create an account"</a>
                 </p>
             </section>
         </PublicLayout>
@@ -213,7 +214,7 @@ pub fn SignupPage() -> impl IntoView {
                     <button type="submit" class="button-primary">"Create account"</button>
                 </form>
                 <p class="auth-secondary">
-                    <a href="/login">"I already have an account"</a>
+                    <a rel="external" href="/login">"I already have an account"</a>
                 </p>
             </section>
         </PublicLayout>
@@ -235,32 +236,39 @@ fn TodayList() -> impl IntoView {
     let account = use_account();
     let account_for_progress = account.clone();
     let service_for_progress = service.clone();
-    let today = service.as_ref().map(|service| service.local_today());
-    let todos = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::Today)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
-            }
-        }
-    });
-    let progress = AsyncDerived::new(move || {
-        let service = service_for_progress.clone();
-        let account = account_for_progress.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.today_progress(account.account_id).await.ok()
+    let today =
+        SharedValue::new(|| service.as_ref().map(|service| service.local_today())).into_inner();
+    let todos = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, TodoScope::Today)
+                        .await
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
                 }
-                _ => None,
             }
-        }
-    });
+        },
+    );
+    let progress = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service_for_progress.clone();
+            let account = account_for_progress.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.today_progress(account.account_id).await.ok()
+                    }
+                    _ => None,
+                }
+            }
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="today-page">
@@ -268,7 +276,7 @@ fn TodayList() -> impl IntoView {
                 <h1 class="list-title">"Today"</h1>
                 <p class="list-description">"Everything scheduled for today."</p>
                 <p>
-                    <a href="/tomorrow" class="row-action">"Tomorrow"</a>
+                    <a rel="external" href="/tomorrow" class="row-action">"Tomorrow"</a>
                 </p>
                 <form
                     method="post"
@@ -288,6 +296,7 @@ fn TodayList() -> impl IntoView {
                     />
                     <button type="submit" class="button-primary">"Add"</button>
                 </form>
+                <Suspense fallback=|| ()>
                 {move || {
                     progress
                         .get()
@@ -325,6 +334,7 @@ fn TodayList() -> impl IntoView {
                             }
                         })
                 }}
+                </Suspense>
             </header>
             <Suspense fallback=|| view! { <Loading/> }>
                 {move || {
@@ -435,30 +445,40 @@ pub fn QuickEntryOverlay() -> impl IntoView {
     let tag_service = use_context::<Option<Arc<TagService>>>().flatten();
     let account = use_account();
     let account_for_projects = account.clone();
-    let projects = AsyncDerived::new(move || {
-        let service = project_service.clone();
-        let account = account_for_projects.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+    let projects = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = project_service.clone();
+            let account = account_for_projects.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|project| (project.id, project.title))
+                        .collect::<Vec<_>>(),
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
-    let tags = AsyncDerived::new(move || {
-        let service = tag_service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+        },
+    );
+    let tags = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = tag_service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
     let location = leptos_router::hooks::use_location();
     let return_to = move || location.pathname.get();
     view! {
@@ -472,6 +492,7 @@ pub fn QuickEntryOverlay() -> impl IntoView {
         >
             <div class="quick-entry-panel motion-popover">
                 <h2 class="section-heading">"Quick Entry"</h2>
+                <Suspense fallback=|| ()>
                 <form
                     method="post"
                     action="/todos/quick"
@@ -506,9 +527,9 @@ pub fn QuickEntryOverlay() -> impl IntoView {
                                 .get()
                                 .unwrap_or_default()
                                 .into_iter()
-                                .map(|project| {
-                                    let value = format!("project:{}", project.id);
-                                    view! { <option value=value>{project.title}</option> }
+                                .map(|(id, title)| {
+                                    let value = format!("project:{id}");
+                                    view! { <option value=value>{title}</option> }
                                 })
                                 .collect_view()
                         }}
@@ -533,9 +554,10 @@ pub fn QuickEntryOverlay() -> impl IntoView {
                     ></textarea>
                     <div class="quick-entry-actions">
                         <button type="submit" class="button-primary">"Save"</button>
-                        <a href="#" class="row-action">"Cancel"</a>
+                        <a rel="external" href="#" class="row-action">"Cancel"</a>
                     </div>
                 </form>
+                </Suspense>
             </div>
         </div>
     }
@@ -547,21 +569,24 @@ fn PreferencesSection() -> impl IntoView {
     let store =
         use_context::<Option<Arc<dyn momentum_app::preferences::PreferenceStore>>>().flatten();
     let account = use_account();
-    let stored = AsyncDerived::new(move || {
-        let store = store.clone();
-        let account = account.clone();
-        async move {
-            match (store, account) {
-                (Some(store), Some(account)) => store
-                    .load_all(account.account_id)
-                    .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .collect::<std::collections::HashMap<String, String>>(),
-                _ => std::collections::HashMap::new(),
+    let stored = Resource::new_blocking(
+        || (),
+        move |_| {
+            let store = store.clone();
+            let account = account.clone();
+            async move {
+                match (store, account) {
+                    (Some(store), Some(account)) => store
+                        .load_all(account.account_id)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .collect::<std::collections::HashMap<String, String>>(),
+                    _ => std::collections::HashMap::new(),
+                }
             }
-        }
-    });
+        },
+    );
     view! {
         <section class="preferences" data-testid="preferences">
             <h2 class="section-heading">"Preferences"</h2>
@@ -684,21 +709,24 @@ fn CalendarSection(
 ) -> impl IntoView {
     let calendar = use_context::<Option<Arc<CalendarService>>>().flatten();
     let account = use_account();
-    let projection = AsyncDerived::new(move || {
-        let calendar = calendar.clone();
-        let account = account.clone();
-        async move {
-            let (Some(calendar), Some(account)) = (calendar, account) else {
-                return momentum_app::calendar::CalendarProjection::default();
-            };
-            calendar
-                .events(
-                    account.account_id,
-                    CalendarRange::new(range_start, range_end),
-                )
-                .await
-        }
-    });
+    let projection = Resource::new_blocking(
+        || (),
+        move |_| {
+            let calendar = calendar.clone();
+            let account = account.clone();
+            async move {
+                let (Some(calendar), Some(account)) = (calendar, account) else {
+                    return momentum_app::calendar::CalendarProjection::default();
+                };
+                calendar
+                    .events(
+                        account.account_id,
+                        CalendarRange::new(range_start, range_end),
+                    )
+                    .await
+            }
+        },
+    );
     view! {
         <section data-testid="calendar-events">
             <h2 class="section-heading">"Calendar"</h2>
@@ -758,37 +786,44 @@ fn CompanionView() -> impl IntoView {
     let account = use_account();
     let account_for_progress = account.clone();
     let service_for_progress = service.clone();
-    let today = service.as_ref().map(|service| service.local_today());
-    let todos = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::Today)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
-            }
-        }
-    });
-    let progress = AsyncDerived::new(move || {
-        let service = service_for_progress.clone();
-        let account = account_for_progress.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.today_progress(account.account_id).await.ok()
+    let today =
+        SharedValue::new(|| service.as_ref().map(|service| service.local_today())).into_inner();
+    let todos = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, TodoScope::Today)
+                        .await
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
                 }
-                _ => None,
             }
-        }
-    });
+        },
+    );
+    let progress = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service_for_progress.clone();
+            let account = account_for_progress.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.today_progress(account.account_id).await.ok()
+                    }
+                    _ => None,
+                }
+            }
+        },
+    );
     view! {
         <section class="companion" data-testid="companion">
             <header class="companion-header">
                 <h1 class="list-title">"Today"</h1>
-                <a href="/today" class="row-action">"Open full app"</a>
+                <a rel="external" href="/today" class="row-action">"Open full app"</a>
             </header>
             <Suspense fallback=|| view! { <Loading/> }>
                 {move || {
@@ -923,27 +958,30 @@ fn QuickFind() -> impl IntoView {
     let recents = use_context::<Option<Arc<dyn RecentsStore>>>().flatten();
     let account = use_account();
     let query = use_query_map();
-    let results = AsyncDerived::new(move || {
-        let todos = todos.clone();
-        let projects = projects.clone();
-        let areas = areas.clone();
-        let tags = tags.clone();
-        let recents = recents.clone();
-        let account = account.clone();
-        let needle = query.read().get("q").unwrap_or_default();
-        async move {
-            match (todos, projects, account) {
-                (Some(todos), Some(projects), Some(account)) => {
-                    let service = SearchService::new(todos, projects, areas, tags, recents);
-                    service
-                        .search(account.account_id, &needle)
-                        .await
-                        .unwrap_or_default()
+    let results = Resource::new_blocking(
+        || (),
+        move |_| {
+            let todos = todos.clone();
+            let projects = projects.clone();
+            let areas = areas.clone();
+            let tags = tags.clone();
+            let recents = recents.clone();
+            let account = account.clone();
+            let needle = query.read().get("q").unwrap_or_default();
+            async move {
+                match (todos, projects, account) {
+                    (Some(todos), Some(projects), Some(account)) => {
+                        let service = SearchService::new(todos, projects, areas, tags, recents);
+                        service
+                            .search(account.account_id, &needle)
+                            .await
+                            .unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
     view! {
         <section class="list-page" data-testid="quick-find">
             <header class="list-header">
@@ -1015,7 +1053,7 @@ fn QuickFind() -> impl IntoView {
                                             data-score=scored.score.to_string()
                                             data-matched-in=matched_in.as_str()
                                         >
-                                            <a href=href class="task-title">{title}</a>
+                                            <a rel="external" href=href class="task-title">{title}</a>
                                             {scored
                                                 .recent
                                                 .then(|| {
@@ -1066,38 +1104,42 @@ fn UpcomingAgendaView() -> impl IntoView {
     let service = use_context::<Option<Arc<TodoService>>>().flatten();
     let calendar = use_context::<Option<Arc<CalendarService>>>().flatten();
     let account = use_account();
-    let today = service.as_ref().map(|service| service.local_today());
-    let agenda = AsyncDerived::new(move || {
-        let service = service.clone();
-        let calendar = calendar.clone();
-        let account = account.clone();
-        async move {
-            let (Some(service), Some(account)) = (service, account) else {
-                return momentum_app::todos::UpcomingAgenda::default();
-            };
-            let agenda = service
-                .upcoming_agenda(account.account_id)
-                .await
-                .unwrap_or_default();
-            let Some(calendar) = calendar else {
-                return agenda;
-            };
-            let today = service.local_today();
-            let mut end = today;
-            for _ in 0..60 {
-                end = end.next_day();
+    let today =
+        SharedValue::new(|| service.as_ref().map(|service| service.local_today())).into_inner();
+    let agenda = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let calendar = calendar.clone();
+            let account = account.clone();
+            async move {
+                let (Some(service), Some(account)) = (service, account) else {
+                    return momentum_app::todos::UpcomingAgenda::default();
+                };
+                let agenda = service
+                    .upcoming_agenda(account.account_id)
+                    .await
+                    .unwrap_or_default();
+                let Some(calendar) = calendar else {
+                    return agenda;
+                };
+                let today = service.local_today();
+                let mut end = today;
+                for _ in 0..60 {
+                    end = end.next_day();
+                }
+                let projection = calendar
+                    .events(account.account_id, CalendarRange::new(today, end))
+                    .await;
+                let rows = projection
+                    .events
+                    .iter()
+                    .map(momentum_app::todos::CalendarRow::from_event)
+                    .collect();
+                agenda.with_calendar_rows(rows, projection.degraded)
             }
-            let projection = calendar
-                .events(account.account_id, CalendarRange::new(today, end))
-                .await;
-            let rows = projection
-                .events
-                .iter()
-                .map(momentum_app::todos::CalendarRow::from_event)
-                .collect();
-            agenda.with_calendar_rows(rows, projection.degraded)
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="upcoming-page">
@@ -1232,43 +1274,50 @@ fn AnytimeAgendaView() -> impl IntoView {
     let project_service = use_context::<Option<Arc<ProjectService>>>().flatten();
     let account = use_account();
     let account_for_labels = account.clone();
-    let today = service.as_ref().map(|service| service.local_today());
-    let agenda = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .anytime_agenda(account.account_id)
-                    .await
-                    .unwrap_or_default(),
-                _ => momentum_app::todos::AnytimeAgenda::default(),
-            }
-        }
-    });
-    let labels = AsyncDerived::new(move || {
-        let areas = area_service.clone();
-        let projects = project_service.clone();
-        let account = account_for_labels.clone();
-        async move {
-            let Some(account) = account else {
-                return std::collections::HashMap::new();
-            };
-            let mut labels: std::collections::HashMap<EntityId, String> =
-                std::collections::HashMap::new();
-            if let Some(areas) = areas {
-                for area in areas.list(account.account_id).await.unwrap_or_default() {
-                    labels.insert(area.id, area.title);
+    let today =
+        SharedValue::new(|| service.as_ref().map(|service| service.local_today())).into_inner();
+    let agenda = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .anytime_agenda(account.account_id)
+                        .await
+                        .unwrap_or_default(),
+                    _ => momentum_app::todos::AnytimeAgenda::default(),
                 }
             }
-            if let Some(projects) = projects {
-                for project in projects.list(account.account_id).await.unwrap_or_default() {
-                    labels.insert(project.id, project.title);
+        },
+    );
+    let labels = Resource::new_blocking(
+        || (),
+        move |_| {
+            let areas = area_service.clone();
+            let projects = project_service.clone();
+            let account = account_for_labels.clone();
+            async move {
+                let Some(account) = account else {
+                    return std::collections::HashMap::new();
+                };
+                let mut labels: std::collections::HashMap<EntityId, String> =
+                    std::collections::HashMap::new();
+                if let Some(areas) = areas {
+                    for area in areas.list(account.account_id).await.unwrap_or_default() {
+                        labels.insert(area.id, area.title);
+                    }
                 }
+                if let Some(projects) = projects {
+                    for project in projects.list(account.account_id).await.unwrap_or_default() {
+                        labels.insert(project.id, project.title);
+                    }
+                }
+                labels
             }
-            labels
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="anytime-page">
@@ -1394,33 +1443,40 @@ fn SomedayList() -> impl IntoView {
     let projects_service = use_context::<Option<Arc<ProjectService>>>().flatten();
     let account = use_account();
     let account_for_projects = account.clone();
-    let today = todos_service.as_ref().map(|service| service.local_today());
-    let todos = AsyncDerived::new(move || {
-        let service = todos_service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::Someday)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
+    let today = SharedValue::new(|| todos_service.as_ref().map(|service| service.local_today()))
+        .into_inner();
+    let todos = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = todos_service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, TodoScope::Someday)
+                        .await
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
+                }
             }
-        }
-    });
-    let projects = AsyncDerived::new(move || {
-        let service = projects_service.clone();
-        let account = account_for_projects.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .someday(account.account_id)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
+        },
+    );
+    let projects = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = projects_service.clone();
+            let account = account_for_projects.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .someday(account.account_id)
+                        .await
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
+                }
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="someday-page">
@@ -1497,7 +1553,7 @@ fn SomedayProjectRow(project: ProjectSummary) -> impl IntoView {
     view! {
         <li class="task-row" data-testid="someday-project-row">
             <div class="task-row-body">
-                <a class="task-title" href=open_target>{title}</a>
+                <a rel="external" class="task-title" href=open_target>{title}</a>
                 <span class="task-row-meta">
                     <span class="row-badge">"Someday"</span>
                 </span>
@@ -1514,7 +1570,7 @@ fn SomedayProjectRow(project: ProjectSummary) -> impl IntoView {
                         "Activate"
                     </button>
                 </form>
-                <a href=format!("/projects/{id}") class="row-action" aria-label="Open project">"Edit"</a>
+                <a rel="external" href=format!("/projects/{id}") class="row-action" aria-label="Open project">"Edit"</a>
             </div>
         </li>
     }
@@ -1561,7 +1617,7 @@ fn SettingsView() -> impl IntoView {
                             })}
                         {match (service, account) {
                             (Some(service), Some(account)) => {
-                                let tokens = AsyncDerived::new(move || {
+                                let tokens = Resource::new_blocking(|| (), move |_| {
                                     let service = service.clone();
                                     async move {
                                         service.list(account.account_id).await.unwrap_or_default()
@@ -1654,7 +1710,7 @@ fn SettingsView() -> impl IntoView {
                     view! {
                         {match (inbound, account) {
                             (Some(service), Some(account)) => {
-                                let alias = AsyncDerived::new(move || {
+                                let alias = Resource::new_blocking(|| (), move |_| {
                                     let service = service.clone();
                                     async move {
                                         service.ensure_alias(account.account_id).await.ok()
@@ -1954,45 +2010,71 @@ fn InboxList() -> impl IntoView {
     let account = use_account();
     let account_for_tags = account.clone();
     let account_for_projects = account.clone();
-    let today = service.as_ref().map(|service| service.local_today());
+    let today =
+        SharedValue::new(|| service.as_ref().map(|service| service.local_today())).into_inner();
     let query = use_query_map();
-    let todos = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::Inbox)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
-            }
-        }
-    });
-    let tags = AsyncDerived::new(move || {
-        let service = tag_service.clone();
-        let account = account_for_tags.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+    let todos = Resource::new_blocking(
+        move || query.read().get("tags").unwrap_or_default(),
+        move |tags| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                let selected: Vec<EntityId> = tags
+                    .split(',')
+                    .filter_map(|value| value.parse::<EntityId>().ok())
+                    .collect();
+                let todos = match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, TodoScope::Inbox)
+                        .await
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
+                };
+                if selected.is_empty() {
+                    todos
+                } else {
+                    todos
+                        .into_iter()
+                        .filter(|todo| {
+                            selected.iter().any(|tag| {
+                                todo.tags.contains(tag) || todo.inherited_tags.contains(tag)
+                            })
+                        })
+                        .collect()
                 }
-                _ => Vec::new(),
             }
-        }
-    });
-    let projects = AsyncDerived::new(move || {
-        let service = project_service.clone();
-        let account = account_for_projects.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+        },
+    );
+    let tags = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = tag_service.clone();
+            let account = account_for_tags.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
+    let projects = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = project_service.clone();
+            let account = account_for_projects.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
+                }
+            }
+        },
+    );
     let selected_tags = move || -> Vec<EntityId> {
         query
             .read()
@@ -2044,7 +2126,7 @@ fn InboxList() -> impl IntoView {
                                     format!("Filter by {}", tag.title)
                                 };
                                 view! {
-                                    <a
+                                    <a rel="external"
                                         href=href
                                         class=if active { "tag-chip tag-chip-active" } else { "tag-chip" }
                                         aria-label=label
@@ -2060,7 +2142,7 @@ fn InboxList() -> impl IntoView {
                             {(!selected.is_empty())
                                 .then(|| {
                                     view! {
-                                        <a href="/inbox" class="tag-chip tag-chip-clear">"Clear"</a>
+                                        <a rel="external" href="/inbox" class="tag-chip tag-chip-clear">"Clear"</a>
                                     }
                                 })}
                         }
@@ -2166,18 +2248,16 @@ fn InboxList() -> impl IntoView {
                                     })
                                     .collect_view();
                                 view! {
-                                    <form
-                                        id="bulk-form"
-                                        method="post"
-                                        action="/todos/bulk"
+                                    <div
                                         class="bulk-form"
                                         data-testid="bulk-form"
                                     >
-                                        <input type="hidden" name="return_to" value="/inbox"/>
                                         <ul class="task-list" data-testid="task-list">
                                             {rows}
                                         </ul>
-                                        <div class="bulk-actions" data-testid="bulk-actions">
+                                        <form id="bulk-form" method="post" action="/todos/bulk"
+                                            class="bulk-actions" data-testid="bulk-actions">
+                                            <input type="hidden" name="return_to" value="/inbox"/>
                                             <select name="action" aria-label="Bulk action">
                                                 <option value="complete">"Complete"</option>
                                                 <option value="cancel">"Cancel"</option>
@@ -2214,8 +2294,8 @@ fn InboxList() -> impl IntoView {
                                             <button type="submit" class="button-primary">
                                                 "Apply to selected"
                                             </button>
-                                        </div>
-                                    </form>
+                                        </form>
+                                    </div>
                                 }
                                     .into_any()
                             }
@@ -2392,6 +2472,7 @@ fn TodoRow(
                         <input
                             type="checkbox"
                             name="ids"
+                            form="bulk-form"
                             value=id.to_string()
                             class="bulk-select"
                             aria-label=format!("Select {title}")
@@ -2401,7 +2482,7 @@ fn TodoRow(
                 })}
             <CheckControl checked=completed label=title.clone()/>
             <div class="task-row-body">
-                <a class="task-title" href=open_target.clone()>
+                <a rel="external" class="task-title" href=open_target.clone()>
                     {title}
                 </a>
                 <span class="task-row-meta">
@@ -2548,7 +2629,7 @@ fn TodoRow(
                             </form>
                         }
                     })}
-                <a class="row-action" href=open_target.clone() aria-label="Open to-do">"Edit"</a>
+                <a rel="external" class="row-action" href=open_target.clone() aria-label="Open to-do">"Edit"</a>
             </div>
             {expand
                 .map(|editor| {
@@ -2631,7 +2712,7 @@ fn TodoRow(
                                         {notes_value}
                                     </textarea>
                                     <button type="submit" class="button-primary">"Save"</button>
-                                    <a href=cancel_target class="row-action">"Cancel"</a>
+                                    <a rel="external" href=cancel_target class="row-action">"Cancel"</a>
                                 </form>
                                 <div class="editor-meta" data-testid="editor-meta">
                                     <span class="editor-meta-label">"Schedule"</span>
@@ -2747,7 +2828,7 @@ fn TodoRow(
                                     </form>
                                     <span class="editor-meta-label">"Tags"</span>
                                     {tag_forms}
-                                    <a href=detail_target class="row-action">
+                                    <a rel="external" href=detail_target class="row-action">
                                         "Checklist & recurrence"
                                     </a>
                                 </div>
@@ -2778,18 +2859,21 @@ fn TodoEditor(#[prop(into)] id: String) -> impl IntoView {
     let account = use_account();
     let parsed = id.parse::<momentum_domain::EntityId>().ok();
 
-    let todo = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account, parsed) {
-                (Some(service), Some(account), Some(id)) => {
-                    service.get(account.account_id, id).await.ok().flatten()
+    let todo = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account, parsed) {
+                    (Some(service), Some(account), Some(id)) => {
+                        service.get(account.account_id, id).await.ok().flatten()
+                    }
+                    _ => None,
                 }
-                _ => None,
             }
-        }
-    });
+        },
+    );
 
     view! {
         <Suspense fallback=|| view! { <Loading/> }>
@@ -2802,7 +2886,7 @@ fn TodoEditor(#[prop(into)] id: String) -> impl IntoView {
                                     <section class="entity-page" data-testid="todo-not-found">
                                         <h1>"To-Do not found"</h1>
                                         <p>
-                                            <a href="/inbox">"Back to Inbox"</a>
+                                            <a rel="external" href="/inbox">"Back to Inbox"</a>
                                         </p>
                                     </section>
                                 }
@@ -2973,18 +3057,21 @@ fn TodoEditorBody(todo: TodoSummary) -> impl IntoView {
 fn TagAssignments(todo_id: EntityId, tags: Vec<EntityId>) -> impl IntoView {
     let tag_service = use_context::<Option<Arc<TagService>>>().flatten();
     let account = use_account();
-    let all_tags = AsyncDerived::new(move || {
-        let service = tag_service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+    let all_tags = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = tag_service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="tag-assignments" data-testid="tag-assignments">
@@ -3063,18 +3150,21 @@ pub fn RecurringPage() -> impl IntoView {
 fn RecurringList() -> impl IntoView {
     let service = use_context::<Option<Arc<RecurringService>>>().flatten();
     let account = use_account();
-    let templates = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+    let templates = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="repeating-page">
@@ -3123,7 +3213,7 @@ fn RecurrenceRow(template: RecurrenceTemplateSummary) -> impl IntoView {
     view! {
         <li class="task-row" data-testid="repeating-row">
             <div class="task-row-body">
-                <a class="task-title" href=format!("/todos/{id}")>
+                <a rel="external" class="task-title" href=format!("/todos/{id}")>
                     {title}
                 </a>
                 <span class="task-row-meta">
@@ -3148,18 +3238,21 @@ pub fn LoggedProjectsPage() -> impl IntoView {
 fn LoggedProjectsList() -> impl IntoView {
     let service = use_context::<Option<Arc<ProjectService>>>().flatten();
     let account = use_account();
-    let projects = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.logged(account.account_id).await.unwrap_or_default()
+    let projects = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.logged(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="logged-projects-page">
@@ -3197,7 +3290,7 @@ fn LoggedProjectsList() -> impl IntoView {
                                                         data-testid="logged-project-row"
                                                     >
                                                         <div class="task-row-body">
-                                                            <a
+                                                            <a rel="external"
                                                                 class="task-title"
                                                                 href=format!("/projects/{id}")
                                                             >
@@ -3242,43 +3335,52 @@ fn TrashView() -> impl IntoView {
     let account = use_account();
     let account_for_projects = account.clone();
     let account_for_areas = account.clone();
-    let todos = AsyncDerived::new(move || {
-        let service = todo_service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::Trash)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
-            }
-        }
-    });
-    let projects = AsyncDerived::new(move || {
-        let service = project_service.clone();
-        let account = account_for_projects.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.trash(account.account_id).await.unwrap_or_default()
+    let todos = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = todo_service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, TodoScope::Trash)
+                        .await
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
-    let areas = AsyncDerived::new(move || {
-        let service = area_service.clone();
-        let account = account_for_areas.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.trash(account.account_id).await.unwrap_or_default()
+        },
+    );
+    let projects = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = project_service.clone();
+            let account = account_for_projects.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.trash(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
+    let areas = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = area_service.clone();
+            let account = account_for_areas.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.trash(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
+                }
+            }
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="trash-page">
@@ -3407,16 +3509,19 @@ pub fn LogbookPage() -> impl IntoView {
 fn LogbookView() -> impl IntoView {
     let service = use_context::<Option<Arc<LogbookService>>>().flatten();
     let account = use_account();
-    let agenda = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service.agenda(account.account_id).await.ok(),
-                _ => None,
+    let agenda = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service.agenda(account.account_id).await.ok(),
+                    _ => None,
+                }
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="logbook-page">
@@ -3544,7 +3649,7 @@ fn LogbookEntryRow(entry: LogbookEntry, manual: bool) -> impl IntoView {
             view! {
                 <li class="task-row" data-testid="logbook-project-row">
                     <div class="task-row-body">
-                        <a class="task-title" href=open_target>
+                        <a rel="external" class="task-title" href=open_target>
                             {title}
                         </a>
                         <span class="task-row-meta">
@@ -3587,18 +3692,21 @@ pub fn TagsPage() -> impl IntoView {
 fn TagsList() -> impl IntoView {
     let service = use_context::<Option<Arc<TagService>>>().flatten();
     let account = use_account();
-    let tags = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+    let tags = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="tags-page">
@@ -3855,18 +3963,21 @@ pub fn AreasPage() -> impl IntoView {
 fn AreasList() -> impl IntoView {
     let service = use_context::<Option<Arc<AreaService>>>().flatten();
     let account = use_account();
-    let areas = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+    let areas = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="areas-page">
@@ -3930,7 +4041,7 @@ fn AreaRow(area: AreaSummary) -> impl IntoView {
     view! {
         <li class="task-row" data-testid="area-row">
             <div class="task-row-body">
-                <a class="task-title" href=open_target>{title.clone()}</a>
+                <a rel="external" class="task-title" href=open_target>{title.clone()}</a>
                 <span class="task-row-meta">
                     <span class="row-badge">{counts}</span>
                 </span>
@@ -3972,39 +4083,45 @@ fn AreaDetail(#[prop(into)] id: String) -> impl IntoView {
     let account_for_area = account.clone();
     let parsed = id.parse::<momentum_domain::EntityId>().ok();
 
-    let area = AsyncDerived::new(move || {
-        let service = area_service.clone();
-        let account = account_for_area.clone();
-        async move {
-            match (service, account, parsed) {
-                (Some(service), Some(account), Some(id)) => {
-                    service.get(account.account_id, id).await.ok().flatten()
+    let area = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = area_service.clone();
+            let account = account_for_area.clone();
+            async move {
+                match (service, account, parsed) {
+                    (Some(service), Some(account), Some(id)) => {
+                        service.get(account.account_id, id).await.ok().flatten()
+                    }
+                    _ => None,
                 }
-                _ => None,
             }
-        }
-    });
+        },
+    );
 
-    let loose_todos = AsyncDerived::new(move || {
-        let service = todo_service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::AllOpen)
-                    .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|todo| {
-                        parsed.is_some_and(|id| {
-                            todo.context == momentum_domain::model::ContextRef::Area(id)
+    let loose_todos = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = todo_service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, TodoScope::AllOpen)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|todo| {
+                            parsed.is_some_and(|id| {
+                                todo.context == momentum_domain::model::ContextRef::Area(id)
+                            })
                         })
-                    })
-                    .collect(),
-                _ => Vec::new(),
+                        .collect(),
+                    _ => Vec::new(),
+                }
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="entity-page" data-testid="area-detail">
@@ -4018,7 +4135,7 @@ fn AreaDetail(#[prop(into)] id: String) -> impl IntoView {
                                         <header class="entity-header">
                                             <h1 class="entity-title">"Area not found"</h1>
                                             <p>
-                                                <a href="/areas">"Back to Areas"</a>
+                                                <a rel="external" href="/areas">"Back to Areas"</a>
                                             </p>
                                         </header>
                                     }
@@ -4090,18 +4207,21 @@ pub fn ProjectsPage() -> impl IntoView {
 fn ProjectsList() -> impl IntoView {
     let service = use_context::<Option<Arc<ProjectService>>>().flatten();
     let account = use_account();
-    let projects = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => {
-                    service.list(account.account_id).await.unwrap_or_default()
+    let projects = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        service.list(account.account_id).await.unwrap_or_default()
+                    }
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="list-page" data-testid="projects-page">
@@ -4109,7 +4229,7 @@ fn ProjectsList() -> impl IntoView {
                 <h1 class="list-title">"Projects"</h1>
                 <p class="list-description">"All open projects."</p>
                 <p>
-                    <a href="/projects/logged" class="row-action">"Logged projects"</a>
+                    <a rel="external" href="/projects/logged" class="row-action">"Logged projects"</a>
                 </p>
             </header>
             <form method="post" action="/projects" class="add-form" data-testid="add-project-form">
@@ -4167,7 +4287,7 @@ fn ProjectListRow(project: ProjectSummary) -> impl IntoView {
     view! {
         <li class="task-row" data-testid="project-row">
             <div class="task-row-body">
-                <a class="task-title" href=open_target>{title}</a>
+                <a rel="external" class="task-title" href=open_target>{title}</a>
                 <span class="task-row-meta">
                     <span class="row-badge">{counts}</span>
                     {progress}
@@ -4227,37 +4347,78 @@ fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
     let todo_service = use_context::<Option<Arc<TodoService>>>().flatten();
     let account = use_account();
     let account_for_project = account.clone();
+    let project_service_for_children = project_service.clone();
     let parsed = id.parse::<momentum_domain::EntityId>().ok();
-    let today = project_service
-        .as_ref()
-        .map(|service| service.local_today());
+    let today = SharedValue::new(|| {
+        project_service
+            .as_ref()
+            .map(|service| service.local_today())
+    })
+    .into_inner();
 
-    let project = AsyncDerived::new(move || {
-        let service = project_service.clone();
-        let account = account_for_project.clone();
-        async move {
-            match (service, account, parsed) {
-                (Some(service), Some(account), Some(id)) => {
-                    service.get(account.account_id, id).await.ok().flatten()
+    let project = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = project_service.clone();
+            let account = account_for_project.clone();
+            async move {
+                match (service, account, parsed) {
+                    (Some(service), Some(account), Some(id)) => {
+                        service.get(account.account_id, id).await.ok().flatten()
+                    }
+                    _ => None,
                 }
-                _ => None,
             }
-        }
-    });
+        },
+    );
 
-    let children = AsyncDerived::new(move || {
-        let service = todo_service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::AllOpen)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
+    let children = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = todo_service.clone();
+            let projects = project_service_for_children.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => {
+                        let Some(project_id) = parsed else {
+                            return Vec::new();
+                        };
+                        let heading_ids: Vec<EntityId> = match projects {
+                            Some(projects) => projects
+                                .get(account.account_id, project_id)
+                                .await
+                                .ok()
+                                .flatten()
+                                .map(|project| {
+                                    project
+                                        .headings
+                                        .into_iter()
+                                        .map(|heading| heading.id)
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                            None => Vec::new(),
+                        };
+                        service
+                            .list(account.account_id, TodoScope::AllOpen)
+                            .await
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|todo| match todo.context {
+                                momentum_domain::model::ContextRef::Project(id) => id == project_id,
+                                momentum_domain::model::ContextRef::Heading(id) => {
+                                    heading_ids.contains(&id)
+                                }
+                                _ => false,
+                            })
+                            .collect()
+                    }
+                    _ => Vec::new(),
+                }
             }
-        }
-    });
+        },
+    );
 
     view! {
         <section class="entity-page" data-testid="project-detail">
@@ -4272,7 +4433,7 @@ fn ProjectDetail(#[prop(into)] id: String) -> impl IntoView {
                                         <header class="entity-header">
                                             <h1 class="entity-title">"Project not found"</h1>
                                             <p>
-                                                <a href="/projects">"Back to Projects"</a>
+                                                <a rel="external" href="/projects">"Back to Projects"</a>
                                             </p>
                                         </header>
                                     }
@@ -4712,7 +4873,7 @@ fn NotesTools(
                             {(!matches.is_empty())
                                 .then(|| {
                                     view! {
-                                        <a
+                                        <a rel="external"
                                             href=format!("?find={encoded}&from={prev_start}")
                                             class="row-action"
                                             aria-label="Previous match"
@@ -4720,7 +4881,7 @@ fn NotesTools(
                                         >
                                             "Previous"
                                         </a>
-                                        <a
+                                        <a rel="external"
                                             href=format!("?find={encoded}&from={next_start}")
                                             class="row-action"
                                             aria-label="Next match"
@@ -4913,19 +5074,22 @@ fn ProjectionList(
 ) -> impl IntoView {
     let service = use_context::<Option<Arc<TodoService>>>().flatten();
     let account = use_account();
-    let todos = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, scope)
-                    .await
-                    .unwrap_or_default(),
-                _ => Vec::new(),
+    let todos = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, scope)
+                        .await
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
+                }
             }
-        }
-    });
+        },
+    );
     let page_testid = format!("{slug}-page");
     let list_testid = format!("{slug}-list");
     let empty_testid = format!("{slug}-empty");

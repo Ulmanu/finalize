@@ -22,7 +22,7 @@ use crate::todos::TodoService;
 pub const INBOUND_DOMAIN: &str = "inbox.momentum.example";
 
 /// A high-entropy inbound alias.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InboundAlias {
     /// Secret token.
     pub token: String,

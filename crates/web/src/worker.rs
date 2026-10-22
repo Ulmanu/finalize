@@ -18,8 +18,8 @@ use momentum_app::todos::TodoService;
 use momentum_domain::time::LocalDate;
 use momentum_infra::db::Database;
 use momentum_infra::{
-    PgMaterializerStore, PgReminderSource, PgTagReadStore, PgTodoReadStore,
-    PgUnitOfWorkFactory, ServerConfig, SystemClock,
+    PgMaterializerStore, PgReminderSource, PgTagReadStore, PgTodoReadStore, PgUnitOfWorkFactory,
+    ServerConfig, SystemClock,
 };
 
 /// Interval between worker passes.
@@ -45,8 +45,8 @@ impl ReminderNotifier for LoggingNotifier {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing::subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing::subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
 

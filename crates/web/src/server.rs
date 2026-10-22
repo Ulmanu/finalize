@@ -443,6 +443,13 @@ async fn session_middleware(
     next: Next,
 ) -> Response {
     let session = state.session_resolver.resolve(request.headers()).await;
+    // Local mode already supplies a workspace; entry and account URLs should open it.
+    if state.auth.is_none()
+        && session.account().is_some()
+        && matches!(request.uri().path(), "/" | "/login" | "/signup")
+    {
+        return axum::response::Redirect::to("/today").into_response();
+    }
     request.extensions_mut().insert(session);
     next.run(request).await
 }

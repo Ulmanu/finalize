@@ -18,7 +18,9 @@ use crate::tags::TagService;
 use crate::todos::{TodoScope, TodoService, TodoSummary};
 
 /// What kind of destination a hit is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum SearchKind {
     /// A built-in or special list.
     List,
@@ -53,7 +55,9 @@ impl SearchKind {
 }
 
 /// Which field matched the query.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum SearchField {
     /// The title matched.
     Title,
@@ -76,7 +80,7 @@ impl SearchField {
 }
 
 /// One navigable destination.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchHit {
     /// Display title (original, unnormalized text).
     pub title: String,
@@ -89,7 +93,7 @@ pub struct SearchHit {
 }
 
 /// A ranked hit.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScoredHit {
     /// The destination.
     pub hit: SearchHit,

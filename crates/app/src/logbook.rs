@@ -28,7 +28,7 @@ pub trait LoggingPolicyStore: Send + Sync {
 }
 
 /// One Logbook entry: a terminal to-do or project.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LogbookEntry {
     /// A logged/canceled/completed to-do.
     Todo(TodoSummary),
@@ -86,7 +86,7 @@ impl LogbookEntry {
 }
 
 /// One day of Logbook history, newest first.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LogbookDay {
     /// Local calendar date of the entries.
     pub date: LocalDate,
@@ -95,7 +95,7 @@ pub struct LogbookDay {
 }
 
 /// The Logbook projection.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LogbookAgenda {
     /// Active logging policy.
     pub policy: LoggingPolicy,

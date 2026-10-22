@@ -11,7 +11,7 @@ use crate::commands::{
 };
 
 /// Read model for a tag.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TagSummary {
     /// Canonical identity.
     pub id: EntityId,

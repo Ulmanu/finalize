@@ -180,28 +180,19 @@ pub fn use_account() -> Option<AccountSession> {
 /// Renders the session bootstrap element consumed during hydration.
 #[component]
 pub fn SessionBootstrap(session: SessionState) -> impl IntoView {
-    #[cfg(feature = "ssr")]
-    {
-        let json = json_for_script(&session);
-        view! {
-            <script
-                type="application/json"
-                id=SESSION_BOOTSTRAP_ID
-                inner_html=json
-            ></script>
-        }
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = session;
-        view! { <span hidden=true data-role="session-bootstrap"></span> }
+    let json = json_for_script(&session);
+    view! {
+        <script
+            type="application/json"
+            id=SESSION_BOOTSTRAP_ID
+            inner_html=json
+        ></script>
     }
 }
 
 /// Serializes a session state for embedding in an HTML document.
 ///
 /// `<` is escaped so that account data can never terminate the surrounding element.
-#[cfg(feature = "ssr")]
 #[must_use]
 pub fn json_for_script(session: &SessionState) -> String {
     serde_json::to_string(session)

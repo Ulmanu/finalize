@@ -18,7 +18,7 @@ pub fn PublicLayout(children: Children) -> impl IntoView {
     view! {
         <div class="public-layout" data-testid="public-layout">
             <header class="public-header">
-                <a class="brand" href="/">{product}</a>
+                <a rel="external" class="brand" href="/">{product}</a>
             </header>
             <main class="public-main">{children()}</main>
         </div>
@@ -128,24 +128,27 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     let query = use_query_map();
     let location = use_location();
     let popout = move || query.read().get("popout").is_some();
-    #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
-    let pull_state = StoredValue::new(None::<(f64, f64, std::time::Instant, bool)>);
     let replica = use_context::<Option<Arc<momentum_app::replica::OfflineCoordinator>>>().flatten();
-    let pending = AsyncDerived::new(move || {
-        let replica = replica.clone();
-        async move {
-            match replica {
-                Some(replica) => replica
-                    .startup()
-                    .await
-                    .ok()
-                    .map(|startup| startup.pending.len()),
-                None => None,
+    let pending = Resource::new_blocking(
+        || (),
+        move |_| {
+            let replica = replica.clone();
+            async move {
+                match replica {
+                    Some(replica) => replica
+                        .startup()
+                        .await
+                        .ok()
+                        .map(|startup| startup.pending.len()),
+                    None => None,
+                }
             }
-        }
-    });
+        },
+    );
     #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
-    let navigate = leptos_router::hooks::use_navigate();
+    let navigate = |path: &str| {
+        let _ = leptos::prelude::window().location().set_href(path);
+    };
     #[cfg(all(feature = "hydrate", target_arch = "wasm32"))]
     {
         let navigate = navigate.clone();
@@ -169,7 +172,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                 ) {
                     event.prevent_default();
                     let target = format!("/search?q={}", crate::routes::percent_encode(&seed));
-                    keydown_navigate(&target, Default::default());
+                    keydown_navigate(&target);
                 }
             });
             let document = leptos::prelude::document();
@@ -215,7 +218,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                                 u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
                             if momentum_app::gestures::pull_to_search(at_top, dx, dy, duration) {
                                 event.prevent_default();
-                                navigate("/search", Default::default());
+                                navigate("/search");
                             }
                         }
                     }
@@ -228,7 +231,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
     }
 
     view! {
-        <a href="#app-main" class="skip-link">"Skip to content"</a>
+        <a rel="external" href="#app-main" class="skip-link">"Skip to content"</a>
         <div
             class="app-layout"
             data-testid="app-layout"
@@ -245,7 +248,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                 .then(|| {
                     view! {
                         <header class="popout-header" data-testid="popout-header">
-                            <a
+                            <a rel="external"
                                 href=move || location.pathname.get()
                                 class="row-action"
                                 data-testid="popout-exit"
@@ -269,7 +272,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                     >
                         <span class="nav-toggle-icon" aria-hidden="true"></span>
                     </button>
-                    <A href="/today" attr:class="brand">{product}</A>
+                    <A href="/today" attr:rel="external" attr:class="brand">{product}</A>
                     <form
                         method="get"
                         action="/search"
@@ -284,7 +287,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                             autocomplete="off"
                         />
                     </form>
-                    <a
+                    <a rel="external"
                         href="#quick-entry"
                         class="quick-entry-trigger"
                         data-testid="quick-entry-trigger"
@@ -296,7 +299,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                     <a
                         href=move || format!("{}?popout=1", location.pathname.get())
                         target="_blank"
-                        rel="noopener"
+                        rel="noopener external"
                         class="row-action"
                         data-testid="popout-link"
                     >
@@ -318,7 +321,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                                 let is_inbox = destination.href == "/inbox";
                                 view! {
                                     <li class="nav-item">
-                                        <A href=destination.href attr:class="nav-link">
+                                        <A href=destination.href attr:rel="external" attr:class="nav-link">
                                             {destination.label}
                                             {is_inbox.then(|| view! { <InboxBadge/> })}
                                         </A>
@@ -334,7 +337,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                                 .map(|destination| {
                                     view! {
                                         <li class="nav-item">
-                                            <A href=destination.href attr:class="nav-link">
+                                            <A href=destination.href attr:rel="external" attr:class="nav-link">
                                                 {destination.label}
                                             </A>
                                         </li>
@@ -372,7 +375,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                         .iter()
                         .map(|destination| {
                             view! {
-                                <A href=destination.href attr:class="bottom-nav-link">
+                                <A href=destination.href attr:rel="external" attr:class="bottom-nav-link">
                                     {destination.label}
                                 </A>
                             }
@@ -387,6 +390,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                 .then(|| {
                     view! {
                 <footer class="app-footer" aria-label="Account">
+                    <Suspense fallback=|| ()>
                     {move || {
                         pending
                             .get()
@@ -400,6 +404,7 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
                                 }
                             })
                     }}
+                    </Suspense>
                     <span class="account-label">{account_label}</span>
                 </footer>
                     }
@@ -413,19 +418,22 @@ pub fn AppLayout(children: ChildrenFn) -> impl IntoView {
 fn InboxBadge() -> impl IntoView {
     let service = use_context::<Option<Arc<TodoService>>>().flatten();
     let account = use_account();
-    let count = AsyncDerived::new(move || {
-        let service = service.clone();
-        let account = account.clone();
-        async move {
-            match (service, account) {
-                (Some(service), Some(account)) => service
-                    .list(account.account_id, TodoScope::Inbox)
-                    .await
-                    .map_or(0, |todos| todos.len()),
-                _ => 0,
+    let count = Resource::new_blocking(
+        || (),
+        move |_| {
+            let service = service.clone();
+            let account = account.clone();
+            async move {
+                match (service, account) {
+                    (Some(service), Some(account)) => service
+                        .list(account.account_id, TodoScope::Inbox)
+                        .await
+                        .map_or(0, |todos| todos.len()),
+                    _ => 0,
+                }
             }
-        }
-    });
+        },
+    );
     view! {
         <Suspense fallback=|| view! { <span class="nav-badge" aria-hidden="true"></span> }>
             {move || {

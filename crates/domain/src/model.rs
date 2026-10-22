@@ -188,7 +188,7 @@ impl std::str::FromStr for Title {
 
 /// Schedule state of an entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", content = "date", rename_all = "snake_case")]
 pub enum ScheduleState {
     /// Actionable now with no start date.
     Anytime,
@@ -494,7 +494,7 @@ impl Reminder {
 
 /// The single contextual parent of a to-do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
 pub enum ContextRef {
     /// Not yet filed: the Inbox projection owns it.
     Inbox,

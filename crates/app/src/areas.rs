@@ -14,7 +14,7 @@ use crate::commands::{
 };
 
 /// Read model for an area.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AreaSummary {
     /// Canonical identity.
     pub id: EntityId,

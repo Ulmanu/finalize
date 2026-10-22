@@ -33,7 +33,7 @@ pub enum QuickSchedule {
 }
 
 /// Read model for one checklist item.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChecklistItemSummary {
     /// Item identity.
     pub id: momentum_domain::ChecklistItemId,
@@ -44,7 +44,7 @@ pub struct ChecklistItemSummary {
 }
 
 /// Read model for a to-do.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TodoSummary {
     /// Canonical identity.
     pub id: EntityId,
@@ -81,7 +81,7 @@ pub struct TodoSummary {
 }
 
 /// Derived progress for a set of completable items.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Progress {
     /// Completed eligible items.
     pub completed: usize,
@@ -137,7 +137,7 @@ impl TodoSummary {
 }
 
 /// One date group of the Upcoming agenda.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UpcomingDay {
     /// Local calendar date shared by the group.
     pub date: LocalDate,
@@ -149,7 +149,7 @@ pub struct UpcomingDay {
 ///
 /// Calendar rows carry no entity identity, so task mutations cannot target them; an integration
 /// that supports editing must introduce its own provider-neutral command path first.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CalendarRow {
     /// Local calendar date of the event.
     pub date: LocalDate,
@@ -169,7 +169,7 @@ impl CalendarRow {
 }
 
 /// The Upcoming agenda: date-grouped task rows plus read-only calendar rows.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UpcomingAgenda {
     /// Future scheduled items grouped by local date, ascending.
     pub days: Vec<UpcomingDay>,
@@ -223,7 +223,7 @@ impl UpcomingAgenda {
 }
 
 /// One context group of the Anytime projection.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AnytimeGroup {
     /// Existing contextual parent shared by the group (Inbox, area, or project).
     pub context: ContextRef,
@@ -234,7 +234,7 @@ pub struct AnytimeGroup {
 /// The Anytime projection grouped by existing context.
 ///
 /// Grouping reflects contexts that already exist; rendering never creates parent relationships.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AnytimeAgenda {
     /// Groups ordered Inbox first, then areas, then projects, deterministically by identity.
     pub groups: Vec<AnytimeGroup>,

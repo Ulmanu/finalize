@@ -139,6 +139,11 @@ async fn request(
 #[tokio::test]
 async fn local_mode_serves_authenticated_pages_without_sign_in() {
     let h = harness();
+    for path in ["/", "/login", "/signup"] {
+        let (status, location, _) = request(&h, "GET", path, None).await;
+        assert_eq!(status, StatusCode::SEE_OTHER, "{path}");
+        assert_eq!(location.as_deref(), Some("/today"), "{path}");
+    }
     let (status, _, body) = request(&h, "GET", "/today", None).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("Finalize"), "{body}");
