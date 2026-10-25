@@ -38,6 +38,7 @@ pub mod sync;
 pub mod tabs;
 pub mod tags;
 pub mod todos;
+pub mod ui_commands;
 pub mod undo;
 
 use momentum_domain::BuildInfo;

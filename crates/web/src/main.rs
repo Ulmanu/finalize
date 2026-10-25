@@ -18,6 +18,7 @@ use momentum_app::session::{AccountSession, SessionState};
 use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
+use momentum_app::ui_commands::UiCommandService;
 #[cfg(feature = "local")]
 use momentum_domain::AccountId;
 use momentum_infra::PgApiTokenStore;
@@ -55,18 +56,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let database = connect_database(&config).await?;
     let metrics = Arc::new(Metrics::new());
 
-    let (session_resolver, auth, todos, areas, projects, tags, logbook, recurring, sync, hints): (
-        Arc<dyn SessionResolver>,
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-    ) = match &database {
+    let (
+        session_resolver,
+        auth,
+        todos,
+        areas,
+        projects,
+        tags,
+        logbook,
+        recurring,
+        sync,
+        hints,
+        ui_commands,
+    ): (Arc<dyn SessionResolver>, _, _, _, _, _, _, _, _, _, _) = match &database {
         Some(database) => {
             let store = Arc::new(PgAuthStore::new(database.pool().clone()));
             let (accounts, sessions, tokens) = store.ports();
@@ -85,6 +87,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Arc::new(PgUnitOfWorkFactory::new(database.pool().clone())),
                 clock.clone(),
             ));
+            let ui_commands = Arc::new(UiCommandService::new(dispatcher.clone(), clock.clone()));
             let reader = Arc::new(PgTodoReadStore::new(database.pool().clone()));
             let todo_service =
                 Arc::new(TodoService::new(dispatcher.clone(), reader, clock.clone()));
@@ -142,6 +145,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Some(recurring),
                 Some(sync),
                 Some(hints),
+                Some(ui_commands),
             )
         }
         None => {
@@ -166,6 +170,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Arc::new(database.clone()),
                     clock.clone(),
                 ));
+                let ui_commands =
+                    Arc::new(UiCommandService::new(dispatcher.clone(), clock.clone()));
                 let todo_service = Arc::new(TodoService::new(
                     dispatcher.clone(),
                     Arc::new(MemoryTodoReadStore::new(database.clone())),
@@ -225,12 +231,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Some(recurring),
                     Some(sync),
                     Some(hints),
+                    Some(ui_commands),
                 )
             }
             #[cfg(not(feature = "local"))]
             {
                 (
                     Arc::new(AnonymousSessionResolver) as Arc<dyn SessionResolver>,
+                    None,
                     None,
                     None,
                     None,
@@ -257,6 +265,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         projects,
     )
     .with_metrics(metrics.clone());
+    let state = match ui_commands {
+        Some(ui_commands) => state.with_ui_commands(ui_commands),
+        None => state,
+    };
     let state = match tags {
         Some(tags) => state.with_tags(tags),
         None => state,

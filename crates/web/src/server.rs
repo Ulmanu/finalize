@@ -29,6 +29,7 @@ use momentum_app::search::RecentsStore;
 use momentum_app::sync::SyncService;
 use momentum_app::tags::TagService;
 use momentum_app::todos::TodoService;
+use momentum_app::ui_commands::UiCommandService;
 use momentum_infra::Database;
 use serde::Serialize;
 
@@ -77,6 +78,8 @@ pub struct AppState {
     pub auth: Option<Arc<AuthContext>>,
     /// To-do service, when persistence is configured.
     pub todos: Option<Arc<TodoService>>,
+    /// Authenticated first-party UI command facade, when mutations are configured.
+    pub ui_commands: Option<Arc<UiCommandService>>,
     /// Area service, when persistence is configured.
     pub areas: Option<Arc<AreaService>>,
     /// Project service, when persistence is configured.
@@ -131,6 +134,7 @@ impl AppState {
             session_resolver,
             auth,
             todos,
+            ui_commands: None,
             areas,
             projects,
             tags: None,
@@ -169,6 +173,13 @@ impl AppState {
     #[must_use]
     pub fn with_preferences(mut self, preferences: Arc<dyn PreferenceStore>) -> Self {
         self.preferences = Some(preferences);
+        self
+    }
+
+    /// Adds the first-party UI command facade.
+    #[must_use]
+    pub fn with_ui_commands(mut self, ui_commands: Arc<UiCommandService>) -> Self {
+        self.ui_commands = Some(ui_commands);
         self
     }
 
@@ -364,6 +375,7 @@ pub fn router_with_state(state: AppState) -> Router {
     let paths = generate_route_list(App);
     let shell_options = state.leptos_options.clone();
     let todo_service = state.todos.clone();
+    let ui_commands = state.ui_commands.clone();
     let area_service = state.areas.clone();
     let project_service = state.projects.clone();
     let tag_service = state.tags.clone();
@@ -407,6 +419,9 @@ pub fn router_with_state(state: AppState) -> Router {
             paths,
             move || {
                 provide_context(todo_service.clone());
+                if let Some(service) = ui_commands.clone() {
+                    provide_context(service);
+                }
                 provide_context(area_service.clone());
                 provide_context(project_service.clone());
                 provide_context(tag_service.clone());

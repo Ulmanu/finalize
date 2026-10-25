@@ -15,9 +15,13 @@ use leptos_router::path;
 use crate::boundaries::{Loading, NotFound};
 use crate::design::CheckControl;
 use crate::layouts::{Protected, PublicLayout};
+use crate::protocol::mutation::UiCommandResponse;
 use crate::session::use_account;
+use crate::state::client_store::ClientStore;
+use crate::state::pending::ClientCommandBus;
 use momentum_app::areas::{AreaService, AreaSummary};
 use momentum_app::calendar::{CalendarRange, CalendarService};
+use momentum_app::commands::Command;
 use momentum_app::logbook::{LogbookAgenda, LogbookEntry, LogbookService};
 use momentum_app::projects::{HeadingSummary, ProjectOrderItem, ProjectService, ProjectSummary};
 use momentum_app::recurring::{RecurrenceTemplateSummary, RecurringService};
@@ -2351,12 +2355,29 @@ fn TodoRow(
     let selected_tags = todo.tags.clone();
     let title = todo.title.clone();
     let completed = todo.status == Status::Completed;
-    let row_class = if completed {
-        "task-row task-row-completed"
-    } else {
-        "task-row"
-    };
-    let toggle_target = format!("/todos/{id}/complete");
+    let store = ClientStore::use_store();
+    store.upsert_todo(todo.clone());
+    let checked = RwSignal::new(completed);
+    let checked_signal = Signal::derive(move || checked.get());
+    let command_bus = ClientCommandBus::use_bus();
+    let on_toggle = Callback::new(move |_| {
+        let previous = checked.get_untracked();
+        checked.set(!previous);
+        let command = if previous {
+            Command::ReopenTodo { id }
+        } else {
+            Command::CompleteTodo { id }
+        };
+        let checked_after_request = checked;
+        let on_complete = Callback::new(move |result: Result<UiCommandResponse, String>| {
+            if result.is_err() {
+                checked_after_request.set(previous);
+            }
+        });
+        if command_bus.dispatch(command, Some(on_complete)).is_none() {
+            checked.set(previous);
+        }
+    });
     let open_target = format!("/todos/{id}");
     let delete_target = format!("/todos/{id}/delete");
     let up_target = if today_order {
@@ -2395,7 +2416,14 @@ fn TodoRow(
 
     view! {
         <li
-            class=format!("{row_class} motion-insert motion-drag")
+            class=move || {
+                let row_class = if checked.get() {
+                    "task-row task-row-completed"
+                } else {
+                    "task-row"
+                };
+                format!("{row_class} motion-insert motion-drag")
+            }
             data-testid="task-row"
             data-todo-id=id.to_string()
             draggable=drag_index.map(|_| "true")
@@ -2480,7 +2508,7 @@ fn TodoRow(
                         />
                     }
                 })}
-            <CheckControl checked=completed label=title.clone()/>
+            <CheckControl checked=checked_signal label=title.clone() on_toggle=on_toggle/>
             <div class="task-row-body">
                 <a rel="external" class="task-title" href=open_target.clone()>
                     {title}
@@ -2583,17 +2611,6 @@ fn TodoRow(
                             </form>
                         }
                     })}
-                <form method="post" action=toggle_target>
-                    <button
-                        type="submit"
-                        class="row-action"
-                        aria-label="Complete to-do"
-                        aria-keyshortcuts=momentum_app::keyboard::keys_for("complete_todo")
-                            .unwrap_or_default()
-                    >
-                        "Complete"
-                    </button>
-                </form>
                 <form method="post" action=delete_target>
                     <button
                         type="submit"

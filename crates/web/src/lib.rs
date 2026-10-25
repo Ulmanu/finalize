@@ -39,6 +39,7 @@ pub mod observability;
 pub mod preferences_routes;
 #[cfg(feature = "ssr")]
 pub mod project_routes;
+pub mod protocol;
 #[cfg(feature = "ssr")]
 pub mod push_routes;
 pub mod pwa;
@@ -48,9 +49,11 @@ pub mod routes;
 pub mod search_routes;
 #[cfg(feature = "ssr")]
 pub mod security;
+pub mod server_fn;
 pub mod session;
 #[cfg(feature = "ssr")]
 pub mod share_routes;
+pub mod state;
 #[cfg(feature = "ssr")]
 pub mod sync_routes;
 #[cfg(feature = "ssr")]

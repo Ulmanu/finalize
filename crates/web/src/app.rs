@@ -5,6 +5,9 @@ use leptos::prelude::*;
 use crate::responsive::LayoutState;
 use crate::routes::AppRoutes;
 use crate::session::{provide_session, SessionBootstrap};
+use crate::state::client_store::ClientStore;
+use crate::state::overlay::{OverlayHost, OverlayState};
+use crate::state::pending::ClientCommandBus;
 
 /// Root application component.
 ///
@@ -14,9 +17,13 @@ use crate::session::{provide_session, SessionBootstrap};
 pub fn App() -> impl IntoView {
     let session = provide_session();
     LayoutState::provide();
+    let store = ClientStore::provide();
+    ClientCommandBus::provide(store);
+    OverlayState::provide();
     view! {
         <SessionBootstrap session=session.get_untracked()/>
         <AppRoutes/>
+        <OverlayHost/>
     }
 }
 
